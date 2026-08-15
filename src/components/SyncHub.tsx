@@ -186,6 +186,55 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
   const [directSyncError, setDirectSyncError] = useState<string | null>(null);
   const [directPageStatuses, setDirectPageStatuses] = useState<{ name: string; success: boolean; error: string | null }[] | null>(null);
 
+  // --- Real-time Diagnostic Tool State ---
+  const [diagnosticRunning, setDiagnosticRunning] = useState<boolean>(false);
+  const [diagnosticResult, setDiagnosticResult] = useState<{
+    success: boolean;
+    stage?: string;
+    error?: string;
+    log: string[];
+    htmlLength?: number;
+  } | null>(null);
+
+  const runDiagnosticTest = async () => {
+    if (!directUsername.trim() || !directPassword) {
+      setDirectSyncError("Please enter your Battrick username and password above before running the diagnostic.");
+      return;
+    }
+    setDiagnosticRunning(true);
+    setDiagnosticResult(null);
+    setDirectSyncError(null);
+
+    try {
+      const res = await fetch('/api/debug-battrick-direct', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          username: directUsername.trim(),
+          password: directPassword
+        })
+      });
+      const data = await safeParseJsonResponse(res, 'Diagnostic Test');
+      if (data && data.log) {
+        setDiagnosticResult(data);
+      } else {
+        setDiagnosticResult({
+          success: false,
+          error: data.error || `HTTP ${res.status}: Could not complete diagnostic test`,
+          log: [`Diagnostic request completed with HTTP ${res.status}`]
+        });
+      }
+    } catch (e: any) {
+      setDiagnosticResult({
+        success: false,
+        error: e?.message || 'Network error running diagnostic tool',
+        log: [`Exception: ${e?.message || e}`]
+      });
+    } finally {
+      setDiagnosticRunning(false);
+    }
+  };
+
   // --- Sequential Sync Progression Modal State ---
   const [sequentialModal, setSequentialModal] = useState<SequentialModalState | null>(null);
 
@@ -1548,21 +1597,75 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
               </div>
 
               {/* Sync Trigger Button */}
-              <button
-                type="button"
-                onClick={handleDirectSync}
-                disabled={directSyncing || selectedSyncPages.length === 0}
-                className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer font-sans"
-              >
-                {directSyncing ? (
-                  <RefreshCw className="w-4.5 h-4.5 animate-spin" />
-                ) : (
-                  <Wifi className="w-4.5 h-4.5" />
-                )}
-                {directSyncing 
-                  ? 'Connecting & fetching selected pages in background...' 
-                  : `Run Direct Sync (${selectedSyncPages.length} pages selected)`}
-              </button>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={handleDirectSync}
+                  disabled={directSyncing || diagnosticRunning || selectedSyncPages.length === 0}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer font-sans"
+                >
+                  {directSyncing ? (
+                    <RefreshCw className="w-4.5 h-4.5 animate-spin" />
+                  ) : (
+                    <Wifi className="w-4.5 h-4.5" />
+                  )}
+                  {directSyncing 
+                    ? 'Connecting & fetching selected pages in background...' 
+                    : `Run Direct Sync (${selectedSyncPages.length} pages selected)`}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={runDiagnosticTest}
+                  disabled={directSyncing || diagnosticRunning}
+                  className="px-4 py-3 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center justify-center gap-2 cursor-pointer font-sans shrink-0"
+                  title="Run a real-time connectivity & handshake test between this server and Battrick"
+                >
+                  {diagnosticRunning ? (
+                    <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                  ) : (
+                    <Activity className="w-4 h-4 text-amber-400" />
+                  )}
+                  <span>{diagnosticRunning ? 'Testing Connection...' : 'Test Connection & Logs'}</span>
+                </button>
+              </div>
+
+              {/* Real-time Diagnostic Log Console */}
+              {diagnosticResult && (
+                <div className="border border-slate-700 bg-slate-950 rounded-xl p-4 text-slate-200 shadow-md animate-fadeIn font-mono text-[11px]">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2.5">
+                    <span className="font-bold flex items-center gap-2 text-slate-100">
+                      <span className={`w-2.5 h-2.5 rounded-full ${diagnosticResult.success ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                      Live Server-to-Battrick Connection Diagnostics
+                    </span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                      diagnosticResult.success ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'
+                    }`}>
+                      {diagnosticResult.success ? 'All Tests Passed' : 'Test Issue Encountered'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                    {diagnosticResult.log.map((entry, idx) => (
+                      <div key={idx} className={`leading-relaxed ${
+                        entry.includes('Failed') || entry.includes('Exception') || entry.includes('failed')
+                          ? 'text-rose-400 font-semibold'
+                          : entry.includes('Success') || entry.includes('Authenticated')
+                          ? 'text-emerald-400 font-semibold'
+                          : 'text-slate-300'
+                      }`}>
+                        {entry}
+                      </div>
+                    ))}
+                  </div>
+
+                  {diagnosticResult.error && (
+                    <div className="mt-3 p-2.5 bg-rose-950/70 border border-rose-800/80 rounded-lg text-rose-200 text-xs">
+                      <strong>Diagnostic Result:</strong> {diagnosticResult.error}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Error Box */}
               {directSyncError && (

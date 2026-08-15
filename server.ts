@@ -299,32 +299,45 @@ async function startServer() {
         signal: AbortSignal.timeout(15000)
       });
 
-      let postCookies: string[] = [];
-      if (typeof loginRes.headers.getSetCookie === 'function') {
-        postCookies = loginRes.headers.getSetCookie();
-      } else {
-        const rawCookie = loginRes.headers.get('set-cookie');
-        if (rawCookie) {
-          postCookies = rawCookie.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/);
-        }
+    let postCookies: string[] = [];
+    if (typeof loginRes.headers.getSetCookie === 'function') {
+      postCookies = loginRes.headers.getSetCookie();
+    } else {
+      const rawCookie = loginRes.headers.get('set-cookie');
+      if (rawCookie) {
+        postCookies = rawCookie.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/);
       }
+    }
 
-      const postCookieRaw = loginRes.headers.get('set-cookie') || '';
-      postCookies.forEach(parseCookie);
-      cookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
+    const postCookieRaw = loginRes.headers.get('set-cookie') || '';
+    postCookies.forEach(parseCookie);
+    cookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
 
-      const isLoginRedirect = (loginRes.status === 302 || loginRes.status === 301 || loginRes.status === 303);
-      const hasValidAuthCookie = Boolean(cookieMap['BTUser'] && cookieMap['BTUser'].length > 0 && !postCookieRaw.includes('BTUser=;'));
+    const loginBodyHtml = await loginRes.text().catch(() => '');
+    const isLoginRedirect = (loginRes.status === 302 || loginRes.status === 301 || loginRes.status === 303);
+    const hasValidAuthCookie = Boolean(cookieMap['BTUser'] && cookieMap['BTUser'].length > 0 && !postCookieRaw.includes('BTUser=;'));
+    const isExplicitLoginError = loginBodyHtml.includes('Invalid login details') || loginBodyHtml.includes('notification error');
 
-      if (!isLoginRedirect && !hasValidAuthCookie) {
-        console.warn(`[Battrick Auth] Authentication rejected for user ${username}.`);
-        return {
-          success: false,
-          cookieHeader: '',
-          cookieMap: {},
-          error: "Battrick authentication failed: Invalid username or password. Please verify your credentials or use the Cut & Paste tab."
-        };
+    console.log(`[Battrick Auth Result] status=${loginRes.status}, isRedirect=${isLoginRedirect}, hasValidAuthCookie=${hasValidAuthCookie}, isExplicitLoginError=${isExplicitLoginError}, cookieCount=${Object.keys(cookieMap).length}`);
+
+    if (!isLoginRedirect && !hasValidAuthCookie) {
+      let specificReason = "Invalid username or password according to Battrick.";
+      if (isExplicitLoginError) {
+        specificReason = "Battrick returned: 'Invalid login details'. Please double-check your username & password.";
+      } else if (loginRes.status >= 500) {
+        specificReason = `Battrick server error (HTTP ${loginRes.status}). Battrick.org may be under high load or maintenance.`;
+      } else if (loginBodyHtml.includes('Cloudflare') || loginBodyHtml.includes('Attention Required')) {
+        specificReason = "Battrick Cloudflare challenge encountered on cloud network IP.";
       }
+      
+      console.warn(`[Battrick Auth] Authentication rejected for user ${username}: ${specificReason}`);
+      return {
+        success: false,
+        cookieHeader: '',
+        cookieMap: {},
+        error: `Battrick login failed: ${specificReason} (HTTP ${loginRes.status})`
+      };
+    }
 
       const sessionToken = `btsess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       battrickSessionStore.set(sessionToken, {
@@ -563,6 +576,90 @@ async function startServer() {
       if (!res.headersSent) {
         res.status(500).json({ error: err?.message || 'Unexpected server error while syncing with Battrick.' });
       }
+    }
+  });
+
+  // Diagnostic Endpoint to test and debug direct Battrick connectivity in real-time
+  app.post("/api/debug-battrick-direct", async (req, res) => {
+    const { username, password } = req.body;
+    const diagLog: string[] = [];
+
+    diagLog.push(`[1/4] Initiating direct diagnostic test at ${new Date().toISOString()}...`);
+    
+    if (!username || !password) {
+      res.status(400).json({ success: false, log: diagLog, error: "Username and password are required for diagnostic test." });
+      return;
+    }
+
+    try {
+      // Step 1: Probe reachability of battrick.org
+      diagLog.push(`[2/4] Probing connectivity to https://www.battrick.org/nl/login.asp?private=1 ...`);
+      const probeStart = Date.now();
+      const probeRes = await fetch('https://www.battrick.org/nl/login.asp?private=1', {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        },
+        signal: AbortSignal.timeout(12000)
+      });
+      const probeDuration = Date.now() - probeStart;
+      diagLog.push(`[2/4 Response] HTTP ${probeRes.status} in ${probeDuration}ms. Server: ${probeRes.headers.get('server') || 'Unknown'}`);
+
+      // Step 2: Attempt full handshake and login
+      diagLog.push(`[3/4] Sending login POST for user '${username}'...`);
+      const authStart = Date.now();
+      const authResult = await authenticateBattrickUser(username.trim(), password);
+      const authDuration = Date.now() - authStart;
+      
+      if (!authResult.success) {
+        diagLog.push(`[3/4 Failed] Login failed in ${authDuration}ms. Reason: ${authResult.error}`);
+        res.status(200).json({
+          success: false,
+          stage: 'authentication',
+          error: authResult.error,
+          log: diagLog
+        });
+        return;
+      }
+
+      diagLog.push(`[3/4 Success] Authenticated in ${authDuration}ms! Acquired session token.`);
+
+      // Step 3: Test squad page fetch with the authenticated session
+      diagLog.push(`[4/4] Testing fetch of https://www.battrick.org/nl/squad.asp ...`);
+      const pageResult = await fetchBattrickPageWithSession(
+        authResult.cookieHeader,
+        authResult.cookieMap,
+        'https://www.battrick.org/nl/squad.asp'
+      );
+
+      if (!pageResult.success) {
+        diagLog.push(`[4/4 Failed] Squad fetch failed with status ${pageResult.status}: ${pageResult.error}`);
+        res.status(200).json({
+          success: false,
+          stage: 'page_fetch',
+          error: pageResult.error,
+          log: diagLog
+        });
+        return;
+      }
+
+      const htmlSnippet = pageResult.html.substring(0, 300).replace(/\s+/g, ' ');
+      diagLog.push(`[4/4 Success] Squad page fetched successfully! HTML size: ${pageResult.html.length} bytes.`);
+      diagLog.push(`[Preview]: ${htmlSnippet}...`);
+
+      res.json({
+        success: true,
+        message: "Direct server-to-Battrick connection and authentication test passed with 100% success!",
+        htmlLength: pageResult.html.length,
+        log: diagLog
+      });
+    } catch (err: any) {
+      diagLog.push(`[Exception]: ${err?.message || err}`);
+      res.status(200).json({
+        success: false,
+        stage: 'exception',
+        error: err?.message || 'Unexpected exception during diagnostic test',
+        log: diagLog
+      });
     }
   });
 
