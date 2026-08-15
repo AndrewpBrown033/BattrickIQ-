@@ -636,24 +636,51 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
   }
 
   // --- Live Direct Sequential Sync Execution ---
-  // Safely parses a fetch Response as JSON. If the server (or a proxy/dev
-  // server sitting in front of it) returns something else - most commonly
-  // an HTML fallback page when a request doesn't reach the intended API
-  // route - res.json() throws a cryptic "Unexpected token '<' ... is not
-  // valid JSON". This turns that into a message that actually says what
-  // happened, so it shows up clearly in the sync dial instead of confusing
-  // raw JSON-parser output.
-  const safeParseJsonResponse = async (res: Response, context: string) => {
-    const raw = await res.text();
+  // Safely parses a fetch Response as JSON. If the server (or an upstream proxy)
+  // returns an error or HTML page, this catches it gracefully and returns a clean
+  // error object so the sync dial handles it as a normal step failure.
+  const safeParseJsonResponse = async (res: Response, context: string): Promise<{ success: boolean; error?: string; [key: string]: any }> => {
     try {
-      return JSON.parse(raw);
-    } catch {
-      const looksLikeHtml = raw.trim().startsWith('<');
-      throw new Error(
-        looksLikeHtml
-          ? `Server didn't return a valid response for ${context} (got an HTML page instead of JSON - the API endpoint may not be running or reachable). Please check that your dev server is running and try again.`
-          : `Server returned an unreadable response for ${context}.`
-      );
+      const raw = await res.text();
+      if (!raw || raw.trim().length === 0) {
+        return {
+          success: false,
+          error: `Empty response received for ${context} (HTTP ${res.status}).`
+        };
+      }
+      try {
+        const json = JSON.parse(raw);
+        return json;
+      } catch {
+        // Response was not JSON (e.g. HTML proxy error or session redirection)
+        if (res.status === 504 || raw.includes('504 Gateway') || raw.includes('Gateway Timeout')) {
+          return {
+            success: false,
+            error: `Battrick servers timed out (HTTP 504). Please try again in a few moments, or use the Cut & Paste tab.`
+          };
+        }
+        if (res.status === 502 || res.status === 503) {
+          return {
+            success: false,
+            error: `Battrick service temporarily unavailable (HTTP ${res.status}). Please try again or use the Cut & Paste tab.`
+          };
+        }
+        if (raw.includes('login.asp') || raw.includes('Log In to Battrick')) {
+          return {
+            success: false,
+            error: `Invalid credentials or session expired during ${context}. Please verify your username and password.`
+          };
+        }
+        return {
+          success: false,
+          error: `Server responded with HTTP ${res.status} (${res.statusText || 'Non-JSON response'}) during ${context}.`
+        };
+      }
+    } catch (networkErr: any) {
+      return {
+        success: false,
+        error: `Network error during ${context}: ${networkErr?.message || 'Could not reach server.'}`
+      };
     }
   };
 
