@@ -801,7 +801,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
 
       const authRes = await fetch('/api/sync-battrick-step', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({
           step: 'login',
           username: directUsername.trim(),
@@ -869,7 +869,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
         try {
           const pageRes = await fetch('/api/sync-battrick-step', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({
               step: 'fetch',
               pageName: pageKey,

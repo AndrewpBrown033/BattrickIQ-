@@ -243,100 +243,112 @@ async function startServer() {
     sessionToken?: string;
     error?: string;
   }> {
-    const initialUrl = 'https://www.battrick.org/nl/login.asp?private=1';
-    console.log(`[Battrick Auth] Requesting initial session from ${initialUrl}`);
-    
-    const initialRes = await fetch(initialUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-      }
-    });
+    try {
+      const initialUrl = 'https://www.battrick.org/nl/login.asp?private=1';
+      console.log(`[Battrick Auth] Requesting initial session from ${initialUrl}`);
+      
+      const initialRes = await fetch(initialUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        },
+        signal: AbortSignal.timeout(15000)
+      });
 
-    let initialCookies: string[] = [];
-    if (typeof initialRes.headers.getSetCookie === 'function') {
-      initialCookies = initialRes.headers.getSetCookie();
-    } else {
-      const rawCookie = initialRes.headers.get('set-cookie');
-      if (rawCookie) {
-        initialCookies = rawCookie.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/);
-      }
-    }
-
-    const cookieMap: Record<string, string> = {};
-    const parseCookie = (c: string) => {
-      const parts = c.split(';')[0].split('=');
-      if (parts.length >= 2) {
-        const name = parts[0].trim();
-        const val = parts.slice(1).join('=').trim();
-        if (name && !['path', 'domain', 'expires', 'secure', 'httponly', 'samesite'].includes(name.toLowerCase())) {
-          cookieMap[name] = val;
+      let initialCookies: string[] = [];
+      if (typeof initialRes.headers.getSetCookie === 'function') {
+        initialCookies = initialRes.headers.getSetCookie();
+      } else {
+        const rawCookie = initialRes.headers.get('set-cookie');
+        if (rawCookie) {
+          initialCookies = rawCookie.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/);
         }
       }
-    };
 
-    initialCookies.forEach(parseCookie);
-    let cookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
+      const cookieMap: Record<string, string> = {};
+      const parseCookie = (c: string) => {
+        const parts = c.split(';')[0].split('=');
+        if (parts.length >= 2) {
+          const name = parts[0].trim();
+          const val = parts.slice(1).join('=').trim();
+          if (name && !['path', 'domain', 'expires', 'secure', 'httponly', 'samesite'].includes(name.toLowerCase())) {
+            cookieMap[name] = val;
+          }
+        }
+      };
 
-    const loginParams = new URLSearchParams();
-    loginParams.append('username', username);
-    loginParams.append('password', password);
-    loginParams.append('referrer', '');
+      initialCookies.forEach(parseCookie);
+      let cookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
 
-    console.log(`[Battrick Auth] Sending credentials for ${username}...`);
-    const loginRes = await fetch('https://www.battrick.org/nl/login.asp?private=1', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Cookie': cookieHeader,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Origin': 'https://www.battrick.org',
-        'Referer': 'https://www.battrick.org/nl/login.asp?private=1'
-      },
-      body: loginParams.toString(),
-      redirect: 'manual'
-    });
+      const loginParams = new URLSearchParams();
+      loginParams.append('username', username);
+      loginParams.append('password', password);
+      loginParams.append('referrer', '');
 
-    let postCookies: string[] = [];
-    if (typeof loginRes.headers.getSetCookie === 'function') {
-      postCookies = loginRes.headers.getSetCookie();
-    } else {
-      const rawCookie = loginRes.headers.get('set-cookie');
-      if (rawCookie) {
-        postCookies = rawCookie.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/);
+      console.log(`[Battrick Auth] Sending credentials for ${username}...`);
+      const loginRes = await fetch('https://www.battrick.org/nl/login.asp?private=1', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Cookie': cookieHeader,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Origin': 'https://www.battrick.org',
+          'Referer': 'https://www.battrick.org/nl/login.asp?private=1'
+        },
+        body: loginParams.toString(),
+        redirect: 'manual',
+        signal: AbortSignal.timeout(15000)
+      });
+
+      let postCookies: string[] = [];
+      if (typeof loginRes.headers.getSetCookie === 'function') {
+        postCookies = loginRes.headers.getSetCookie();
+      } else {
+        const rawCookie = loginRes.headers.get('set-cookie');
+        if (rawCookie) {
+          postCookies = rawCookie.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/);
+        }
       }
-    }
 
-    const postCookieRaw = loginRes.headers.get('set-cookie') || '';
-    postCookies.forEach(parseCookie);
-    cookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
+      const postCookieRaw = loginRes.headers.get('set-cookie') || '';
+      postCookies.forEach(parseCookie);
+      cookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
 
-    const isLoginRedirect = (loginRes.status === 302 || loginRes.status === 301 || loginRes.status === 303);
-    const hasValidAuthCookie = Boolean(cookieMap['BTUser'] && cookieMap['BTUser'].length > 0 && !postCookieRaw.includes('BTUser=;'));
+      const isLoginRedirect = (loginRes.status === 302 || loginRes.status === 301 || loginRes.status === 303);
+      const hasValidAuthCookie = Boolean(cookieMap['BTUser'] && cookieMap['BTUser'].length > 0 && !postCookieRaw.includes('BTUser=;'));
 
-    if (!isLoginRedirect && !hasValidAuthCookie) {
-      console.warn(`[Battrick Auth] Authentication rejected for user ${username}.`);
+      if (!isLoginRedirect && !hasValidAuthCookie) {
+        console.warn(`[Battrick Auth] Authentication rejected for user ${username}.`);
+        return {
+          success: false,
+          cookieHeader: '',
+          cookieMap: {},
+          error: "Battrick authentication failed: Invalid username or password. Please verify your credentials or use the Cut & Paste tab."
+        };
+      }
+
+      const sessionToken = `btsess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      battrickSessionStore.set(sessionToken, {
+        cookieHeader,
+        cookieMap,
+        username,
+        timestamp: Date.now()
+      });
+
+      return {
+        success: true,
+        cookieHeader,
+        cookieMap,
+        sessionToken
+      };
+    } catch (authErr: any) {
+      console.error('[Battrick Auth Exception]:', authErr);
       return {
         success: false,
         cookieHeader: '',
         cookieMap: {},
-        error: "Battrick authentication failed: Invalid username or password. Please verify your credentials or use the Cut & Paste tab."
+        error: `Could not connect to Battrick server: ${authErr?.message || 'Network request failed'}. Please verify your credentials or use the Cut & Paste tab.`
       };
     }
-
-    const sessionToken = `btsess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    battrickSessionStore.set(sessionToken, {
-      cookieHeader,
-      cookieMap,
-      username,
-      timestamp: Date.now()
-    });
-
-    return {
-      success: true,
-      cookieHeader,
-      cookieMap,
-      sessionToken
-    };
   }
 
   // Helper to fetch a single Battrick page with bounded redirect guard
@@ -345,92 +357,103 @@ async function startServer() {
     cookieMap: Record<string, string>,
     pageUrl: string
   ): Promise<{ success: boolean; html: string; status: number; isRedirect?: boolean; error?: string; updatedCookieHeader?: string }> {
-    let currentUrl = pageUrl;
-    let hops = 0;
-    const maxHops = 2;
-    let currentCookieHeader = cookieHeader;
+    try {
+      let currentUrl = pageUrl;
+      let hops = 0;
+      const maxHops = 2;
+      let currentCookieHeader = cookieHeader;
 
-    const parseCookie = (c: string) => {
-      const parts = c.split(';')[0].split('=');
-      if (parts.length >= 2) {
-        const name = parts[0].trim();
-        const val = parts.slice(1).join('=').trim();
-        if (name && !['path', 'domain', 'expires', 'secure', 'httponly', 'samesite'].includes(name.toLowerCase())) {
-          cookieMap[name] = val;
+      const parseCookie = (c: string) => {
+        const parts = c.split(';')[0].split('=');
+        if (parts.length >= 2) {
+          const name = parts[0].trim();
+          const val = parts.slice(1).join('=').trim();
+          if (name && !['path', 'domain', 'expires', 'secure', 'httponly', 'samesite'].includes(name.toLowerCase())) {
+            cookieMap[name] = val;
+          }
         }
-      }
-    };
+      };
 
-    while (hops <= maxHops) {
-      hops++;
-      const pageRes = await fetch(currentUrl, {
-        headers: {
-          'Cookie': currentCookieHeader,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          'Referer': 'https://www.battrick.org/nl/login.asp?private=1'
-        },
-        redirect: 'manual'
-      });
+      while (hops <= maxHops) {
+        hops++;
+        const pageRes = await fetch(currentUrl, {
+          headers: {
+            'Cookie': currentCookieHeader,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Referer': 'https://www.battrick.org/nl/login.asp?private=1'
+          },
+          redirect: 'manual',
+          signal: AbortSignal.timeout(15000)
+        });
 
-      let stepCookies: string[] = [];
-      if (typeof pageRes.headers.getSetCookie === 'function') {
-        stepCookies = pageRes.headers.getSetCookie();
-      } else {
-        const raw = pageRes.headers.get('set-cookie');
-        if (raw) stepCookies = raw.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/);
-      }
-      stepCookies.forEach(parseCookie);
-      currentCookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
+        let stepCookies: string[] = [];
+        if (typeof pageRes.headers.getSetCookie === 'function') {
+          stepCookies = pageRes.headers.getSetCookie();
+        } else {
+          const raw = pageRes.headers.get('set-cookie');
+          if (raw) stepCookies = raw.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/);
+        }
+        stepCookies.forEach(parseCookie);
+        currentCookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
 
-      if ([301, 302, 303, 307].includes(pageRes.status)) {
-        const loc = pageRes.headers.get('location');
-        if (!loc) break;
-        const nextUrl = new URL(loc, currentUrl).toString();
+        if ([301, 302, 303, 307].includes(pageRes.status)) {
+          const loc = pageRes.headers.get('location');
+          if (!loc) break;
+          const nextUrl = new URL(loc, currentUrl).toString();
 
-        if (nextUrl.includes('login.asp')) {
+          if (nextUrl.includes('login.asp')) {
+            return {
+              success: false,
+              html: '',
+              status: pageRes.status,
+              isRedirect: true,
+              error: 'Unauthenticated (redirected to login page)'
+            };
+          }
+
+          currentUrl = nextUrl;
+          continue;
+        }
+
+        if (pageRes.status >= 400) {
+          const errHtml = await pageRes.text().catch(() => '');
+          const isAspAuthErr = errHtml.includes('login.asp') || errHtml.includes('Log In to Battrick');
+          return {
+            success: false,
+            html: '',
+            status: pageRes.status,
+            isRedirect: isAspAuthErr,
+            error: isAspAuthErr ? 'Unauthenticated (session expired or invalid)' : `Server responded with HTTP ${pageRes.status}`
+          };
+        }
+
+        const html = await pageRes.text();
+        const hasLoginForms = (html.includes("Log In to Battrick") || html.includes("login.asp?private=1")) &&
+          (html.includes("Username:") || html.includes("Password:") || html.includes("name=\"username\"") || html.includes("name=\"password\""));
+
+        if (hasLoginForms) {
           return {
             success: false,
             html: '',
             status: pageRes.status,
             isRedirect: true,
-            error: 'Unauthenticated (redirected to login page)'
+            error: 'Unauthenticated (login form detected)'
           };
         }
 
-        currentUrl = nextUrl;
-        continue;
+        return { success: true, html, status: pageRes.status, updatedCookieHeader: currentCookieHeader };
       }
 
-      if (pageRes.status >= 400) {
-        const errHtml = await pageRes.text().catch(() => '');
-        const isAspAuthErr = errHtml.includes('login.asp') || errHtml.includes('Log In to Battrick');
-        return {
-          success: false,
-          html: '',
-          status: pageRes.status,
-          isRedirect: isAspAuthErr,
-          error: isAspAuthErr ? 'Unauthenticated (session expired or invalid)' : `Server responded with HTTP ${pageRes.status}`
-        };
-      }
-
-      const html = await pageRes.text();
-      const hasLoginForms = (html.includes("Log In to Battrick") || html.includes("login.asp?private=1")) &&
-        (html.includes("Username:") || html.includes("Password:") || html.includes("name=\"username\"") || html.includes("name=\"password\""));
-
-      if (hasLoginForms) {
-        return {
-          success: false,
-          html: '',
-          status: pageRes.status,
-          isRedirect: true,
-          error: 'Unauthenticated (login form detected)'
-        };
-      }
-
-      return { success: true, html, status: pageRes.status, updatedCookieHeader: currentCookieHeader };
+      return { success: false, html: '', status: 0, error: 'Redirect limit exceeded during navigation' };
+    } catch (fetchErr: any) {
+      console.error(`[Battrick Page Fetch Exception for ${pageUrl}]:`, fetchErr);
+      return {
+        success: false,
+        html: '',
+        status: 0,
+        error: `Failed to connect to Battrick: ${fetchErr?.message || 'Network request error'}`
+      };
     }
-
-    return { success: false, html: '', status: 0, error: 'Redirect limit exceeded during navigation' };
   }
 
   // API Route for step-by-step sequential sync (with live progression)
@@ -743,6 +766,11 @@ Respond with supportive, highly specialized, yet easy-to-read formatting. Use Ma
       console.error("Gemini API error:", error);
       res.status(500).json({ error: error.message || "An error occurred with Coach Jarvis's speech synthesizer." });
     }
+  });
+
+  // Catch-all 404 handler for API routes to guarantee they NEVER return HTML fallback
+  app.all('/api/*', (req, res) => {
+    res.status(404).json({ error: `API route ${req.method} ${req.path} not found.` });
   });
 
   // Determine if we should run in development mode with Vite middleware
