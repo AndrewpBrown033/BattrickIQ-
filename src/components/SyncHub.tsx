@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BattrickPlayer, ClubFinances, BattrickGame, PavilionInfo } from '../types';
 import { parseBattrickPage, isNameMatch } from '../parser';
 import { mergePlayerAndTrackHistory, generateRealisticHistory } from '../utils/history';
@@ -149,6 +149,29 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     staminaCoaches: 0,
     psychologists: 0
   });
+
+  // Live mirrors of squad/finances/fixtures/pavilion, read by handleImport
+  // instead of the state variables directly. Why: handleDirectSync runs all
+  // of its steps (squad -> nets -> finances -> club -> ...) inside ONE
+  // function call. React state set via setSquad()/setFinances() etc doesn't
+  // become visible to that same running function - it only shows up on the
+  // NEXT render, i.e. after handleDirectSync has already finished. So when
+  // nets ran a moment after squad in the same sequential batch, its "has a
+  // squad been synced yet?" check was still reading the squad state from
+  // BEFORE the sync started (empty on a first-ever sync) and bailed out with
+  // "please sync your squad first" - even though squad had just succeeded.
+  // This is why pages synced individually worked but bulk/sequential sync
+  // could fail partway through. Refs are mutable and read live, so updating
+  // them the instant we call setX() keeps every step in the same batch
+  // seeing the freshest data, regardless of React's render timing.
+  const squadRef = useRef<BattrickPlayer[]>(squad);
+  const financesRef = useRef<ClubFinances>(finances);
+  const fixturesRef = useRef<BattrickGame[]>(fixtures);
+  const pavilionRef = useRef<PavilionInfo | null>(pavilion);
+  useEffect(() => { squadRef.current = squad; }, [squad]);
+  useEffect(() => { financesRef.current = finances; }, [finances]);
+  useEffect(() => { fixturesRef.current = fixtures; }, [fixtures]);
+  useEffect(() => { pavilionRef.current = pavilion; }, [pavilion]);
 
   // Only 2 sync methods: Direct Sync & Cut/Paste
   const [importTab, setImportTab] = useState<'direct' | 'paste'>('direct');
@@ -351,8 +374,9 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     window.dispatchEvent(new Event('bt_cloud_backup_request'));
   };
 
-  function handleImport(content: string, detectedType?: string) {
+  function handleImport(content: string, detectedType?: string, opts?: { silent?: boolean; progress?: { current: number; total: number } }) {
     if (!content.trim()) return;
+    const silent = !!opts?.silent;
     
     const result = parseBattrickPage(content, detectedType);
     const isValidType = result.type && result.type !== 'unknown';
@@ -373,7 +397,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       else failReason = 'No players could be parsed from the squad page content.';
     } else if (result.type === 'nets') {
       if (result.players && result.players.length > 0) {
-        const hasSquad = squad && squad.length > 0 && !isDemo;
+        const hasSquad = squadRef.current && squadRef.current.length > 0 && !isDemo;
         if (!hasSquad) {
           setImportMessage({ text: 'Please sync your main Squad first before importing Nets data.', success: false });
           addSyncLog('nets', 'Import skipped: squad must be imported before nets schedules', 'failed');
@@ -426,12 +450,12 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     localStorage.setItem('bt_has_ever_synced', 'true');
     setHasEverSynced(true);
 
-    const activeSquad = shouldWipe ? [] : squad;
+    const activeSquad = shouldWipe ? [] : squadRef.current;
     const activeFinances = shouldWipe ? {
       cash: 0, members: 0, prOfficers: 0, finAdvisors: 0, sponsorsIncome: 0, gateReceipts: 0, interestReceived: 0, playerWages: 0, staffWages: 0, morale: 'respectable' as const, sponsorsMood: 'respectable' as const, membersConfidence: 'respectable', academyCondition: 'feeble', academyInvestment: 0, academyIts: 0, bowlingCoaches: 0, battingCoaches: 0, fieldingCoaches: 0, keepingCoaches: 0, staminaCoaches: 0, psychologists: 0
-    } : finances;
-    const activeFixtures = shouldWipe ? [] : fixtures;
-    const activePavilion = shouldWipe ? null : pavilion;
+    } : financesRef.current;
+    const activeFixtures = shouldWipe ? [] : fixturesRef.current;
+    const activePavilion = shouldWipe ? null : pavilionRef.current;
 
     if (result.type === 'squad' && result.players) {
       const merged = result.players.map((newP) => {
@@ -444,6 +468,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
           history: generateRealisticHistory(newP)
         };
       });
+      squadRef.current = merged;
       setSquad(merged);
       saveToLocalStorage(merged, activeFinances, activeFixtures.length > 0 ? activeFixtures : undefined, activePavilion || undefined);
       setImportMessage({ text: `Successfully synced ${result.count} players into your squad!`, success: true });
@@ -451,7 +476,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       
       const avgBtr = Math.round(merged.reduce((sum, p) => sum + p.btRating, 0) / merged.length);
       const weeklyWages = merged.reduce((sum, p) => sum + p.wage, 0);
-      setSuccessModal({
+      if (!silent) setSuccessModal({
         isOpen: true,
         type: 'squad',
         title: 'Squad Roster Synced!',
@@ -472,13 +497,14 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
         }
         return p;
       });
+      squadRef.current = merged;
       setSquad(merged);
       saveToLocalStorage(merged, activeFinances, activeFixtures.length > 0 ? activeFixtures : undefined, activePavilion || undefined);
       setImportMessage({ text: `Matched and synced net training schedules for ${updatedCount} squad players!`, success: true });
       addSyncLog('nets', `Updated training net allocation schedule for ${updatedCount} players`, 'success');
       
       const totalNets = merged.reduce((total, p) => total + (p.nets ? (p.nets.batting + p.nets.bowling + p.nets.keeping + p.nets.stamina + p.nets.fielding) : 0), 0);
-      setSuccessModal({
+      if (!silent) setSuccessModal({
         isOpen: true,
         type: 'nets',
         title: 'Training Nets Synced!',
@@ -490,13 +516,14 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       });
     } else if ((result.type === 'finances' || result.type === 'club') && result.finances) {
       const updatedFin = { ...activeFinances, ...result.finances } as ClubFinances;
+      financesRef.current = updatedFin;
       setFinances(updatedFin);
       saveToLocalStorage(activeSquad, updatedFin, activeFixtures.length > 0 ? activeFixtures : undefined, activePavilion || undefined);
       setImportMessage({ text: result.type === 'club' ? 'Successfully parsed and synced club staff & morale levels!' : `Successfully parsed and synced club finances!`, success: true });
       addSyncLog(result.type, result.type === 'club' ? 'Synchronized club staff levels & morale' : `Synchronized weekly finances & staff ratios`, 'success');
       
       const isClub = result.type === 'club';
-      setSuccessModal({
+      if (!silent) setSuccessModal({
         isOpen: true,
         type: isClub ? 'club' : 'finances',
         title: isClub ? 'Club & Staff Information Synced!' : 'Financial Ledger Updated!',
@@ -516,12 +543,13 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
         ]
       });
     } else if (result.type === 'fixtures' && result.fixtures) {
+      fixturesRef.current = result.fixtures;
       setFixtures(result.fixtures);
       saveToLocalStorage(activeSquad, activeFinances, result.fixtures, activePavilion || undefined);
       setImportMessage({ text: `Successfully parsed and synced ${result.fixtures.length} club fixtures!`, success: true });
       addSyncLog('fixtures', `Synchronized ${result.fixtures.length} club fixtures`, 'success');
       
-      setSuccessModal({
+      if (!silent) setSuccessModal({
         isOpen: true,
         type: 'fixtures',
         title: 'Match Fixtures Synced!',
@@ -532,7 +560,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       });
     } else if (result.type === 'pavilion' && result.pavilion) {
       const mergedPavilion: PavilionInfo = {
-        ...(pavilion || {
+        ...(activePavilion || {
           groundName: 'HairyBeanBags CG',
           pitchType: 'Flat',
           weather: 'Sunny',
@@ -541,12 +569,13 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
         }),
         ...result.pavilion
       };
+      pavilionRef.current = mergedPavilion;
       setPavilion(mergedPavilion);
       saveToLocalStorage(activeSquad, activeFinances, activeFixtures.length > 0 ? activeFixtures : undefined, mergedPavilion);
       setImportMessage({ text: `Successfully parsed and synced pavilion details: ${mergedPavilion.groundName}!`, success: true });
       addSyncLog('pavilion', `Synchronized pavilion ground detail (${mergedPavilion.groundName})`, 'success');
       
-      setSuccessModal({
+      if (!silent) setSuccessModal({
         isOpen: true,
         type: 'pavilion',
         title: 'Pavilion Ground Synced!',
@@ -581,6 +610,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
           ...(result.pavilion?.groundName ? { groundName: result.pavilion.groundName } : {}),
           ...(result.pavilion?.pitchType ? { pitchType: result.pavilion.pitchType } : {})
         };
+        pavilionRef.current = updatedPavilion;
         setPavilion(updatedPavilion);
       }
 
@@ -588,7 +618,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       setImportMessage({ text: `Successfully parsed and synced stadium ground specs!`, success: true });
       addSyncLog('ground', `Updated stadium capacity to ${(stadium.capacity || 0).toLocaleString()} seats`, 'success');
 
-      setSuccessModal({
+      if (!silent) setSuccessModal({
         isOpen: true,
         type: 'ground',
         title: 'Stadium Ground Specs Synced!',
@@ -841,8 +871,10 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
             };
             const importType = typeMapping[pageKey] || pageKey;
 
-            // Import data into club state and localStorage
-            handleImport(pageData.html, importType);
+            // Import data into club state and localStorage. Silent + progress
+            // so handleImport skips its own popup (the dial panel below shows
+            // the per-page confirmation instead) and can label the step.
+            handleImport(pageData.html, importType, { silent: true, progress: { current: stepNumber, total: totalSteps } });
             completedCount++;
 
             let statBadge = 'Synced';
@@ -853,7 +885,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
               collectedStats.push({ label: 'Squad Size', value: `${pCount} Active Players` });
             } else if (pageKey === 'nets') {
               const parsed = parseBattrickPage(pageData.html);
-              const netCount = parsed.players?.filter(p => p.nets && p.nets.length > 0).length || 0;
+              const netCount = parsed.players?.filter(p => p.nets && (p.nets.batting + p.nets.bowling + p.nets.keeping + p.nets.fielding + p.nets.stamina) > 0).length || 0;
               statBadge = `${netCount} Nets Allocated`;
               collectedStats.push({ label: 'Training Nets', value: `${netCount} Assigned Slots` });
             } else if (pageKey === 'finances') {
@@ -884,6 +916,15 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
             pageStatusRecords.push({ name: pageKey, success: true, error: null });
             addSyncLog(pageKey, `Direct sync synchronized ${currentStep.label} (${statBadge})`, 'success');
 
+            // "Alert" phase: announce this page's result in the dial before
+            // moving on, so the user actually sees each confirmation instead
+            // of it flashing straight past to the next fetch.
+            setSequentialModal(prev => prev ? {
+              ...prev,
+              activeStepName: `✓ ${currentStep.label} Synced!`,
+              activeDetail: `${statBadge}. ${i < initialSteps.length - 1 ? 'Getting ready for the next page...' : 'Wrapping up...'}`
+            } : null);
+
           } else {
             const errStr = pageData.error || `Failed to fetch ${currentStep.urlLabel}`;
             updateStep(i, {
@@ -893,6 +934,12 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
             });
             pageStatusRecords.push({ name: pageKey, success: false, error: errStr });
             addSyncLog(pageKey, `Direct sync failed for ${currentStep.label}: ${errStr}`, 'failed');
+
+            setSequentialModal(prev => prev ? {
+              ...prev,
+              activeStepName: `⚠ ${currentStep.label} Skipped`,
+              activeDetail: `${errStr} ${i < initialSteps.length - 1 ? '- continuing with the next page...' : ''}`
+            } : null);
           }
         } catch (stepErr: any) {
           console.error(`[Sequential Sync] Error on ${pageKey}:`, stepErr);
@@ -904,6 +951,12 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
           });
           pageStatusRecords.push({ name: pageKey, success: false, error: errStr });
           addSyncLog(pageKey, `Direct sync step error on ${currentStep.label}: ${errStr}`, 'failed');
+
+          setSequentialModal(prev => prev ? {
+            ...prev,
+            activeStepName: `⚠ ${currentStep.label} Skipped`,
+            activeDetail: `${errStr} ${i < initialSteps.length - 1 ? '- continuing with the next page...' : ''}`
+          } : null);
         }
 
         setSequentialModal(prev => prev ? {
@@ -912,7 +965,9 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
           completedStats: [...collectedStats]
         } : null);
 
-        // Polite 800ms sequential spacing before moving to the next page
+        // Polite 800ms sequential spacing before moving to the next page -
+        // this is also the window during which the "✓ Synced!" alert above
+        // stays on screen before the next step's "Processing..." replaces it.
         if (i < initialSteps.length - 1) {
           await new Promise(r => setTimeout(r, 800));
         }
@@ -1648,6 +1703,106 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
                 Reset Data
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sequential Direct Sync progress dial - shows every page as it's
+          fetched, with a per-page confirmation badge, and clearly announces
+          "processing next step" as it moves down the queue. */}
+      {sequentialModal && sequentialModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 shadow-2xl rounded-2xl max-w-lg w-full p-6 flex flex-col gap-5 animate-scaleUp max-h-[90vh] overflow-y-auto">
+            {/* Progress dial */}
+            <div className="flex flex-col items-center gap-3">
+              <div className="relative w-28 h-28 flex-shrink-0">
+                <svg viewBox="0 0 120 120" className="w-28 h-28 -rotate-90">
+                  <circle cx="60" cy="60" r="52" fill="none" stroke="#e2e8f0" strokeWidth="10" />
+                  <circle
+                    cx="60" cy="60" r="52" fill="none"
+                    stroke={sequentialModal.isComplete ? (sequentialModal.hasErrors ? '#f43f5e' : '#10b981') : '#6366f1'}
+                    strokeWidth="10"
+                    strokeLinecap="round"
+                    strokeDasharray={2 * Math.PI * 52}
+                    strokeDashoffset={2 * Math.PI * 52 * (1 - sequentialModal.progressPercent / 100)}
+                    style={{ transition: 'stroke-dashoffset 0.5s ease, stroke 0.3s ease' }}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  {sequentialModal.isComplete ? (
+                    sequentialModal.hasErrors
+                      ? <AlertCircle className="w-8 h-8 text-rose-500" />
+                      : <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+                  ) : (
+                    <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                  )}
+                  <span className="text-xs font-black text-slate-700 mt-1">{sequentialModal.progressPercent}%</span>
+                </div>
+              </div>
+              <div className="text-center">
+                <h3 className="font-display font-extrabold text-base text-slate-900">{sequentialModal.activeStepName}</h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">{sequentialModal.activeDetail}</p>
+              </div>
+            </div>
+
+            {/* Per-page status panel - one row per page, each becoming its
+                own confirmation box the instant it completes */}
+            <div className="flex flex-col gap-2">
+              {sequentialModal.steps.map((step) => {
+                const Icon = step.icon;
+                return (
+                  <div
+                    key={step.id}
+                    className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all duration-300 ${
+                      step.status === 'completed' ? 'bg-emerald-50 border-emerald-200' :
+                      step.status === 'failed' ? 'bg-rose-50 border-rose-200' :
+                      step.status === 'processing' ? 'bg-indigo-50 border-indigo-200 ring-2 ring-indigo-100' :
+                      'bg-slate-50 border-slate-100'
+                    }`}
+                  >
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                      step.status === 'completed' ? 'bg-emerald-100 text-emerald-600' :
+                      step.status === 'failed' ? 'bg-rose-100 text-rose-600' :
+                      step.status === 'processing' ? 'bg-indigo-100 text-indigo-600' :
+                      'bg-slate-100 text-slate-400'
+                    }`}>
+                      {step.status === 'processing' ? <Loader2 className="w-4 h-4 animate-spin" /> :
+                       step.status === 'completed' ? <Check className="w-4 h-4" /> :
+                       step.status === 'failed' ? <XCircle className="w-4 h-4" /> :
+                       <Icon className="w-4 h-4" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-slate-800 truncate">{step.label}</span>
+                        {step.statBadge && step.status === 'completed' && (
+                          <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 rounded-full px-2 py-0.5 flex-shrink-0">
+                            {step.statBadge}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-[11px] mt-0.5 truncate ${step.status === 'failed' ? 'text-rose-600' : 'text-slate-500'}`}>
+                        {step.message}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer */}
+            {sequentialModal.isComplete ? (
+              <button
+                type="button"
+                onClick={() => setSequentialModal(null)}
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 rounded-xl transition shadow-md cursor-pointer"
+              >
+                {sequentialModal.hasErrors ? 'Got It - Review Warnings' : 'Awesome, All Synced!'}
+              </button>
+            ) : (
+              <p className="text-center text-[10px] text-slate-400 font-mono font-bold uppercase tracking-wide">
+                Syncing page by page - please keep this open...
+              </p>
+            )}
           </div>
         </div>
       )}
