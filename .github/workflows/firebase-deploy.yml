@@ -37,4 +37,4 @@ jobs:
           repoToken: "${{ secrets.GITHUB_TOKEN }}"
           firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_BATTRICKIQ }}"
           channelId: live
-          projectId: decent-radius-k98sv
+          projectId: battrickiq
