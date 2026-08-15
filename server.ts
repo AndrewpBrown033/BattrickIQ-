@@ -54,6 +54,11 @@ async function startServer() {
     next();
   });
 
+  // Health check endpoint
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", uptime: process.uptime(), timestamp: Date.now() });
+  });
+
   // POST endpoint for form-based sync (works with hidden forms inside CSP-restricted pages)
   app.post('/api/sync-bookmarklet-form', (req, res) => {
     const code = (req.query.code || req.body.code) as string;
@@ -290,6 +295,8 @@ async function startServer() {
     cookieMap: Record<string, string>;
     sessionToken?: string;
     error?: string;
+    httpStatus?: number;
+    blockedByUpstream?: boolean;
   }> {
     try {
       const initialUrl = 'https://www.battrick.org/nl/login.asp?private=1';
@@ -297,10 +304,45 @@ async function startServer() {
       
       const initialRes = await fetch(initialUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'none',
+          'Upgrade-Insecure-Requests': '1'
         },
         signal: AbortSignal.timeout(15000)
       });
+
+      // Battrick (or a WAF/CDN in front of it) can reject the connection
+      // outright - most commonly HTTP 403 (blocked/rate-limited) or 429
+      // (too many requests) - before we ever get a real login page back.
+      // Previously this fell through silently: no cookies got set, the
+      // POST login attempt below was doomed to fail, and the resulting
+      // error message said "invalid username or password" - which sent
+      // people chasing their credentials for a problem that was actually
+      // Battrick blocking this server's outbound connection. Surfacing it
+      // here, immediately, with the real HTTP status makes that distinction
+      // unambiguous.
+      if (!initialRes.ok) {
+        console.warn(`[Battrick Sync] Initial connection blocked: HTTP ${initialRes.status} ${initialRes.statusText}`);
+        return {
+          success: false,
+          cookieHeader: '',
+          cookieMap: {},
+          error: `Battrick's server rejected the initial connection with HTTP ${initialRes.status} ${initialRes.statusText || ''}`.trim() +
+            (initialRes.status === 403
+              ? `. This is Battrick blocking/rate-limiting this server's outbound request - it happens before any credentials are checked, so it is NOT a username/password issue. It usually means Battrick's WAF has flagged this server's IP address or request pattern.`
+              : initialRes.status === 429
+              ? `. Battrick is rate-limiting this server - too many requests too quickly. Wait a bit and try again.`
+              : `. This is an upstream connectivity issue with Battrick, unrelated to your credentials.`),
+          httpStatus: initialRes.status,
+          blockedByUpstream: true
+        };
+      }
 
       const cookieMap: Record<string, string> = {};
       extractSetCookies(initialRes).forEach(c => parseCookieString(c, cookieMap));
@@ -320,17 +362,34 @@ async function startServer() {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Origin': 'https://www.battrick.org',
           'Referer': 'https://www.battrick.org/nl/login.asp?private=1',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9'
         },
         body: loginParams.toString()
       }, cookieMap);
+
+      // Same blocked-vs-bad-credentials distinction as the initial GET
+      // above, but for the login POST itself.
+      if (loginRes.status === 403 || loginRes.status === 429) {
+        console.warn(`[Battrick Sync] Login POST blocked: HTTP ${loginRes.status} ${loginRes.statusText}`);
+        return {
+          success: false,
+          cookieHeader: '',
+          cookieMap: {},
+          error: `Battrick rejected the login request with HTTP ${loginRes.status} ${loginRes.statusText || ''}`.trim() +
+            `. This happened before credentials could be validated - Battrick is blocking/rate-limiting this server, this is not a username/password issue.`,
+          httpStatus: loginRes.status,
+          blockedByUpstream: true
+        };
+      }
 
       cookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
       console.log(`[Battrick Sync] Merged active cookies: ${cookieHeader}`);
 
       const loginBodyHtml = await loginRes.text().catch(() => '');
       const hasValidAuthCookie = Boolean(cookieMap['BTUser'] && cookieMap['BTUser'].length > 0);
-      const isExplicitLoginError = loginBodyHtml.includes('Invalid login details') || loginBodyHtml.includes('notification error');
+      const isExplicitLoginError = loginBodyHtml.includes('Invalid login details') || loginBodyHtml.includes('notification error') || loginBodyHtml.includes('Log In to Battrick');
 
       if (!hasValidAuthCookie && isExplicitLoginError) {
         console.warn(`[Battrick Auth] Authentication rejected for user ${username}: Invalid login details.`);
@@ -338,7 +397,17 @@ async function startServer() {
           success: false,
           cookieHeader: '',
           cookieMap: {},
-          error: "Battrick returned: 'Invalid login details'. Please double-check your username and password."
+          error: "Battrick returned: 'Invalid login details'. Please double-check your username & password, or switch to the Cut & Paste tab."
+        };
+      }
+
+      if (!hasValidAuthCookie) {
+        console.warn(`[Battrick Auth] Authentication rejected for user ${username}: BTUser auth cookie was not set.`);
+        return {
+          success: false,
+          cookieHeader: '',
+          cookieMap: {},
+          error: "Battrick authentication failed: Invalid username or password, or session expired. Please verify your credentials or switch to the Cut & Paste tab."
         };
       }
 
@@ -550,6 +619,27 @@ async function startServer() {
       const probeDuration = Date.now() - probeStart;
       diagLog.push(`[2/4 Response] HTTP ${probeRes.status} in ${probeDuration}ms. Server: ${probeRes.headers.get('server') || 'Unknown'}`);
 
+      // If Battrick blocked/rate-limited the connection outright, stop here
+      // and say so plainly - continuing on to "attempt login" with a
+      // connection that was already rejected just produces a misleading
+      // "authentication failed" message that sends people chasing their
+      // password for a problem that has nothing to do with credentials.
+      if (probeRes.status === 403 || probeRes.status === 429) {
+        diagLog.push(`[2/4 Blocked] Battrick rejected the connection before any credentials were sent - this is an upstream block/rate-limit, not a login problem.`);
+        res.status(200).json({
+          success: false,
+          stage: 'connectivity',
+          error: `Battrick's server blocked this connection with HTTP ${probeRes.status} before any login was attempted. ` +
+            (probeRes.status === 403
+              ? `This server's IP or request pattern has likely been flagged by Battrick's WAF/anti-bot protection.`
+              : `Battrick is rate-limiting requests from this server - wait a bit and try again.`),
+          httpStatus: probeRes.status,
+          blockedByUpstream: true,
+          log: diagLog
+        });
+        return;
+      }
+
       // Step 2: Attempt full handshake and login
       diagLog.push(`[3/4] Sending login POST for user '${username}'...`);
       const authStart = Date.now();
@@ -560,8 +650,10 @@ async function startServer() {
         diagLog.push(`[3/4 Failed] Login failed in ${authDuration}ms. Reason: ${authResult.error}`);
         res.status(200).json({
           success: false,
-          stage: 'authentication',
+          stage: authResult.blockedByUpstream ? 'connectivity' : 'authentication',
           error: authResult.error,
+          httpStatus: authResult.httpStatus,
+          blockedByUpstream: authResult.blockedByUpstream || false,
           log: diagLog
         });
         return;
