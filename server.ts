@@ -217,9 +217,324 @@ async function startServer() {
     }
   }, 60000);
 
-  // API Route for live sync proxying
+  // In-memory active session cache for step-by-step sequential sync (expires in 15 mins)
+  interface BattrickActiveSession {
+    cookieHeader: string;
+    cookieMap: Record<string, string>;
+    username: string;
+    timestamp: number;
+  }
+  const battrickSessionStore = new Map<string, BattrickActiveSession>();
+
+  setInterval(() => {
+    const now = Date.now();
+    for (const [token, sess] of battrickSessionStore.entries()) {
+      if (now - sess.timestamp > 15 * 60 * 1000) {
+        battrickSessionStore.delete(token);
+      }
+    }
+  }, 60000);
+
+  // Helper to execute Battrick login and establish session
+  async function authenticateBattrickUser(username: string, password: string): Promise<{
+    success: boolean;
+    cookieHeader: string;
+    cookieMap: Record<string, string>;
+    sessionToken?: string;
+    error?: string;
+  }> {
+    const initialUrl = 'https://www.battrick.org/nl/login.asp?private=1';
+    console.log(`[Battrick Auth] Requesting initial session from ${initialUrl}`);
+    
+    const initialRes = await fetch(initialUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+      }
+    });
+
+    let initialCookies: string[] = [];
+    if (typeof initialRes.headers.getSetCookie === 'function') {
+      initialCookies = initialRes.headers.getSetCookie();
+    } else {
+      const rawCookie = initialRes.headers.get('set-cookie');
+      if (rawCookie) {
+        initialCookies = rawCookie.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/);
+      }
+    }
+
+    const cookieMap: Record<string, string> = {};
+    const parseCookie = (c: string) => {
+      const parts = c.split(';')[0].split('=');
+      if (parts.length >= 2) {
+        const name = parts[0].trim();
+        const val = parts.slice(1).join('=').trim();
+        if (name && !['path', 'domain', 'expires', 'secure', 'httponly', 'samesite'].includes(name.toLowerCase())) {
+          cookieMap[name] = val;
+        }
+      }
+    };
+
+    initialCookies.forEach(parseCookie);
+    let cookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
+
+    const loginParams = new URLSearchParams();
+    loginParams.append('username', username);
+    loginParams.append('password', password);
+    loginParams.append('referrer', '');
+
+    console.log(`[Battrick Auth] Sending credentials for ${username}...`);
+    const loginRes = await fetch('https://www.battrick.org/nl/login.asp?private=1', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Cookie': cookieHeader,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Origin': 'https://www.battrick.org',
+        'Referer': 'https://www.battrick.org/nl/login.asp?private=1'
+      },
+      body: loginParams.toString(),
+      redirect: 'manual'
+    });
+
+    let postCookies: string[] = [];
+    if (typeof loginRes.headers.getSetCookie === 'function') {
+      postCookies = loginRes.headers.getSetCookie();
+    } else {
+      const rawCookie = loginRes.headers.get('set-cookie');
+      if (rawCookie) {
+        postCookies = rawCookie.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/);
+      }
+    }
+
+    const postCookieRaw = loginRes.headers.get('set-cookie') || '';
+    postCookies.forEach(parseCookie);
+    cookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
+
+    const isLoginRedirect = (loginRes.status === 302 || loginRes.status === 301 || loginRes.status === 303);
+    const hasValidAuthCookie = Boolean(cookieMap['BTUser'] && cookieMap['BTUser'].length > 0 && !postCookieRaw.includes('BTUser=;'));
+
+    if (!isLoginRedirect && !hasValidAuthCookie) {
+      console.warn(`[Battrick Auth] Authentication rejected for user ${username}.`);
+      return {
+        success: false,
+        cookieHeader: '',
+        cookieMap: {},
+        error: "Battrick authentication failed: Invalid username or password. Please verify your credentials or use the Cut & Paste tab."
+      };
+    }
+
+    const sessionToken = `btsess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    battrickSessionStore.set(sessionToken, {
+      cookieHeader,
+      cookieMap,
+      username,
+      timestamp: Date.now()
+    });
+
+    return {
+      success: true,
+      cookieHeader,
+      cookieMap,
+      sessionToken
+    };
+  }
+
+  // Helper to fetch a single Battrick page with bounded redirect guard
+  async function fetchBattrickPageWithSession(
+    cookieHeader: string,
+    cookieMap: Record<string, string>,
+    pageUrl: string
+  ): Promise<{ success: boolean; html: string; status: number; isRedirect?: boolean; error?: string; updatedCookieHeader?: string }> {
+    let currentUrl = pageUrl;
+    let hops = 0;
+    const maxHops = 2;
+    let currentCookieHeader = cookieHeader;
+
+    const parseCookie = (c: string) => {
+      const parts = c.split(';')[0].split('=');
+      if (parts.length >= 2) {
+        const name = parts[0].trim();
+        const val = parts.slice(1).join('=').trim();
+        if (name && !['path', 'domain', 'expires', 'secure', 'httponly', 'samesite'].includes(name.toLowerCase())) {
+          cookieMap[name] = val;
+        }
+      }
+    };
+
+    while (hops <= maxHops) {
+      hops++;
+      const pageRes = await fetch(currentUrl, {
+        headers: {
+          'Cookie': currentCookieHeader,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Referer': 'https://www.battrick.org/nl/login.asp?private=1'
+        },
+        redirect: 'manual'
+      });
+
+      let stepCookies: string[] = [];
+      if (typeof pageRes.headers.getSetCookie === 'function') {
+        stepCookies = pageRes.headers.getSetCookie();
+      } else {
+        const raw = pageRes.headers.get('set-cookie');
+        if (raw) stepCookies = raw.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/);
+      }
+      stepCookies.forEach(parseCookie);
+      currentCookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
+
+      if ([301, 302, 303, 307].includes(pageRes.status)) {
+        const loc = pageRes.headers.get('location');
+        if (!loc) break;
+        const nextUrl = new URL(loc, currentUrl).toString();
+
+        if (nextUrl.includes('login.asp')) {
+          return {
+            success: false,
+            html: '',
+            status: pageRes.status,
+            isRedirect: true,
+            error: 'Unauthenticated (redirected to login page)'
+          };
+        }
+
+        currentUrl = nextUrl;
+        continue;
+      }
+
+      if (pageRes.status >= 400) {
+        const errHtml = await pageRes.text().catch(() => '');
+        const isAspAuthErr = errHtml.includes('login.asp') || errHtml.includes('Log In to Battrick');
+        return {
+          success: false,
+          html: '',
+          status: pageRes.status,
+          isRedirect: isAspAuthErr,
+          error: isAspAuthErr ? 'Unauthenticated (session expired or invalid)' : `Server responded with HTTP ${pageRes.status}`
+        };
+      }
+
+      const html = await pageRes.text();
+      const hasLoginForms = (html.includes("Log In to Battrick") || html.includes("login.asp?private=1")) &&
+        (html.includes("Username:") || html.includes("Password:") || html.includes("name=\"username\"") || html.includes("name=\"password\""));
+
+      if (hasLoginForms) {
+        return {
+          success: false,
+          html: '',
+          status: pageRes.status,
+          isRedirect: true,
+          error: 'Unauthenticated (login form detected)'
+        };
+      }
+
+      return { success: true, html, status: pageRes.status, updatedCookieHeader: currentCookieHeader };
+    }
+
+    return { success: false, html: '', status: 0, error: 'Redirect limit exceeded during navigation' };
+  }
+
+  // API Route for step-by-step sequential sync (with live progression)
+  app.post("/api/sync-battrick-step", async (req, res) => {
+    const { username, password, sessionToken, pageName, step } = req.body;
+
+    // Step 1: Initial Login and Handshake
+    if (step === 'login') {
+      if (!username || !password) {
+        res.status(400).json({ error: "Username and password are required for login." });
+        return;
+      }
+      const authResult = await authenticateBattrickUser(username.trim(), password);
+      if (!authResult.success) {
+        res.status(401).json({ error: authResult.error || "Login failed.", isAuthFailure: true });
+        return;
+      }
+      res.json({
+        success: true,
+        sessionToken: authResult.sessionToken,
+        message: "Successfully authenticated with Battrick servers."
+      });
+      return;
+    }
+
+    // Step 2: Fetch single page using existing or auto-created session
+    if (!pageName) {
+      res.status(400).json({ error: "pageName is required." });
+      return;
+    }
+
+    const pageUrlMap: Record<string, string> = {
+      squad: 'https://www.battrick.org/nl/squad.asp',
+      nets: 'https://www.battrick.org/nl/nets.asp',
+      finances: 'https://www.battrick.org/nl/finances.asp',
+      club: 'https://www.battrick.org/nl/club.asp',
+      fixtures: 'https://www.battrick.org/nl/fixtures.asp',
+      pavilion: 'https://www.battrick.org/nl/ground.asp',
+      ground: 'https://www.battrick.org/nl/ground.asp'
+    };
+
+    const targetUrl = pageUrlMap[pageName];
+    if (!targetUrl) {
+      res.status(400).json({ error: `Unknown page name: ${pageName}` });
+      return;
+    }
+
+    let activeSession = sessionToken ? battrickSessionStore.get(sessionToken) : undefined;
+
+    // If session expired or missing but credentials provided, re-authenticate seamlessly
+    if (!activeSession && username && password) {
+      console.log(`[Battrick Step Sync] Session token not found, re-authenticating user ${username}...`);
+      const authResult = await authenticateBattrickUser(username.trim(), password);
+      if (!authResult.success) {
+        res.status(401).json({ error: authResult.error || "Authentication required.", isAuthFailure: true });
+        return;
+      }
+      activeSession = authResult.sessionToken ? battrickSessionStore.get(authResult.sessionToken) : undefined;
+    }
+
+    if (!activeSession) {
+      res.status(401).json({ error: "Session expired or invalid. Please re-authenticate.", isAuthFailure: true });
+      return;
+    }
+
+    try {
+      // Small spacing delay (400ms) to ensure Battrick ASP thread readiness
+      await new Promise(resolve => setTimeout(resolve, 400));
+
+      const pageResult = await fetchBattrickPageWithSession(
+        activeSession.cookieHeader,
+        activeSession.cookieMap,
+        targetUrl
+      );
+
+      if (pageResult.updatedCookieHeader) {
+        activeSession.cookieHeader = pageResult.updatedCookieHeader;
+        activeSession.timestamp = Date.now();
+      }
+
+      if (!pageResult.success) {
+        res.status(pageResult.status >= 400 ? pageResult.status : 502).json({
+          error: pageResult.error || `Failed to fetch ${pageName}`,
+          pageName,
+          isRedirect: pageResult.isRedirect
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        pageName,
+        html: pageResult.html,
+        sessionToken
+      });
+    } catch (err: any) {
+      console.error(`[Battrick Step Sync] Error fetching ${pageName}:`, err);
+      res.status(500).json({ error: err.message || `Failed to fetch ${pageName}` });
+    }
+  });
+
+  // API Route for bulk sync (now executed with strict sequential pacing)
   app.post("/api/sync-battrick", async (req, res) => {
-    const { username, password } = req.body;
+    const { username, password, requestedPages } = req.body;
 
     if (!username || !password) {
       res.status(400).json({ error: "Username and password are required." });
@@ -227,85 +542,18 @@ async function startServer() {
     }
 
     try {
-      console.log(`[Battrick Sync] Initializing sync for username: ${username}`);
-      
-      // 1. GET initial login page to get initial session cookies (ASPSESSIONID, etc.)
-      const initialUrl = 'https://www.battrick.org/nl/login.asp?private=1';
-      console.log(`[Battrick Sync] 1. GET initial session from: ${initialUrl}`);
-      const initialRes = await fetch(initialUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-        }
-      });
+      console.log(`[Battrick Sync] Initializing sequential spaced sync for user ${username}...`);
+      const authResult = await authenticateBattrickUser(username.trim(), password);
 
-      // Extract set-cookie headers from GET
-      let initialCookies: string[] = [];
-      if (typeof initialRes.headers.getSetCookie === 'function') {
-        initialCookies = initialRes.headers.getSetCookie();
-      } else {
-        const rawCookie = initialRes.headers.get('set-cookie');
-        if (rawCookie) {
-          initialCookies = rawCookie.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/);
-        }
-      }
-      
-      const initialCookieMap: Record<string, string> = {};
-      const parseCookie = (c: string) => {
-        const parts = c.split(';')[0].split('=');
-        if (parts.length >= 2) {
-          const name = parts[0].trim();
-          const val = parts.slice(1).join('=').trim();
-          if (name && !['path', 'domain', 'expires', 'secure', 'httponly', 'samesite'].includes(name.toLowerCase())) {
-            initialCookieMap[name] = val;
-          }
-        }
-      };
-      
-      initialCookies.forEach(parseCookie);
-      let cookieHeader = Object.entries(initialCookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
-      console.log(`[Battrick Sync] GET cookies: ${cookieHeader || 'None'}`);
-
-      // 2. POST to Battrick Login with the initial session cookies
-      const loginParams = new URLSearchParams();
-      loginParams.append('username', username);
-      loginParams.append('password', password);
-      loginParams.append('referrer', '');
-
-      console.log(`[Battrick Sync] 2. POST login credentials...`);
-      const loginRes = await fetch('https://www.battrick.org/nl/login.asp?private=1', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Cookie': cookieHeader,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          'Origin': 'https://www.battrick.org',
-          'Referer': 'https://www.battrick.org/nl/login.asp?private=1'
-        },
-        body: loginParams.toString(),
-        redirect: 'manual'
-      });
-
-      console.log(`[Battrick Sync] POST status: ${loginRes.status} ${loginRes.statusText}`);
-      console.log(`[Battrick Sync] POST redirect location: ${loginRes.headers.get('location') || 'None'}`);
-
-      // Extract set-cookie headers from POST
-      let postCookies: string[] = [];
-      if (typeof loginRes.headers.getSetCookie === 'function') {
-        postCookies = loginRes.headers.getSetCookie();
-      } else {
-        const rawCookie = loginRes.headers.get('set-cookie');
-        if (rawCookie) {
-          postCookies = rawCookie.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/);
-        }
+      if (!authResult.success) {
+        res.status(401).json({
+          error: authResult.error || "Authentication failed.",
+          isAuthFailure: true
+        });
+        return;
       }
 
-      // Merge POST cookies into our map
-      postCookies.forEach(parseCookie);
-      cookieHeader = Object.entries(initialCookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
-      console.log(`[Battrick Sync] Merged active cookies: ${cookieHeader}`);
-
-      // 3. Fetch standard club pages in parallel
-      const pages = [
+      const allPages = [
         { name: 'squad', url: 'https://www.battrick.org/nl/squad.asp' },
         { name: 'nets', url: 'https://www.battrick.org/nl/nets.asp' },
         { name: 'finances', url: 'https://www.battrick.org/nl/finances.asp' },
@@ -314,72 +562,82 @@ async function startServer() {
         { name: 'pavilion', url: 'https://www.battrick.org/nl/ground.asp' }
       ];
 
-      console.log(`[Battrick Sync] 3. Fetching Battrick pages in parallel...`);
-      const results = await Promise.all(
-        pages.map(async (page) => {
-          try {
-            const pageRes = await fetch(page.url, {
-              headers: {
-                'Cookie': cookieHeader,
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                'Referer': 'https://www.battrick.org/nl/login.asp?private=1'
-              },
-              redirect: 'follow'
-            });
+      const pagesToFetch = Array.isArray(requestedPages) && requestedPages.length > 0
+        ? allPages.filter(p => requestedPages.includes(p.name))
+        : allPages;
 
-            const html = await pageRes.text();
-            console.log(`[Battrick Sync] Fetched ${page.name}: status ${pageRes.status}, size: ${html.length}, url: ${pageRes.url}`);
+      if (pagesToFetch.length === 0) {
+        res.status(400).json({ error: "Please select at least one page to synchronize." });
+        return;
+      }
 
-            // Detect redirect to login page (either via url change or html containing login elements)
-            const isRedirected = pageRes.url && (pageRes.url.includes('login.asp') || pageRes.url.includes('login.asp?private=1'));
-            const hasLoginForms = html.includes("Log In to Battrick") || html.includes("Username:") || html.includes("Password:") || html.includes("login.asp");
+      console.log(`[Battrick Sync] Fetching ${pagesToFetch.length} selected pages in sequential spaced order...`);
+      const results: { name: string; html: string; success: boolean; status: number; isRedirect?: boolean; error?: string }[] = [];
 
-            if (isRedirected || hasLoginForms) {
-              console.warn(`[Battrick Sync] Redirect/unauthenticated state detected on page ${page.name}. Authentication rejected.`);
-              return { 
-                name: page.name, 
-                html: '', 
-                success: false, 
-                status: 200, 
-                isRedirect: true,
-                error: 'Authentication failed (redirected to login page)' 
-              };
-            }
+      for (let i = 0; i < pagesToFetch.length; i++) {
+        const page = pagesToFetch[i];
+        if (i > 0) {
+          // 800ms polite spacing between page requests to prevent Battrick server throttling
+          await new Promise(resolve => setTimeout(resolve, 800));
+        }
 
-            return { name: page.name, html, success: true, status: pageRes.status };
-          } catch (e: any) {
-            console.error(`[Battrick Sync] Error fetching ${page.name}:`, e);
-            return { name: page.name, html: '', success: false, status: 0, error: e.message || String(e) };
+        try {
+          const pageResult = await fetchBattrickPageWithSession(
+            authResult.cookieHeader,
+            authResult.cookieMap,
+            page.url
+          );
+          if (pageResult.updatedCookieHeader) {
+            authResult.cookieHeader = pageResult.updatedCookieHeader;
           }
-        })
-      );
 
-      // Check if squad HTML looks valid or if we got redirected to the login page
-      const squadResult = results.find(r => r.name === 'squad');
+          console.log(`[Battrick Sync] Page ${page.name}: success=${pageResult.success}, status=${pageResult.status}, htmlLen=${pageResult.html.length}`);
+          results.push({
+            name: page.name,
+            html: pageResult.html,
+            success: pageResult.success,
+            status: pageResult.status,
+            isRedirect: pageResult.isRedirect,
+            error: pageResult.error
+          });
+        } catch (e: any) {
+          console.error(`[Battrick Sync] Error on ${page.name}:`, e);
+          results.push({
+            name: page.name,
+            html: '',
+            success: false,
+            status: 0,
+            error: e.cause?.message || e.message || String(e)
+          });
+        }
+      }
+
+      // Check if authentication succeeded across results
       let errorMessage = "";
       let isCloudflareBlock = false;
 
-      if (!squadResult) {
-        errorMessage = "Failed to connect to Battrick.org. Please try again later.";
-      } else if (!squadResult.success) {
-        if (squadResult.isRedirect) {
-          errorMessage = "Battrick authentication failed. Please double-check your username and password, and verify they match your active Battrick.org account.";
-        } else {
-          errorMessage = `Could not reach Battrick servers: ${squadResult.error || 'Connection timed out'}.`;
-        }
-      } else {
-        const html = squadResult.html || "";
-        const title = html.match(/<title>([^<]*)<\/title>/i)?.[1] || "";
+      const anyRedirect = results.find(r => (r as any).isRedirect);
+      const anySuccess = results.some(r => r.success && r.html && r.html.length > 500);
 
-        if (html.includes("cf-challenge") || html.includes("cloudflare") || html.includes("Access denied") || html.includes("attention_required") || title.includes("Cloudflare") || title.includes("Access Denied")) {
-          isCloudflareBlock = true;
-          errorMessage = "Battrick is currently protected by a Cloudflare security check that blocks automated server requests. Please use the 'Manual Paste' tab instead—it is highly secure, runs locally, and works 100% of the time!";
-        } else if (html.includes("Log In to Battrick") || html.includes("Username:") || html.includes("Password:") || title.includes("Log In")) {
-          errorMessage = "Battrick authentication failed. Please double-check your username and password, and verify they match your active Battrick.org account.";
-        } else if (html.includes("Maintenance") || html.includes("maintenance") || title.includes("Maintenance")) {
-          errorMessage = "Battrick.org is currently offline for scheduled maintenance. Please try again later.";
-        } else if (!html.includes("Age:")) {
-          errorMessage = "Successfully connected to Battrick, but your squad roster page could not be parsed. Please verify you are logged into a valid active account or use the 'Manual Paste' option.";
+      if (anyRedirect) {
+        errorMessage = "Battrick authentication failed. Please double-check your username and password, and verify they match your active Battrick.org account.";
+      } else if (!anySuccess && results.length > 0) {
+        const firstError = results.find(r => !r.success)?.error;
+        errorMessage = `Could not authenticate or reach Battrick servers (${firstError || 'Connection error'}). Please verify your credentials or use the 100% reliable Cut & Paste tab.`;
+      } else {
+        // Check for Cloudflare challenge or maintenance
+        for (const resItem of results) {
+          if (resItem.html) {
+            const title = resItem.html.match(/<title>([^<]*)<\/title>/i)?.[1] || "";
+            if (resItem.html.includes("cf-challenge") || resItem.html.includes("cloudflare") || resItem.html.includes("Access denied") || resItem.html.includes("attention_required") || title.includes("Cloudflare") || title.includes("Access Denied")) {
+              isCloudflareBlock = true;
+              errorMessage = "Battrick is currently protected by a Cloudflare security check that blocks automated server requests. Please use the 'Cut & Paste' tab instead—it is highly secure, runs locally, and works 100% of the time!";
+              break;
+            } else if (resItem.html.includes("Maintenance") || resItem.html.includes("maintenance") || title.includes("Maintenance")) {
+              errorMessage = "Battrick.org is currently offline for scheduled maintenance. Please try again later.";
+              break;
+            }
+          }
         }
       }
 

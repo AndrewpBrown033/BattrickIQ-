@@ -73,6 +73,9 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onCustomAuthStateChanged((currentUser) => {
       setUser(currentUser);
+      if (currentUser) {
+        setActiveTab('summary');
+      }
       setAuthLoading(false);
     });
     return () => unsubscribe();
@@ -188,7 +191,10 @@ export default function App() {
   if (!user) {
     return (
       <>
-        <LoginPage onLoginSuccess={() => setShowTimeoutModal(false)} />
+        <LoginPage onLoginSuccess={() => {
+          setShowTimeoutModal(false);
+          setActiveTab('summary');
+        }} />
         {/* Floating security notification if timed out */}
         {showTimeoutModal && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">

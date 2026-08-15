@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BattrickPlayer, ClubFinances, BattrickGame, PavilionInfo } from '../types';
 import { parseBattrickPage, isNameMatch } from '../parser';
 import { mergePlayerAndTrackHistory, generateRealisticHistory } from '../utils/history';
@@ -12,14 +12,40 @@ import {
 } from '../mockData';
 import { 
   Upload, Trash2, CheckCircle, Sparkles, RefreshCw, 
-  Users, Coins, BookOpen, AlertCircle,
+  Users, Coins, AlertCircle,
   Trophy, Calculator, 
   Calendar, Landmark as StadiumIcon, ShieldCheck,
-  FileText, Check, Download, Cpu, Wifi
+  Check, Wifi, Activity, CheckSquare, Square, Clipboard, ArrowRight,
+  KeyRound, Play, CheckCircle2, XCircle, Clock, ArrowUpRight, Zap,
+  Loader2
 } from 'lucide-react';
-import * as JSZipModule from 'jszip';
 
-const JSZip = ((JSZipModule as any).default || JSZipModule) as any;
+export interface SequentialStepItem {
+  id: string;
+  label: string;
+  subLabel: string;
+  urlLabel: string;
+  icon: any;
+  color: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'skipped';
+  message: string;
+  statBadge?: string;
+  error?: string;
+}
+
+export interface SequentialModalState {
+  isOpen: boolean;
+  isProcessing: boolean;
+  isComplete: boolean;
+  hasErrors: boolean;
+  currentStepIndex: number;
+  totalSteps: number;
+  progressPercent: number;
+  activeStepName: string;
+  activeDetail: string;
+  steps: SequentialStepItem[];
+  completedStats: { label: string; value: string | number }[];
+}
 
 interface SyncLog {
   timestamp: string;
@@ -31,6 +57,66 @@ interface SyncLog {
 interface SyncHubProps {
   setActiveTab?: (tab: 'sync' | 'squad' | 'lineup' | 'wage' | 'stadium' | 'coach' | 'rules') => void;
 }
+
+interface SyncOptionItem {
+  id: string;
+  label: string;
+  url: string;
+  description: string;
+  icon: any;
+  color: string;
+}
+
+const AVAILABLE_SYNC_OPTIONS: SyncOptionItem[] = [
+  {
+    id: 'squad',
+    label: 'Squad Roster',
+    url: 'squad.asp',
+    description: 'Player attributes, skills, age, weekly wages, BTR ratings and records',
+    icon: Users,
+    color: 'text-blue-600 bg-blue-50 border-blue-200'
+  },
+  {
+    id: 'nets',
+    label: 'Training Nets',
+    url: 'nets.asp',
+    description: 'Current net training allocations, active youth slots & coach assignments',
+    icon: Activity,
+    color: 'text-emerald-600 bg-emerald-50 border-emerald-200'
+  },
+  {
+    id: 'finances',
+    label: 'Club Finances',
+    url: 'finances.asp',
+    description: 'Liquid cash reserves, sponsor weekly income, bank interest & wage ledger',
+    icon: Coins,
+    color: 'text-amber-600 bg-amber-50 border-amber-200'
+  },
+  {
+    id: 'club',
+    label: 'Club & Staff Details',
+    url: 'club.asp',
+    description: 'Staff specialists (PR, coaches, psychologists), member count & team morale',
+    icon: ShieldCheck,
+    color: 'text-indigo-600 bg-indigo-50 border-indigo-200'
+  },
+  {
+    id: 'fixtures',
+    label: 'Match Fixtures',
+    url: 'fixtures.asp',
+    description: 'Upcoming league and cup fixtures, venue locations & scheduled rivals',
+    icon: Calendar,
+    color: 'text-purple-600 bg-purple-50 border-purple-200'
+  },
+  {
+    id: 'pavilion',
+    label: 'Pavilion & Stadium Ground',
+    url: 'ground.asp',
+    description: 'Arena seating capacity breakdown, pitch type preparation & weather conditions',
+    icon: StadiumIcon,
+    color: 'text-rose-600 bg-rose-50 border-rose-200'
+  }
+];
 
 export default function SyncHub({ setActiveTab }: SyncHubProps) {
   const [squad, setSquad] = useState<BattrickPlayer[]>([]);
@@ -64,23 +150,9 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     psychologists: 0
   });
 
+  // Only 2 sync methods: Direct Sync & Cut/Paste
+  const [importTab, setImportTab] = useState<'direct' | 'paste'>('direct');
   const [pasteInput, setPasteInput] = useState<string>('');
-  const [dragActive, setDragActive] = useState<boolean>(false);
-  const [importTab, setImportTab] = useState<'upload' | 'paste' | 'extension' | 'bookmarklet' | 'direct'>('direct');
-  const [isExtensionConnected, setIsExtensionConnected] = useState<boolean>(false);
-  const [selectedFileName, setSelectedFileName] = useState<string>('');
-  const [syncCode, setSyncCode] = useState<string>(() => {
-    const saved = localStorage.getItem('bt_sync_code');
-    if (saved) return saved;
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = '';
-    for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    localStorage.setItem('bt_sync_code', code);
-    return code;
-  });
-
   const [selectedMapping, setSelectedMapping] = useState<string>('auto');
 
   // --- Direct Sync State ---
@@ -90,6 +162,23 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
   const [directSyncing, setDirectSyncing] = useState<boolean>(false);
   const [directSyncError, setDirectSyncError] = useState<string | null>(null);
   const [directPageStatuses, setDirectPageStatuses] = useState<{ name: string; success: boolean; error: string | null }[] | null>(null);
+
+  // --- Sequential Sync Progression Modal State ---
+  const [sequentialModal, setSequentialModal] = useState<SequentialModalState | null>(null);
+
+  // Selected pages to sync (default: all)
+  const [selectedSyncPages, setSelectedSyncPages] = useState<string[]>(() => {
+    const saved = localStorage.getItem('bt_direct_sync_selected');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return ['squad', 'nets', 'finances', 'club', 'fixtures', 'pavilion'];
+  });
 
   const [importMessage, setImportMessage] = useState<{ text: string; success: boolean } | null>(null);
   const [showWipeConfirm, setShowWipeConfirm] = useState<boolean>(false);
@@ -125,6 +214,28 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     const updated = [newLog, ...currentLogs].slice(0, 50);
     localStorage.setItem('bt_sync_logs', JSON.stringify(updated));
     setSyncLogs(updated);
+  };
+
+  const toggleSyncPage = (pageId: string) => {
+    let updated: string[];
+    if (selectedSyncPages.includes(pageId)) {
+      updated = selectedSyncPages.filter(id => id !== pageId);
+    } else {
+      updated = [...selectedSyncPages, pageId];
+    }
+    setSelectedSyncPages(updated);
+    localStorage.setItem('bt_direct_sync_selected', JSON.stringify(updated));
+  };
+
+  const selectAllPages = () => {
+    const all = AVAILABLE_SYNC_OPTIONS.map(o => o.id);
+    setSelectedSyncPages(all);
+    localStorage.setItem('bt_direct_sync_selected', JSON.stringify(all));
+  };
+
+  const deselectAllPages = () => {
+    setSelectedSyncPages([]);
+    localStorage.setItem('bt_direct_sync_selected', JSON.stringify([]));
   };
 
   const loadFromLocalStorage = () => {
@@ -210,141 +321,13 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     }
   };
 
-  const getBookmarkletCode = () => {
-    let serverUrl = window.location.origin;
-    if (!serverUrl || serverUrl === 'null') {
-      const match = window.location.href.match(/https?:\/\/[^\/]+/);
-      if (match) serverUrl = match[0];
-    }
-    if (!serverUrl || serverUrl === 'null') {
-      serverUrl = window.location.protocol + '//' + window.location.host;
-    }
-
-    const jsCode = `(function(){
-      const h=document.documentElement.outerHTML,u=window.location.href,c='${syncCode}',s='${serverUrl}';
-      const i=document.createElement('div');
-      i.style.position='fixed';i.style.top='10px';i.style.right='10px';i.style.zIndex='10000';
-      i.style.background='#4f46e5';i.style.color='#fff';i.style.padding='10px 18px';i.style.borderRadius='8px';
-      i.style.fontFamily='sans-serif';i.style.fontSize='12px';i.style.fontWeight='bold';
-      i.textContent='⚡ Syncing with BattrickIQ...';
-      document.body.appendChild(i);
-
-      const frameName='bt_sync_iframe_'+Date.now();
-      const iframe=document.createElement('iframe');
-      iframe.name=frameName;
-      iframe.style.display='none';
-      document.body.appendChild(iframe);
-
-      let receivedMessage=false;
-      const onMsg=function(event){
-        if(event.data&&event.data.type==='BT_SYNC_SUCCESS'){
-          receivedMessage=true;
-          i.style.background='#10b981';
-          i.textContent='⚡ Synced '+event.data.detected+' successfully!';
-          setTimeout(function(){try{i.remove();iframe.remove();}catch(e){}window.removeEventListener('message',onMsg);},3000);
-        }
-      };
-      window.addEventListener('message',onMsg);
-
-      const f=document.createElement('form');
-      f.method='POST';f.action=s+'/api/sync-bookmarklet-form?code='+c;f.target=frameName;
-      const iUrl=document.createElement('input');iUrl.type='hidden';iUrl.name='url';iUrl.value=u;f.appendChild(iUrl);
-      const iHtml=document.createElement('input');iHtml.type='hidden';iHtml.name='html';iHtml.value=h;f.appendChild(iHtml);
-      document.body.appendChild(f);
-      f.submit();
-      document.body.removeChild(f);
-
-      setTimeout(function(){
-        if(!receivedMessage){
-          i.style.background='#f59e0b';
-          i.textContent='⚡ Sync requested! Check BattrickIQ!';
-          setTimeout(function(){try{i.remove();iframe.remove();}catch(e){}window.removeEventListener('message',onMsg);},4000);
-        }
-      },5000);
-    })();`;
-    return `javascript:${encodeURIComponent(jsCode.replace(/\s+/g, ' '))}`;
-  };
-
-  const bookmarkletRef = (el: HTMLAnchorElement | null) => {
-    if (el) el.setAttribute('href', getBookmarkletCode());
-  };
-
-  const handleImportRef = useRef(handleImport);
-  useEffect(() => {
-    handleImportRef.current = handleImport;
-  }, [handleImport]);
-
   useEffect(() => {
     loadFromLocalStorage();
     window.addEventListener('storage', loadFromLocalStorage);
-
-    const handleExtensionMessage = (event: MessageEvent) => {
-      if (!event.data) return;
-      if (event.data.type === 'BATTRICK_EXTENSION_SYNC') {
-        const { html, pageUrl, detectedType } = event.data;
-        handleImportRef.current(html, detectedType);
-        setIsExtensionConnected(true);
-      } else if (event.data.type === 'BATTRICK_EXTENSION_CONNECTED') {
-        setIsExtensionConnected(true);
-      }
-    };
-
-    window.addEventListener('message', handleExtensionMessage);
-    window.postMessage({ type: 'BATTRICK_IQ_PING' }, '*');
-
-    const interval = setInterval(() => {
-      window.postMessage({ type: 'BATTRICK_IQ_PING' }, '*');
-    }, 5000);
-
     return () => {
       window.removeEventListener('storage', loadFromLocalStorage);
-      window.removeEventListener('message', handleExtensionMessage);
-      clearInterval(interval);
     };
   }, []);
-
-  // Poll for bookmarklet sync data
-  useEffect(() => {
-    let active = true;
-    let timerId: any = null;
-
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/sync-poll?code=${syncCode}`);
-        if (!active) return;
-        if (res.ok) {
-          const data = await res.json();
-          if (data.hasData && data.html) {
-            let forcedType: string | undefined = undefined;
-            const urlLower = (data.url || '').toLowerCase();
-            if (urlLower.includes('squad.asp')) forcedType = 'squad';
-            else if (urlLower.includes('nets.asp')) forcedType = 'nets';
-            else if (urlLower.includes('finances.asp')) forcedType = 'finances';
-            else if (urlLower.includes('club.asp')) forcedType = 'club';
-            else if (urlLower.includes('fixtures.asp')) forcedType = 'fixtures';
-            else if (urlLower.includes('ground.asp')) forcedType = 'ground';
-            else if (urlLower.includes('pavilion.asp') || urlLower.includes('office.asp')) forcedType = 'pavilion';
-
-            handleImportRef.current(data.html, forcedType);
-            setImportMessage({ text: 'Successfully synchronized data via BattrickIQ Bookmarklet!', success: true });
-          }
-        }
-      } catch (err) {
-        console.warn('Bookmarklet poll warning:', err);
-      }
-
-      if (active) {
-        timerId = setTimeout(poll, 3000);
-      }
-    };
-
-    poll();
-
-    return () => {
-      active = false;
-      if (timerId) clearTimeout(timerId);
-    };
-  }, [syncCode]);
 
   const saveToLocalStorage = (
     newSquad: BattrickPlayer[], 
@@ -368,42 +351,13 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     window.dispatchEvent(new Event('bt_cloud_backup_request'));
   };
 
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") setDragActive(true);
-    else if (e.type === "dragleave") setDragActive(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    if (e.target.files && e.target.files[0]) handleFile(e.target.files[0]);
-  };
-
-  const handleFile = (file: File) => {
-    setSelectedFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      if (text) handleImport(text, selectedMapping === 'auto' ? undefined : selectedMapping);
-    };
-    reader.readAsText(file);
-  };
-
   function handleImport(content: string, detectedType?: string) {
     if (!content.trim()) return;
     
     const result = parseBattrickPage(content, detectedType);
     const isValidType = result.type && result.type !== 'unknown';
     if (!isValidType) {
-      setImportMessage({ text: 'Format not recognized. Please ensure you have copied the raw text or HTML of your Battrick squad, nets, finances, fixtures, or pavilion page.', success: false });
+      setImportMessage({ text: 'Format not recognized. Please copy the raw text or HTML of your Battrick squad, nets, finances, fixtures, or pavilion page.', success: false });
       addSyncLog('unknown', `Import failed: page format not recognized`, 'failed');
       setPasteInput('');
       setTimeout(() => setImportMessage(null), 8000);
@@ -651,10 +605,15 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     setTimeout(() => setImportMessage(null), 8000);
   }
 
-  // --- Live Direct Sync Execution ---
+  // --- Live Direct Sequential Sync Execution ---
   const handleDirectSync = async () => {
     if (!directUsername.trim() || !directPassword.trim()) {
       setDirectSyncError('Please enter your Battrick username and password.');
+      return;
+    }
+
+    if (selectedSyncPages.length === 0) {
+      setDirectSyncError('Please tick at least one section/page to synchronize below.');
       return;
     }
 
@@ -668,59 +627,331 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       localStorage.removeItem('bt_battrick_username');
     }
 
+    // Build step queue
+    const stepDefinitions: Record<string, { label: string; subLabel: string; urlLabel: string; icon: any; color: string }> = {
+      squad: {
+        label: 'Squad Roster & Skills',
+        subLabel: 'Player attributes, age, wages, BTR ratings and records',
+        urlLabel: 'squad.asp',
+        icon: Users,
+        color: 'text-blue-600 bg-blue-50 border-blue-200'
+      },
+      nets: {
+        label: 'Training Nets Allocation',
+        subLabel: 'Net training allocations, youth slots & coach assignments',
+        urlLabel: 'nets.asp',
+        icon: Activity,
+        color: 'text-emerald-600 bg-emerald-50 border-emerald-200'
+      },
+      finances: {
+        label: 'Club Financial Accounts',
+        subLabel: 'Cash reserves, sponsor weekly income & wage ledger',
+        urlLabel: 'finances.asp',
+        icon: Coins,
+        color: 'text-amber-600 bg-amber-50 border-amber-200'
+      },
+      club: {
+        label: 'Club Staff & Morale',
+        subLabel: 'Staff specialists, member count & team morale',
+        urlLabel: 'club.asp',
+        icon: ShieldCheck,
+        color: 'text-indigo-600 bg-indigo-50 border-indigo-200'
+      },
+      fixtures: {
+        label: 'Match Fixtures & Calendar',
+        subLabel: 'Upcoming league and cup fixtures & scheduled rivals',
+        urlLabel: 'fixtures.asp',
+        icon: Calendar,
+        color: 'text-purple-600 bg-purple-50 border-purple-200'
+      },
+      pavilion: {
+        label: 'Stadium Ground & Pavilion',
+        subLabel: 'Arena seating capacity, pitch preparation & weather conditions',
+        urlLabel: 'ground.asp',
+        icon: StadiumIcon,
+        color: 'text-rose-600 bg-rose-50 border-rose-200'
+      }
+    };
+
+    const initialSteps: SequentialStepItem[] = [
+      {
+        id: 'auth',
+        label: 'Authentication & Session Token',
+        subLabel: 'Establishing authenticated ASP session with Battrick.org',
+        urlLabel: 'login.asp',
+        icon: KeyRound,
+        color: 'text-indigo-600 bg-indigo-50 border-indigo-200',
+        status: 'pending',
+        message: 'Waiting in queue...'
+      }
+    ];
+
+    selectedSyncPages.forEach(pageId => {
+      const def = stepDefinitions[pageId];
+      if (def) {
+        initialSteps.push({
+          id: pageId,
+          label: def.label,
+          subLabel: def.subLabel,
+          urlLabel: def.urlLabel,
+          icon: def.icon,
+          color: def.color,
+          status: 'pending',
+          message: 'Waiting in queue...'
+        });
+      }
+    });
+
+    const totalSteps = initialSteps.length;
+    setSequentialModal({
+      isOpen: true,
+      isProcessing: true,
+      isComplete: false,
+      hasErrors: false,
+      currentStepIndex: 0,
+      totalSteps,
+      progressPercent: 5,
+      activeStepName: 'Step 1 of ' + totalSteps + ': Authentication Handshake',
+      activeDetail: 'Authenticating with Battrick servers and generating session token...',
+      steps: initialSteps,
+      completedStats: []
+    });
+
+    const updateStep = (index: number, patch: Partial<SequentialStepItem>) => {
+      setSequentialModal(prev => {
+        if (!prev) return prev;
+        const nextSteps = [...prev.steps];
+        if (nextSteps[index]) {
+          nextSteps[index] = { ...nextSteps[index], ...patch };
+        }
+        return { ...prev, steps: nextSteps };
+      });
+    };
+
+    let activeSessionToken = '';
+    let completedCount = 0;
+    const collectedStats: { label: string; value: string | number }[] = [];
+    const pageStatusRecords: { name: string; success: boolean; error: string | null }[] = [];
+
     try {
-      const res = await fetch('/api/sync-battrick', {
+      // 1. STEP 1: AUTHENTICATION
+      updateStep(0, {
+        status: 'processing',
+        message: 'Transmitting credentials to Battrick login gateway...'
+      });
+
+      setSequentialModal(prev => prev ? {
+        ...prev,
+        currentStepIndex: 0,
+        activeStepName: `Step 1 of ${totalSteps}: Authenticating with Battrick`,
+        activeDetail: `Sending credentials for ${directUsername.trim()}...`,
+        progressPercent: Math.round((0.5 / totalSteps) * 100)
+      } : null);
+
+      const authRes = await fetch('/api/sync-battrick-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: directUsername.trim(), password: directPassword })
+        body: JSON.stringify({
+          step: 'login',
+          username: directUsername.trim(),
+          password: directPassword
+        })
       });
-      const result = await res.json();
+      const authData = await authRes.json();
 
-      if (!res.ok || !result.success) {
-        setDirectSyncError(result.error || 'Direct sync failed. Please check credentials or try again.');
-        if (result.pageStatuses) setDirectPageStatuses(result.pageStatuses);
-        addSyncLog('unknown', `Direct sync failed: ${result.error || 'unknown error'}`, 'failed');
+      if (!authRes.ok || !authData.success) {
+        const errMsg = authData.error || 'Authentication failed. Please verify your credentials or use the Cut & Paste tab.';
+        updateStep(0, {
+          status: 'failed',
+          message: errMsg,
+          error: errMsg
+        });
+        setSequentialModal(prev => prev ? {
+          ...prev,
+          isProcessing: false,
+          hasErrors: true,
+          activeStepName: 'Authentication Failed',
+          activeDetail: errMsg
+        } : null);
+        setDirectSyncError(errMsg);
+        addSyncLog('auth', `Direct sync authentication failed for ${directUsername}`, 'failed');
+        setDirectSyncing(false);
         return;
       }
 
-      setDirectPageStatuses(result.pageStatuses || null);
-
-      const pagesToImport: { serverName: string; type: string }[] = [
-        { serverName: 'squad', type: 'squad' },
-        { serverName: 'nets', type: 'nets' },
-        { serverName: 'finances', type: 'finances' },
-        { serverName: 'club', type: 'club' },
-        { serverName: 'fixtures', type: 'fixtures' },
-        { serverName: 'pavilion', type: 'ground' }
-      ];
-
-      let importedCount = 0;
-      pagesToImport.forEach(({ serverName, type }) => {
-        const html = result.data?.[serverName];
-        const status = (result.pageStatuses || []).find((p: any) => p.name === serverName);
-        if (html && (!status || status.success)) {
-          handleImport(html, type);
-          importedCount++;
-        } else if (status && !status.success) {
-          addSyncLog(serverName, `Direct sync skipped ${serverName}: ${status.error}`, 'failed');
-        }
+      activeSessionToken = authData.sessionToken || '';
+      updateStep(0, {
+        status: 'completed',
+        message: '✓ Authenticated successfully with Battrick servers',
+        statBadge: 'Session Active'
       });
+      addSyncLog('auth', `Authenticated with Battrick servers as ${directUsername}`, 'success');
 
-      const failedPages = (result.pageStatuses || []).filter((p: any) => !p.success);
-      if (failedPages.length > 0) {
-        setImportMessage({
-          text: `Synced ${importedCount} of ${pagesToImport.length} pages directly. ${failedPages.map((p: any) => p.name).join(', ')} did not sync. Try again, or use Manual Paste for those pages.`,
-          success: importedCount > 0
+      setSequentialModal(prev => prev ? {
+        ...prev,
+        progressPercent: Math.round((1 / totalSteps) * 100),
+        activeDetail: 'Authentication handshake complete. Spacing out next request...'
+      } : null);
+
+      // Polite spacing delay (750ms) between login and first page fetch
+      await new Promise(r => setTimeout(r, 750));
+
+      // 2. PROCESS SELECTED PAGES SEQUENTIALLY
+      for (let i = 1; i < initialSteps.length; i++) {
+        const currentStep = initialSteps[i];
+        const pageKey = currentStep.id;
+        const stepNumber = i + 1;
+
+        updateStep(i, {
+          status: 'processing',
+          message: `Processing step: Fetching ${currentStep.urlLabel} from Battrick...`
         });
-      } else if (importedCount > 0) {
-        setImportMessage({ text: '⚡ All club pages successfully synchronized via Direct Sync!', success: true });
+
+        setSequentialModal(prev => prev ? {
+          ...prev,
+          currentStepIndex: i,
+          activeStepName: `Step ${stepNumber} of ${totalSteps}: ${currentStep.label}`,
+          activeDetail: `Currently processing ${currentStep.urlLabel} with sequential server spacing...`,
+          progressPercent: Math.round(((i + 0.5) / totalSteps) * 100)
+        } : null);
+
+        try {
+          const pageRes = await fetch('/api/sync-battrick-step', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              step: 'fetch',
+              pageName: pageKey,
+              sessionToken: activeSessionToken,
+              username: directUsername.trim(),
+              password: directPassword
+            })
+          });
+
+          const pageData = await pageRes.json();
+
+          if (pageRes.ok && pageData.success && pageData.html) {
+            const typeMapping: Record<string, string> = {
+              squad: 'squad',
+              nets: 'nets',
+              finances: 'finances',
+              club: 'club',
+              fixtures: 'fixtures',
+              pavilion: 'ground'
+            };
+            const importType = typeMapping[pageKey] || pageKey;
+
+            // Import data into club state and localStorage
+            handleImport(pageData.html, importType);
+            completedCount++;
+
+            let statBadge = 'Synced';
+            if (pageKey === 'squad') {
+              const parsed = parseBattrickPage(pageData.html);
+              const pCount = parsed.players?.length || 0;
+              statBadge = `${pCount} Players`;
+              collectedStats.push({ label: 'Squad Size', value: `${pCount} Active Players` });
+            } else if (pageKey === 'nets') {
+              const parsed = parseBattrickPage(pageData.html);
+              const netCount = parsed.players?.filter(p => p.nets && p.nets.length > 0).length || 0;
+              statBadge = `${netCount} Nets Allocated`;
+              collectedStats.push({ label: 'Training Nets', value: `${netCount} Assigned Slots` });
+            } else if (pageKey === 'finances') {
+              const parsed = parseBattrickPage(pageData.html);
+              if (parsed.finances?.cash) {
+                statBadge = `£${(parsed.finances.cash / 1000000).toFixed(2)}M Balance`;
+                collectedStats.push({ label: 'Club Capital', value: `£${parsed.finances.cash.toLocaleString()}` });
+              }
+            } else if (pageKey === 'club') {
+              statBadge = 'Staff & Morale';
+              collectedStats.push({ label: 'Club Mood', value: 'Morale & Specialists Synced' });
+            } else if (pageKey === 'fixtures') {
+              const parsed = parseBattrickPage(pageData.html);
+              const fCount = parsed.fixtures?.length || 0;
+              statBadge = `${fCount} Matches`;
+              collectedStats.push({ label: 'Upcoming Fixtures', value: `${fCount} Games Scheduled` });
+            } else if (pageKey === 'pavilion') {
+              statBadge = 'Ground Specs';
+              collectedStats.push({ label: 'Stadium & Pitch', value: 'Capacity & Conditions Loaded' });
+            }
+
+            updateStep(i, {
+              status: 'completed',
+              message: `✓ Completed: ${currentStep.label} (${statBadge})`,
+              statBadge
+            });
+
+            pageStatusRecords.push({ name: pageKey, success: true, error: null });
+            addSyncLog(pageKey, `Direct sync synchronized ${currentStep.label} (${statBadge})`, 'success');
+
+          } else {
+            const errStr = pageData.error || `Failed to fetch ${currentStep.urlLabel}`;
+            updateStep(i, {
+              status: 'failed',
+              message: `❌ ${errStr}`,
+              error: errStr
+            });
+            pageStatusRecords.push({ name: pageKey, success: false, error: errStr });
+            addSyncLog(pageKey, `Direct sync failed for ${currentStep.label}: ${errStr}`, 'failed');
+          }
+        } catch (stepErr: any) {
+          console.error(`[Sequential Sync] Error on ${pageKey}:`, stepErr);
+          const errStr = stepErr.message || 'Network communication error';
+          updateStep(i, {
+            status: 'failed',
+            message: `❌ ${errStr}`,
+            error: errStr
+          });
+          pageStatusRecords.push({ name: pageKey, success: false, error: errStr });
+          addSyncLog(pageKey, `Direct sync step error on ${currentStep.label}: ${errStr}`, 'failed');
+        }
+
+        setSequentialModal(prev => prev ? {
+          ...prev,
+          progressPercent: Math.round(((i + 1) / totalSteps) * 100),
+          completedStats: [...collectedStats]
+        } : null);
+
+        // Polite 800ms sequential spacing before moving to the next page
+        if (i < initialSteps.length - 1) {
+          await new Promise(r => setTimeout(r, 800));
+        }
       }
 
+      setDirectPageStatuses(pageStatusRecords);
+
+      // 3. ALL STEPS FINISHED
+      const anyStepFailed = pageStatusRecords.some(p => !p.success);
+
+      setSequentialModal(prev => prev ? {
+        ...prev,
+        isProcessing: false,
+        isComplete: true,
+        hasErrors: anyStepFailed,
+        progressPercent: 100,
+        activeStepName: anyStepFailed ? 'Sequential Sync Finished with Warnings' : 'Sequential Sync Completed Successfully!',
+        activeDetail: `Processed all ${totalSteps} sequential steps (${completedCount} of ${totalSteps - 1} club pages synchronized).`,
+        completedStats: collectedStats
+      } : null);
+
+      if (completedCount > 0) {
+        setImportMessage({
+          text: `⚡ Sequential Direct Sync completed! Successfully synchronized ${completedCount} club modules.`,
+          success: true
+        });
+      }
       setDirectPassword('');
-    } catch (e: any) {
-      console.error('[Direct Sync] error:', e);
-      setDirectSyncError(e.message || 'Network error while contacting the sync server.');
-      addSyncLog('unknown', `Direct sync error: ${e.message || String(e)}`, 'failed');
+
+    } catch (globalErr: any) {
+      console.error('[Sequential Sync Global Error]', globalErr);
+      setSequentialModal(prev => prev ? {
+        ...prev,
+        isProcessing: false,
+        hasErrors: true,
+        activeStepName: 'Sync Interrupted',
+        activeDetail: globalErr.message || 'An unexpected error occurred during sequential processing.'
+      } : null);
+      setDirectSyncError(globalErr.message || 'Sync error occurred.');
     } finally {
       setDirectSyncing(false);
     }
@@ -780,7 +1011,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     saveToLocalStorage(parsedSquad, parsedFinances, parsedFixtures, parsedPavilion || undefined);
 
     setImportMessage({
-      text: "⚡ Success! Loaded the complete demo club: 11 active players, custom training nets, £4.5M bank cash, 1,450 club members, active fixtures, ground specs, and stadium layouts.",
+      text: "⚡ Success! Loaded complete Demo Club: 11 active players, custom training nets, £4.5M bank cash, 1,450 club members, active fixtures & stadium specs.",
       success: true
     });
     addSyncLog('demo', 'Loaded complete BattrickIQ Demo Club playground', 'success');
@@ -883,7 +1114,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
                 className="px-3.5 py-1.5 text-xs font-bold bg-white text-slate-700 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                {showSyncControls ? "Hide Import Box" : "Import More Data"}
+                {showSyncControls ? "Hide Import Box" : "Import / Resync Data"}
               </button>
               <button
                 onClick={() => setShowWipeConfirm(true)}
@@ -1016,10 +1247,10 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
               Strategic Cricket Intelligence
             </div>
             <h2 className="text-2xl sm:text-3xl font-display font-black tracking-tight text-slate-900 leading-tight">
-              Model, Predict & Maximize Your Squad Strategy
+              Synchronize & Manage Your Battrick Club
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 mt-2.5 leading-relaxed max-w-2xl">
-              Welcome to <strong>BattrickIQ</strong>! Use Direct Sync, Bookmarklet, or manual import to load your club data.
+              Connect your active Battrick club using <strong>Direct Background Sync</strong> (1-click login) or <strong>Cut & Paste</strong> to instantly populate your player roster, net training schedules, finances, fixtures, and stadium capacity.
             </p>
           </div>
           <div className="flex flex-col items-center gap-3 shrink-0">
@@ -1027,7 +1258,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
               <button
                 type="button"
                 onClick={loadAllSamplesAtOnce}
-                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer font-sans"
+                className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer font-sans"
               >
                 <Sparkles className="w-4 h-4" />
                 Explore with Demo Club
@@ -1039,143 +1270,231 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
 
       {/* Sync Box (Available in both states) */}
       {(showSyncControls || squad.length === 0) && (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+        <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3.5 mb-4">
             <h3 className="font-display font-bold text-base text-slate-800 flex items-center gap-2">
               <Upload className="w-5 h-5 text-indigo-600" />
-              Import Battrick Source Data
+              Club Synchronization Hub
             </h3>
           </div>
 
-          {/* Import Tabs */}
-          <div className="flex border-b border-slate-150 mb-4 flex-wrap">
+          {/* Clean 2-Tab Navigation */}
+          <div className="flex border-b border-slate-200 mb-5">
             <button
               type="button"
               onClick={() => setImportTab('direct')}
-              className={`flex-1 min-w-[120px] py-2 text-xs font-bold border-b-2 transition flex items-center justify-center gap-1.5 ${
+              className={`flex-1 py-3 text-xs sm:text-sm font-bold border-b-2 transition flex items-center justify-center gap-2 ${
                 importTab === 'direct'
-                  ? 'border-indigo-600 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
+                  ? 'border-indigo-600 text-indigo-600 bg-indigo-50/40'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'
               }`}
             >
-              <Wifi className="w-3.5 h-3.5 text-emerald-500" />
-              Direct Sync (1-Click Background)
-            </button>
-            <button
-              type="button"
-              onClick={() => setImportTab('bookmarklet')}
-              className={`flex-1 min-w-[120px] py-2 text-xs font-bold border-b-2 transition flex items-center justify-center gap-1.5 ${
-                importTab === 'bookmarklet'
-                  ? 'border-indigo-600 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
-              Bookmarklet Sync
+              <Wifi className="w-4 h-4 text-emerald-600" />
+              <span>Direct Sync (1-Click Background)</span>
             </button>
             <button
               type="button"
               onClick={() => setImportTab('paste')}
-              className={`flex-1 min-w-[120px] py-2 text-xs font-bold border-b-2 transition ${
+              className={`flex-1 py-3 text-xs sm:text-sm font-bold border-b-2 transition flex items-center justify-center gap-2 ${
                 importTab === 'paste'
-                  ? 'border-indigo-600 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
+                  ? 'border-indigo-600 text-indigo-600 bg-indigo-50/40'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'
               }`}
             >
-              Paste Raw Text / HTML
-            </button>
-            <button
-              type="button"
-              onClick={() => setImportTab('upload')}
-              className={`flex-1 min-w-[120px] py-2 text-xs font-bold border-b-2 transition ${
-                importTab === 'upload'
-                  ? 'border-indigo-600 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Upload Source Files
+              <Clipboard className="w-4 h-4 text-slate-500" />
+              <span>Cut & Paste (Manual Text / HTML)</span>
             </button>
           </div>
 
           {/* Tab 1: Direct Sync */}
           {importTab === 'direct' && (
-            <div className="flex flex-col gap-4 animate-fadeIn text-xs">
-              <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
+            <div className="flex flex-col gap-5 animate-fadeIn text-xs">
+              <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200/80 rounded-xl p-4">
                 <h4 className="font-bold text-emerald-950 font-sans text-sm flex items-center gap-1.5">
-                  <Wifi className="w-4 h-4 text-emerald-600" />
-                  Direct Background Sync from Battrick.org
+                  <Wifi className="w-4.5 h-4.5 text-emerald-600" />
+                  Direct 1-Click Background Synchronization
                 </h4>
-                <p className="text-emerald-800/80 mt-1 leading-relaxed font-sans">
-                  Enter your Battrick.org login. BattrickIQ logs in securely in the background and reads your squad, nets, finances, club, fixtures, and stadium pages directly — no copy-pasting required!
+                <p className="text-emerald-800/90 mt-1 leading-relaxed font-sans text-xs">
+                  Enter your Battrick.org login credentials. BattrickIQ logs in securely in the background and retrieves your chosen club pages simultaneously — no manual copy-pasting required!
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1">
-                  <label className="text-[11px] font-bold text-slate-600 font-sans">Battrick Username</label>
-                  <input
-                    type="text"
-                    value={directUsername}
-                    onChange={(e) => setDirectUsername(e.target.value)}
-                    placeholder="Your Battrick username"
-                    autoComplete="username"
-                    className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
+              {/* Login Credentials Box */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 block mb-2.5">
+                  1. Battrick Account Credentials
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-bold text-slate-700 font-sans">Battrick Username</label>
+                    <input
+                      type="text"
+                      value={directUsername}
+                      onChange={(e) => setDirectUsername(e.target.value)}
+                      placeholder="Your Battrick username"
+                      autoComplete="username"
+                      className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-bold text-slate-700 font-sans">Battrick Password</label>
+                    <input
+                      type="password"
+                      value={directPassword}
+                      onChange={(e) => setDirectPassword(e.target.value)}
+                      placeholder="Your Battrick password"
+                      autoComplete="current-password"
+                      className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleDirectSync(); }}
+                    />
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-[11px] font-bold text-slate-600 font-sans">Battrick Password</label>
-                  <input
-                    type="password"
-                    value={directPassword}
-                    onChange={(e) => setDirectPassword(e.target.value)}
-                    placeholder="Your Battrick password"
-                    autoComplete="current-password"
-                    className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleDirectSync(); }}
-                  />
+
+                <div className="mt-2.5 flex items-center justify-between flex-wrap gap-2">
+                  <label className="flex items-center gap-2 text-[11px] text-slate-600 font-sans cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={rememberDirectUsername}
+                      onChange={(e) => setRememberDirectUsername(e.target.checked)}
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Remember my username on this device (password is never saved)
+                  </label>
                 </div>
               </div>
 
-              <label className="flex items-center gap-2 text-[11px] text-slate-500 font-sans cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={rememberDirectUsername}
-                  onChange={(e) => setRememberDirectUsername(e.target.checked)}
-                  className="rounded border-slate-300"
-                />
-                Remember my username on this device (password is never stored)
-              </label>
+              {/* Configurable Sync Sections Checklist */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3 flex-wrap gap-2">
+                  <div>
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 block">
+                      2. Choose What to Synchronize
+                    </span>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Tick each page you wish to fetch and update in your BattrickIQ manager database:
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={selectAllPages}
+                      className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-md transition"
+                    >
+                      Select All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={deselectAllPages}
+                      className="text-[11px] font-bold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-md transition"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                </div>
 
+                {/* 2-Column Grid of Toggle Checkboxes */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  {AVAILABLE_SYNC_OPTIONS.map((opt) => {
+                    const isChecked = selectedSyncPages.includes(opt.id);
+                    const IconComponent = opt.icon;
+                    return (
+                      <div
+                        key={opt.id}
+                        onClick={() => toggleSyncPage(opt.id)}
+                        className={`p-3 rounded-xl border transition cursor-pointer flex items-start gap-3 select-none ${
+                          isChecked 
+                            ? 'bg-indigo-50/50 border-indigo-300 ring-1 ring-indigo-300/40 shadow-xs' 
+                            : 'bg-slate-50/60 border-slate-200 hover:border-slate-300 opacity-75'
+                        }`}
+                      >
+                        <div className="mt-0.5 shrink-0 text-indigo-600">
+                          {isChecked ? (
+                            <CheckSquare className="w-4.5 h-4.5 text-indigo-600 fill-indigo-100" />
+                          ) : (
+                            <Square className="w-4.5 h-4.5 text-slate-400" />
+                          )}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                              <span className={`w-5 h-5 rounded flex items-center justify-center text-[10px] ${opt.color}`}>
+                                <IconComponent className="w-3 h-3" />
+                              </span>
+                              {opt.label}
+                            </span>
+                            <span className="text-[9px] font-mono text-slate-400 bg-white border border-slate-200 px-1.5 py-0.2 rounded">
+                              {opt.url}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                            {opt.description}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Sync Trigger Button */}
               <button
                 type="button"
                 onClick={handleDirectSync}
-                disabled={directSyncing}
-                className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs px-4 py-2.5 rounded-lg shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer font-sans"
+                disabled={directSyncing || selectedSyncPages.length === 0}
+                className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer font-sans"
               >
                 {directSyncing ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <RefreshCw className="w-4.5 h-4.5 animate-spin" />
                 ) : (
-                  <Wifi className="w-4 h-4" />
+                  <Wifi className="w-4.5 h-4.5" />
                 )}
-                {directSyncing ? 'Syncing directly in background...' : 'Sync Now'}
+                {directSyncing 
+                  ? 'Connecting & fetching selected pages in background...' 
+                  : `Run Direct Sync (${selectedSyncPages.length} pages selected)`}
               </button>
 
+              {/* Error Box */}
               {directSyncError && (
-                <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-100 rounded-xl text-red-700">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{directSyncError}</span>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 animate-fadeIn">
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-rose-600" />
+                    <div className="leading-relaxed">
+                      <span className="font-bold block text-sm">Direct Sync Issue</span>
+                      <span className="text-xs text-rose-700">{directSyncError}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setImportTab('paste')}
+                    className="shrink-0 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer font-sans"
+                  >
+                    <Clipboard className="w-3.5 h-3.5" />
+                    Switch to Cut & Paste Tab
+                  </button>
                 </div>
               )}
 
+              {/* Page Results Feedback */}
               {directPageStatuses && (
-                <div className="border border-slate-150 rounded-xl divide-y divide-slate-100 overflow-hidden">
+                <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden bg-white shadow-sm">
+                  <div className="px-3.5 py-2 bg-slate-50 border-b border-slate-200 font-mono font-bold text-[10px] uppercase text-slate-400">
+                    Direct Background Sync Results
+                  </div>
                   {directPageStatuses.map((p) => (
-                    <div key={p.name} className="flex items-center justify-between px-3 py-2 bg-white">
-                      <span className="font-bold text-slate-700 capitalize font-sans">{p.name}</span>
+                    <div key={p.name} className="flex items-center justify-between px-3.5 py-2.5">
+                      <span className="font-bold text-slate-800 capitalize font-sans text-xs flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-slate-300" />
+                        {p.name}
+                      </span>
                       {p.success ? (
-                        <span className="flex items-center gap-1 text-emerald-600 font-bold"><Check className="w-3.5 h-3.5" /> Synced</span>
+                        <span className="flex items-center gap-1 text-emerald-600 font-bold text-xs bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/60">
+                          <Check className="w-3.5 h-3.5" /> Synchronized
+                        </span>
                       ) : (
-                        <span className="flex items-center gap-1 text-red-600 font-bold" title={p.error || ''}><AlertCircle className="w-3.5 h-3.5" /> Failed</span>
+                        <span className="flex items-center gap-1 text-rose-600 font-bold text-xs bg-rose-50 px-2 py-0.5 rounded border border-rose-200/60" title={p.error || ''}>
+                          <AlertCircle className="w-3.5 h-3.5" /> Failed
+                        </span>
                       )}
                     </div>
                   ))}
@@ -1184,94 +1503,66 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
             </div>
           )}
 
-          {/* Tab 2: Bookmarklet */}
-          {importTab === 'bookmarklet' && (
-            <div className="flex flex-col gap-4 animate-fadeIn text-xs">
-              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
-                <div>
-                  <h4 className="font-bold text-indigo-950 font-sans text-sm flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-indigo-600 animate-pulse" />
-                    Bookmarklet Syncing
-                  </h4>
-                  <p className="text-indigo-700 mt-1 leading-normal font-sans text-[11px]">
-                    Drag the bookmark button to your browser bar, then click it on any Battrick page to sync immediately.
-                  </p>
-                </div>
-                <div className="flex flex-col items-center shrink-0">
-                  <span className="text-[10px] text-slate-400 font-mono font-bold tracking-wider">YOUR SYNC CODE</span>
-                  <span className="font-mono text-xl font-black text-indigo-900 tracking-wider bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200 mt-1 shadow-sm">
-                    {syncCode}
-                  </span>
-                </div>
-              </div>
-
-              <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 flex items-center gap-3">
-                <a
-                  ref={bookmarkletRef}
-                  onClick={(e) => e.preventDefault()}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow-md transition shrink-0 flex items-center gap-2 cursor-grab select-none font-sans"
-                  title="Drag me to your Bookmarks Bar!"
-                >
-                  <Sparkles className="w-4 h-4 fill-white/10" />
-                  ⚡ Sync to BattrickIQ
-                </a>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(getBookmarkletCode());
-                    alert('Bookmarklet code copied to clipboard!');
-                  }}
-                  className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs px-4 py-2.5 rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer font-sans"
-                >
-                  Copy Bookmarklet Code
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Tab 3: Paste */}
+          {/* Tab 2: Cut & Paste */}
           {importTab === 'paste' && (
-            <div className="flex flex-col gap-3 animate-fadeIn">
+            <div className="flex flex-col gap-4 animate-fadeIn text-xs">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <h4 className="font-bold text-slate-800 font-sans text-sm flex items-center gap-1.5">
+                  <Clipboard className="w-4 h-4 text-indigo-600" />
+                  Cut & Paste Manual Data Importer
+                </h4>
+                <p className="text-slate-600 mt-1 leading-relaxed font-sans text-xs">
+                  Simply open any Battrick page (Squad, Training Nets, Finances, Club, Fixtures, or Ground), select all (<kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded font-mono text-[10px]">Ctrl+A</kbd> / <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded font-mono text-[10px]">Cmd+A</kbd>), copy it (<kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded font-mono text-[10px]">Ctrl+C</kbd> / <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded font-mono text-[10px]">Cmd+C</kbd>), and paste it into the box below.
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <label className="text-[11px] font-bold text-slate-700 font-sans">
+                  Target Page Content Detection:
+                </label>
+                <select
+                  value={selectedMapping}
+                  onChange={(e) => setSelectedMapping(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                >
+                  <option value="auto">Auto-Detect Page (Recommended)</option>
+                  <option value="squad">Squad Roster (squad.asp)</option>
+                  <option value="nets">Training Nets (nets.asp)</option>
+                  <option value="finances">Club Finances (finances.asp)</option>
+                  <option value="club">Club Staff & Morale (club.asp)</option>
+                  <option value="fixtures">Match Fixtures (fixtures.asp)</option>
+                  <option value="ground">Stadium & Pavilion (ground.asp)</option>
+                </select>
+              </div>
+
               <textarea
                 id="sync-textarea-pasted"
-                rows={5}
+                rows={7}
                 value={pasteInput}
                 onChange={(e) => setPasteInput(e.target.value)}
-                placeholder="Paste raw Battrick webpage contents here..."
-                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 font-mono placeholder:font-sans focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-inner"
+                placeholder="Paste raw Battrick text or webpage HTML content here (e.g. copied from squad.asp, nets.asp, finances.asp)..."
+                className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-mono placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-inner"
               />
-              <button
-                type="button"
-                onClick={() => handleImport(pasteInput, selectedMapping === 'auto' ? undefined : selectedMapping)}
-                disabled={!pasteInput.trim()}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2 px-4 rounded-lg text-xs font-bold shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer font-sans"
-              >
-                <RefreshCw className="w-4 h-4" />
-                Analyze & Sync Content
-              </button>
-            </div>
-          )}
 
-          {/* Tab 4: Upload */}
-          {importTab === 'upload' && (
-            <div className="flex flex-col gap-3 animate-fadeIn">
-              <div
-                onDragEnter={handleDrag}
-                onDragOver={handleDrag}
-                onDragLeave={handleDrag}
-                onDrop={handleDrop}
-                onClick={() => document.getElementById('sync-file-input')?.click()}
-                className="w-full p-8 border-2 border-dashed border-slate-200 hover:border-slate-300 rounded-xl flex flex-col items-center justify-center text-center cursor-pointer transition bg-slate-50/50"
-              >
-                <input
-                  id="sync-file-input"
-                  type="file"
-                  accept=".html,.htm,.txt"
-                  className="hidden"
-                  onChange={handleFileChange}
-                />
-                <Upload className="w-10 h-10 mb-2.5 text-slate-400" />
-                <span className="text-xs font-bold text-slate-700">Click to browse or drop file here</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleImport(pasteInput, selectedMapping === 'auto' ? undefined : selectedMapping)}
+                  disabled={!pasteInput.trim()}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold shadow-sm transition flex items-center justify-center gap-2 cursor-pointer font-sans"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Analyze & Parse Content
+                </button>
+                {pasteInput && (
+                  <button
+                    type="button"
+                    onClick={() => setPasteInput('')}
+                    className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -1283,7 +1574,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
         <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
           <h3 className="font-display font-bold text-sm text-slate-800 flex items-center gap-2">
             <ShieldCheck className="w-4.5 h-4.5 text-indigo-600" />
-            Last Imported Sync History Log
+            Last Synchronized Log Records
           </h3>
           <span className="text-[10px] font-mono font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200">
             {syncLogs.length} Records Stored
@@ -1323,7 +1614,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
           </div>
         ) : (
           <div className="text-center py-6 text-slate-400 text-xs">
-            No sync history logs recorded yet. Use Direct Sync or Bookmarklet above to start syncing.
+            No sync history logs recorded yet. Use Direct Sync or Cut & Paste above to populate your club.
           </div>
         )}
       </div>
@@ -1338,7 +1629,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
             <div>
               <h3 className="font-display font-extrabold text-lg text-slate-900">Reset Club Data?</h3>
               <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-                This will clear local club data so you can resync from scratch.
+                This will clear stored local club data so you can resynchronize clean data from scratch.
               </p>
             </div>
             <div className="flex gap-3 w-full mt-4">

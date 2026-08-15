@@ -46,9 +46,11 @@ export default function AIAssistantTasks({
 }: AIAssistantTasksProps) {
   const [isMinimized, setIsMinimized] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('bt_assistant_minimized') === 'true';
+      const saved = localStorage.getItem('bt_assistant_minimized');
+      if (saved === 'false') return false;
+      return true; // Always minimized by default
     } catch {
-      return false;
+      return true;
     }
   });
 
