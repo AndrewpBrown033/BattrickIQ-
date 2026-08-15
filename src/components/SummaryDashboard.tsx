@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BattrickPlayer, ClubFinances, BattrickGame, StadiumConfig, PavilionInfo } from '../types';
+import AIAssistantTasks from './AIAssistantTasks';
 import { 
   Award, Calculator, Users, FolderOpen, BookOpen, RefreshCw, Landmark, Bot, 
   TrendingUp, TrendingDown, DollarSign, Activity, ChevronRight, Calendar, 
@@ -479,6 +480,16 @@ Please analyze my club details and explain:
           </button>
         </div>
       </div>
+
+      {/* AI Assistant - Manager Action Center & Weekly Playbook */}
+      <AIAssistantTasks
+        squad={squad}
+        finances={finances}
+        stadium={stadium}
+        fixtures={fixtures}
+        pavilion={pavilion}
+        setActiveTab={setActiveTab}
+      />
 
       {/* 2. Key Health Pillars Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

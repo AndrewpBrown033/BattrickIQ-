@@ -18,7 +18,7 @@ import { motion, AnimatePresence } from 'motion/react';
 type TabType = 'summary' | 'sync' | 'squad' | 'lineup' | 'wage' | 'stadium' | 'coach' | 'coach-history' | 'rules' | 'admin' | 'player-details';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<TabType>('wage');
+  const [activeTab, setActiveTab] = useState<TabType>('summary');
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [teamName, setTeamName] = useState<string>('My Battrick IQ Club');
   
