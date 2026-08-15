@@ -4,8 +4,8 @@ import { getWeeklyChanges } from '../utils/history';
 import { 
   Bot, CheckCircle2, Circle, Sparkles, ArrowRight, 
   Calendar, RefreshCw, Users, Trophy, Landmark, Calculator,
-  AlertTriangle, ShieldCheck, Zap, ChevronRight, HelpCircle,
-  TrendingUp, Star, Award, Clock
+  AlertTriangle, ShieldCheck, Zap, ChevronRight, ChevronDown, ChevronUp, HelpCircle,
+  TrendingUp, Star, Award, Clock, Minimize2, Maximize2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -44,6 +44,26 @@ export default function AIAssistantTasks({
   pavilion,
   setActiveTab
 }: AIAssistantTasksProps) {
+  const [isMinimized, setIsMinimized] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('bt_assistant_minimized') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleMinimize = () => {
+    setIsMinimized(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('bt_assistant_minimized', String(next));
+      } catch (err) {
+        console.error(err);
+      }
+      return next;
+    });
+  };
+
   const [completedTaskIds, setCompletedTaskIds] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('bt_assistant_completed_tasks');
@@ -321,6 +341,61 @@ export default function AIAssistantTasks({
   const totalCount = tasks.length;
   const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
+  if (isMinimized) {
+    const nextPending = tasks.find(t => !t.isCompleted);
+    return (
+      <div 
+        className="bg-white border border-slate-200 rounded-2xl p-4 md:p-5 shadow-sm relative overflow-hidden transition-all hover:border-slate-300"
+        id="ai-assistant-action-center-minimized"
+      >
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-blue-500 to-purple-500" />
+        
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-700 text-white flex items-center justify-center shadow-md shrink-0">
+              <Bot className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-display font-extrabold text-sm md:text-base text-slate-900 tracking-tight">
+                  AI Assistant Playbook
+                </h3>
+                <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                  {completedCount}/{totalCount} Completed
+                </span>
+                {isSaturday && (
+                  <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-amber-500 text-white">
+                    ⚡ Saturday Cycle
+                  </span>
+                )}
+              </div>
+              {nextPending ? (
+                <p className="text-xs text-slate-600 mt-0.5 truncate max-w-md">
+                  <span className="font-bold text-slate-800 font-sans">Next:</span> {nextPending.title}
+                </p>
+              ) : (
+                <p className="text-xs text-emerald-600 font-medium mt-0.5 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> All manager playbook tasks completed!
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+            <button
+              type="button"
+              onClick={toggleMinimize}
+              className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-200 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <span>Expand Tasks ({totalCount - completedCount} To-Do)</span>
+              <ChevronDown className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm relative overflow-hidden" id="ai-assistant-action-center">
       {/* Decorative top accent */}
@@ -353,27 +428,39 @@ export default function AIAssistantTasks({
           </div>
         </div>
 
-        {/* Progress & Quick Stats */}
-        <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 p-2.5 rounded-xl self-start md:self-auto shrink-0">
-          <div className="text-right pr-2 border-r border-slate-200">
-            <div className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">
-              Playbook Progress
+        {/* Controls & Progress */}
+        <div className="flex items-center gap-3 self-start md:self-auto shrink-0">
+          <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 p-2.5 rounded-xl">
+            <div className="text-right pr-2 border-r border-slate-200">
+              <div className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">
+                Playbook Progress
+              </div>
+              <div className="text-sm font-extrabold text-slate-800 font-mono">
+                {completedCount} of {totalCount} Done
+              </div>
             </div>
-            <div className="text-sm font-extrabold text-slate-800 font-mono">
-              {completedCount} of {totalCount} Done
+            <div className="w-16">
+              <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                <div 
+                  className="bg-indigo-600 h-full rounded-full transition-all duration-300"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <span className="text-[9px] font-mono font-bold text-indigo-600 text-right block mt-0.5">
+                {progressPercent}%
+              </span>
             </div>
           </div>
-          <div className="w-16">
-            <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-              <div 
-                className="bg-indigo-600 h-full rounded-full transition-all duration-300"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-            <span className="text-[9px] font-mono font-bold text-indigo-600 text-right block mt-0.5">
-              {progressPercent}%
-            </span>
-          </div>
+
+          <button
+            type="button"
+            onClick={toggleMinimize}
+            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl border border-slate-200 transition cursor-pointer flex items-center gap-1 text-xs font-bold"
+            title="Minimize AI Assistant"
+          >
+            <ChevronUp className="w-4 h-4" />
+            <span className="hidden sm:inline text-[11px]">Minimize</span>
+          </button>
         </div>
       </div>
 

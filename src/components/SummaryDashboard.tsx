@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { BattrickPlayer, ClubFinances, BattrickGame, StadiumConfig, PavilionInfo } from '../types';
 import AIAssistantTasks from './AIAssistantTasks';
+import { getCustomUser, onCustomAuthStateChanged, CustomUser } from '../lib/customAuth';
 import { 
   Award, Calculator, Users, FolderOpen, BookOpen, RefreshCw, Landmark, Bot, 
   TrendingUp, TrendingDown, DollarSign, Activity, ChevronRight, Calendar, 
-  AlertTriangle, CheckCircle2, ShieldAlert, Sparkles, Scale, Info
+  AlertTriangle, CheckCircle2, ShieldAlert, Sparkles, Scale, Info, Cloud,
+  Database, Wifi, WifiOff, CheckCircle, ArrowUpRight, Upload
 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface SummaryDashboardProps {
   setActiveTab: (tab: 'summary' | 'sync' | 'squad' | 'lineup' | 'wage' | 'stadium' | 'coach' | 'rules' | 'admin') => void;
@@ -21,9 +23,36 @@ export default function SummaryDashboard({ setActiveTab }: SummaryDashboardProps
   const [teamName, setTeamName] = useState<string>('My Battrick IQ Club');
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<CustomUser | null>(getCustomUser());
+  const [isCloudSyncing, setIsCloudSyncing] = useState<boolean>(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsub = onCustomAuthStateChanged((u) => {
+      setCurrentUser(u);
+    });
+    return () => unsub();
+  }, []);
+
+  const loadLastSyncLogTime = () => {
+    try {
+      const uid = getCustomUser()?.uid;
+      const key = uid ? `bt_sync_logs_${uid}` : 'bt_sync_logs_guest';
+      const logs = localStorage.getItem(key) || localStorage.getItem('bt_sync_logs');
+      if (logs) {
+        const parsed = JSON.parse(logs);
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].timestamp) {
+          setLastSyncTime(parsed[0].timestamp);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   const loadData = () => {
     setTeamName(localStorage.getItem('bt_team_name') || 'My Battrick IQ Club');
+    loadLastSyncLogTime();
 
     const savedSquad = localStorage.getItem('bt_squad');
     if (savedSquad) {
@@ -54,7 +83,10 @@ export default function SummaryDashboard({ setActiveTab }: SummaryDashboardProps
   const handleRefresh = async (silent = false) => {
     if (!silent) {
       setRefreshing(true);
-      setRefreshMessage('Refreshing local database...');
+      setIsCloudSyncing(true);
+      setRefreshMessage('Refreshing database from cloud...');
+    } else {
+      setIsCloudSyncing(true);
     }
 
     // 1. Reload local state first
@@ -176,6 +208,7 @@ export default function SummaryDashboard({ setActiveTab }: SummaryDashboardProps
       console.error('Error refreshing from cloud:', error);
       if (!silent) setRefreshMessage('Offline or connection error. Local data reloaded.');
     } finally {
+      setIsCloudSyncing(false);
       if (!silent) {
         setTimeout(() => {
           setRefreshing(false);
@@ -402,6 +435,105 @@ Please analyze my club details and explain:
 
   return (
     <div className="flex flex-col gap-6" id="summary-dashboard-view">
+
+      {/* 0. Live Database Sync & Cloud Status Banner */}
+      <div className="bg-white border border-slate-200 rounded-xl p-3.5 sm:p-4 shadow-xs" id="database-sync-status-bar">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            {isCloudSyncing || refreshing ? (
+              <div className="w-9 h-9 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0">
+                <RefreshCw className="w-4.5 h-4.5 animate-spin" />
+              </div>
+            ) : currentUser ? (
+              <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shrink-0">
+                <Cloud className="w-4.5 h-4.5 text-emerald-600" />
+              </div>
+            ) : (
+              <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
+                <Database className="w-4.5 h-4.5 text-blue-600" />
+              </div>
+            )}
+
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  {isCloudSyncing || refreshing ? (
+                    <span className="text-amber-700 font-extrabold flex items-center gap-1">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      Synchronizing with Cloud Database...
+                    </span>
+                  ) : currentUser ? (
+                    <span className="text-emerald-700 font-extrabold flex items-center gap-1">
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                      Cloud Database Synchronized
+                    </span>
+                  ) : (
+                    <span className="text-slate-700 font-extrabold flex items-center gap-1">
+                      <Database className="w-3.5 h-3.5 text-blue-600" />
+                      Local Storage Mode (Guest)
+                    </span>
+                  )}
+                </span>
+                
+                {currentUser && (
+                  <span className="text-[10px] font-mono px-2 py-0.2 rounded-full bg-slate-100 text-slate-600 border border-slate-200 truncate max-w-[200px]">
+                    {currentUser.email || currentUser.username}
+                  </span>
+                )}
+
+                <span className="text-[10px] font-mono text-slate-400">
+                  • {squad.length} Players {finances ? `• £${finances.cash.toLocaleString()}` : ''}
+                </span>
+              </div>
+
+              <p className="text-[11px] text-slate-500 mt-0.5 leading-normal">
+                {isCloudSyncing || refreshing ? (
+                  <span className="text-amber-800 font-medium animate-pulse">
+                    Please wait while your squad roster, finances, nets, and pavilion synchronize with Google Cloud Firestore...
+                  </span>
+                ) : currentUser ? (
+                  <span>
+                    Real-time cloud database backup active. {lastSyncTime ? `Last imported: ${new Date(lastSyncTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Ready for match operations.'}
+                  </span>
+                ) : (
+                  <span>
+                    Club data is cached in this browser. <button type="button" onClick={() => setActiveTab('sync')} className="text-indigo-600 font-bold hover:underline cursor-pointer">Sign In / Register</button> to enable persistent cloud sync.
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+            <button
+              type="button"
+              onClick={() => handleRefresh(false)}
+              disabled={refreshing || isCloudSyncing}
+              className="px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:text-indigo-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              title="Refresh database records"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing || isCloudSyncing ? 'animate-spin text-indigo-600' : ''}`} />
+              <span>{refreshing || isCloudSyncing ? 'Syncing...' : 'Refresh'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('sync')}
+              className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>Sync Source</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Dynamic progress bar when syncing */}
+        {(isCloudSyncing || refreshing) && (
+          <div className="w-full bg-amber-100 h-1 rounded-full overflow-hidden mt-3">
+            <div className="bg-amber-500 h-full w-full animate-pulse" />
+          </div>
+        )}
+      </div>
       
       <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl p-6 shadow-md relative overflow-hidden">
         {/* Background visuals */}
