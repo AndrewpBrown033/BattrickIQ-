@@ -248,7 +248,9 @@ async function startServer() {
     
     const initialRes = await fetch(initialUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8'
       }
     });
 
@@ -290,7 +292,9 @@ async function startServer() {
         'Cookie': cookieHeader,
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Origin': 'https://www.battrick.org',
-        'Referer': 'https://www.battrick.org/nl/login.asp?private=1'
+        'Referer': 'https://www.battrick.org/nl/login.asp?private=1',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8'
       },
       body: loginParams.toString(),
       redirect: 'manual'
@@ -323,6 +327,41 @@ async function startServer() {
       };
     }
 
+    // Follow the landing page redirect (e.g. /nl/default.asp or welcome.asp) to complete ASP session setup
+    try {
+      let landingUrl = 'https://www.battrick.org/nl/default.asp';
+      const redirectLoc = loginRes.headers.get('location');
+      if (redirectLoc) {
+        landingUrl = new URL(redirectLoc, 'https://www.battrick.org/nl/login.asp?private=1').toString();
+      }
+
+      console.log(`[Battrick Auth] Initializing session landing at ${landingUrl}...`);
+      const landingRes = await fetch(landingUrl, {
+        headers: {
+          'Cookie': cookieHeader,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Referer': 'https://www.battrick.org/nl/login.asp?private=1',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8'
+        },
+        redirect: 'manual'
+      });
+
+      let landingCookies: string[] = [];
+      if (typeof landingRes.headers.getSetCookie === 'function') {
+        landingCookies = landingRes.headers.getSetCookie();
+      } else {
+        const rawLandingCookie = landingRes.headers.get('set-cookie');
+        if (rawLandingCookie) {
+          landingCookies = rawLandingCookie.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/);
+        }
+      }
+      landingCookies.forEach(parseCookie);
+      cookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
+    } catch (landingErr) {
+      console.warn('[Battrick Auth] Warning loading landing page:', landingErr);
+    }
+
     const sessionToken = `btsess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     battrickSessionStore.set(sessionToken, {
       cookieHeader,
@@ -347,7 +386,7 @@ async function startServer() {
   ): Promise<{ success: boolean; html: string; status: number; isRedirect?: boolean; error?: string; updatedCookieHeader?: string }> {
     let currentUrl = pageUrl;
     let hops = 0;
-    const maxHops = 2;
+    const maxHops = 3;
     let currentCookieHeader = cookieHeader;
 
     const parseCookie = (c: string) => {
@@ -367,7 +406,9 @@ async function startServer() {
         headers: {
           'Cookie': currentCookieHeader,
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          'Referer': 'https://www.battrick.org/nl/login.asp?private=1'
+          'Referer': 'https://www.battrick.org/nl/default.asp',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8'
         },
         redirect: 'manual'
       });
@@ -393,7 +434,7 @@ async function startServer() {
             html: '',
             status: pageRes.status,
             isRedirect: true,
-            error: 'Unauthenticated (redirected to login page)'
+            error: 'Battrick session expired or redirected to login. Please re-enter credentials or try Cut & Paste.'
           };
         }
 
@@ -409,7 +450,7 @@ async function startServer() {
           html: '',
           status: pageRes.status,
           isRedirect: isAspAuthErr,
-          error: isAspAuthErr ? 'Unauthenticated (session expired or invalid)' : `Server responded with HTTP ${pageRes.status}`
+          error: isAspAuthErr ? 'Session expired or unauthenticated.' : `Battrick responded with HTTP ${pageRes.status}`
         };
       }
 
@@ -423,7 +464,7 @@ async function startServer() {
           html: '',
           status: pageRes.status,
           isRedirect: true,
-          error: 'Unauthenticated (login form detected)'
+          error: 'Unauthenticated session (login form returned instead of page).'
         };
       }
 
