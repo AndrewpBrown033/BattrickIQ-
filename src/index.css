@@ -1,0 +1,158 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Space Grotesk", sans-serif;
+}
+
+@utility bg-blueprint-grid {
+  background-image: linear-gradient(to right, rgba(0, 90, 247, 0.04) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(0, 90, 247, 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+@utility bg-blueprint-dots {
+  background-image: radial-gradient(rgba(0, 90, 247, 0.08) 1.5px, transparent 1.5px);
+  background-size: 16px 16px;
+}
+
+/* Custom animations for fluid dashboard experience */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-scaleUp {
+  animation: scaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* High Contrast Accessibility Mode */
+.hc-mode {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+.hc-mode *, 
+.hc-mode *::before, 
+.hc-mode *::after {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Force dark/bold headers, texts, and alerts */
+.hc-mode h1, 
+.hc-mode h2, 
+.hc-mode h3, 
+.hc-mode h4, 
+.hc-mode h5, 
+.hc-mode h6 {
+  color: #000000 !important;
+  font-weight: 800 !important;
+}
+
+/* Enhance muted slate text styles to high-contrast charcoal */
+.hc-mode .text-slate-400,
+.hc-mode .text-slate-500 {
+  color: #1e293b !important;
+  font-weight: 500 !important;
+}
+
+.hc-mode .text-slate-600,
+.hc-mode .text-slate-700 {
+  color: #090d16 !important;
+  font-weight: 600 !important;
+}
+
+.hc-mode .text-slate-800,
+.hc-mode .text-slate-900 {
+  color: #000000 !important;
+  font-weight: 700 !important;
+}
+
+/* Enhance brand colors and badge colors to extremely readable rich tones */
+.hc-mode .text-blue-600,
+.hc-mode .text-blue-700,
+.hc-mode .text-indigo-600,
+.hc-mode .text-indigo-700 {
+  color: #0022cc !important;
+  font-weight: 700 !important;
+}
+
+.hc-mode .text-emerald-600,
+.hc-mode .text-emerald-700 {
+  color: #0f5132 !important;
+  font-weight: 700 !important;
+}
+
+.hc-mode .text-amber-600,
+.hc-mode .text-amber-700 {
+  color: #854d0e !important;
+  font-weight: 700 !important;
+}
+
+.hc-mode .bg-blue-600,
+.hc-mode .bg-indigo-600 {
+  background-color: #0022cc !important;
+  color: #ffffff !important;
+}
+
+.hc-mode .bg-blue-50 {
+  background-color: #f0f9ff !important;
+  border-color: #0022cc !important;
+}
+
+.hc-mode .bg-emerald-50 {
+  background-color: #f0fdf4 !important;
+  border-color: #14532d !important;
+}
+
+/* Thicken and darken all light borders */
+.hc-mode .border,
+.hc-mode .border-slate-100,
+.hc-mode .border-slate-200,
+.hc-mode .border-slate-200\/80,
+.hc-mode .border-slate-300,
+.hc-mode .border-blue-100 {
+  border-color: #1e293b !important;
+  border-width: 1.5px !important;
+}
+
+/* Clear low-contrast background grids, lights, and cards */
+.hc-mode .bg-blueprint-grid,
+.hc-mode .bg-blueprint-dots {
+  background-image: none !important;
+  background-color: #ffffff !important;
+}
+
+.hc-mode .bg-slate-50,
+.hc-mode .bg-slate-100 {
+  background-color: #f8fafc !important;
+}
+
+/* Ensure clean, stark input fields */
+.hc-mode input,
+.hc-mode textarea,
+.hc-mode select {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #000000 !important;
+  border-width: 2px !important;
+}
+
+.hc-mode input::placeholder,
+.hc-mode textarea::placeholder {
+  color: #475569 !important;
+}
+
+

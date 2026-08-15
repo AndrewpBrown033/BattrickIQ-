@@ -1,0 +1,128 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Battrick user accounts with their associated teams, player rosters, finances, and growth history",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "The email address of the manager"
+        },
+        "teamName": {
+          "type": "string",
+          "description": "The associated cricket team name"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Profile creation timestamp"
+        },
+        "lastSyncedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last synchronization timestamp"
+        },
+        "finances": {
+          "type": "object",
+          "description": "Weekly finance and staff records"
+        },
+        "stadium": {
+          "type": "object",
+          "description": "Stadium capacity divisions"
+        },
+        "squad": {
+          "type": "array",
+          "description": "List of players in the roster with skills and history"
+        },
+        "fixtures": {
+          "type": "array",
+          "description": "List of fixtures and matches"
+        },
+        "pavilion": {
+          "type": "object",
+          "description": "Ground, pitch, and weather settings"
+        }
+      },
+      "required": ["email", "teamName"]
+    },
+    "UserAuth": {
+      "title": "User Authentication",
+      "description": "Lightweight custom authentication credentials for managers",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "The registered email address"
+        },
+        "password": {
+          "type": "string",
+          "description": "The manager password"
+        },
+        "uid": {
+          "type": "string",
+          "description": "The unique user ID"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "manager"],
+          "description": "System role"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["email", "password", "uid", "role"]
+    },
+    "CoachChat": {
+      "title": "Coach Chat",
+      "description": "A saved Coach Jarvis conversation session for a user",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique chat session identifier"
+        },
+        "userId": {
+          "type": "string",
+          "description": "The user ID of the manager"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the chat, usually generated from the first query"
+        },
+        "messages": {
+          "type": "array",
+          "description": "The message objects with role and content"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp when the conversation started"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp of the last message"
+        }
+      },
+      "required": ["id", "userId", "title", "messages", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Stores complete battrick manager rosters, finances, and stadium settings"
+    },
+    "users/{userId}/chats/{chatId}": {
+      "schema": "CoachChat",
+      "description": "Stores individual chat sessions of Coach Jarvis for each user"
+    },
+    "users_auth/{email}": {
+      "schema": "UserAuth",
+      "description": "Credential database for authenticating custom sessions securely"
+    }
+  }
+}

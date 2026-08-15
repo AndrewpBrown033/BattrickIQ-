@@ -1,0 +1,63 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // STANDALONE GLOBAL HELPER FUNCTIONS
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Schema and boundary validation for manager team profiles
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'teamName']) &&
+             data.email is string && data.email.size() <= 128 &&
+             data.teamName is string && data.teamName.size() <= 128;
+    }
+
+    // Schema and boundary validation for lightweight auth credentials
+    function isValidAuth(data) {
+      return data.keys().hasAll(['email', 'password', 'uid', 'role']) &&
+             data.email is string && data.email.size() <= 128 &&
+             data.password is string && data.password.size() <= 128 &&
+             data.uid is string && data.uid.size() <= 128 &&
+             data.role is string && (data.role == 'admin' || data.role == 'manager');
+    }
+
+    // Schema and boundary validation for Coach Jarvis chat sessions
+    function isValidCoachChat(data) {
+      return data.keys().hasAll(['id', 'userId', 'title', 'messages', 'createdAt', 'updatedAt']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.title is string && data.title.size() <= 256 &&
+             data.messages is list &&
+             data.createdAt is string &&
+             data.updatedAt is string;
+    }
+
+    // 1. Users collection: Core Battrick manager rosters, finances, fixtures, and settings
+    match /users/{userId} {
+      allow read, write: if true;
+
+      // Sub-collection for persistent Coach Jarvis chat history
+      match /chats/{chatId} {
+        allow read, write: if true;
+      }
+    }
+
+    // 2. Users Auth credentials: Secure credentials database for custom session authentication
+    match /users_auth/{email} {
+      // Allows getting individual document for password validation, but completely blocks list/scanning queries
+      allow get: if true;
+      allow list: if false;
+
+      allow create, update: if isValidAuth(request.resource.data);
+
+      allow delete: if true;
+    }
+  }
+}

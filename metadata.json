@@ -1,0 +1,6 @@
+{
+  "name": "BattrickIQ",
+  "description": "Tactical analyzer, wage calculator, and match lineup optimizer companion for Battrick Cricket.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
