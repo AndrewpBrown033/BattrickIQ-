@@ -636,6 +636,27 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
   }
 
   // --- Live Direct Sequential Sync Execution ---
+  // Safely parses a fetch Response as JSON. If the server (or a proxy/dev
+  // server sitting in front of it) returns something else - most commonly
+  // an HTML fallback page when a request doesn't reach the intended API
+  // route - res.json() throws a cryptic "Unexpected token '<' ... is not
+  // valid JSON". This turns that into a message that actually says what
+  // happened, so it shows up clearly in the sync dial instead of confusing
+  // raw JSON-parser output.
+  const safeParseJsonResponse = async (res: Response, context: string) => {
+    const raw = await res.text();
+    try {
+      return JSON.parse(raw);
+    } catch {
+      const looksLikeHtml = raw.trim().startsWith('<');
+      throw new Error(
+        looksLikeHtml
+          ? `Server didn't return a valid response for ${context} (got an HTML page instead of JSON - the API endpoint may not be running or reachable). Please check that your dev server is running and try again.`
+          : `Server returned an unreadable response for ${context}.`
+      );
+    }
+  };
+
   const handleDirectSync = async () => {
     if (!directUsername.trim() || !directPassword.trim()) {
       setDirectSyncError('Please enter your Battrick username and password.');
@@ -763,37 +784,6 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     const collectedStats: { label: string; value: string | number }[] = [];
     const pageStatusRecords: { name: string; success: boolean; error: string | null }[] = [];
 
-    // Safe JSON response reader to prevent "Unexpected token '<', <!doctype..." crashes
-    const safeReadJson = async (res: Response): Promise<{ success: boolean; error?: string; [key: string]: any }> => {
-      try {
-        const text = await res.text();
-        if (!text || text.trim().length === 0) {
-          return { success: false, error: `Empty response from server (HTTP ${res.status})` };
-        }
-        try {
-          const parsed = JSON.parse(text);
-          return parsed;
-        } catch {
-          // If server returned an HTML error page or login redirect
-          if (text.includes('<!DOCTYPE html>') || text.includes('<!doctype html') || text.includes('<html')) {
-            if (text.includes('Log In to Battrick') || text.includes('login.asp')) {
-              return { 
-                success: false, 
-                error: 'Battrick session expired. Please verify your username & password.' 
-              };
-            }
-            return { 
-              success: false, 
-              error: `Server responded with HTML page (Status ${res.status}). Please verify login details or try again.` 
-            };
-          }
-          return { success: false, error: text.slice(0, 120) || `Server HTTP ${res.status} error` };
-        }
-      } catch (readErr: any) {
-        return { success: false, error: readErr.message || 'Failed to read server response' };
-      }
-    };
-
     try {
       // 1. STEP 1: AUTHENTICATION
       updateStep(0, {
@@ -818,7 +808,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
           password: directPassword
         })
       });
-      const authData = await safeReadJson(authRes);
+      const authData = await safeParseJsonResponse(authRes, 'the login step');
 
       if (!authRes.ok || !authData.success) {
         const errMsg = authData.error || 'Authentication failed. Please verify your credentials or use the Cut & Paste tab.';
@@ -851,12 +841,11 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       setSequentialModal(prev => prev ? {
         ...prev,
         progressPercent: Math.round((1 / totalSteps) * 100),
-        activeStepName: '✓ Authentication Handshake Complete',
-        activeDetail: 'Battrick session established. Spacing out requests and starting page fetch...'
+        activeDetail: 'Authentication handshake complete. Spacing out next request...'
       } : null);
 
-      // Polite spacing delay (600ms) between login and first page fetch
-      await new Promise(r => setTimeout(r, 600));
+      // Polite spacing delay (750ms) between login and first page fetch
+      await new Promise(r => setTimeout(r, 750));
 
       // 2. PROCESS SELECTED PAGES SEQUENTIALLY
       for (let i = 1; i < initialSteps.length; i++) {
@@ -872,8 +861,8 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
         setSequentialModal(prev => prev ? {
           ...prev,
           currentStepIndex: i,
-          activeStepName: `Step ${stepNumber} of ${totalSteps}: Syncing ${currentStep.label}`,
-          activeDetail: `Currently downloading and processing ${currentStep.urlLabel}...`,
+          activeStepName: `Step ${stepNumber} of ${totalSteps}: ${currentStep.label}`,
+          activeDetail: `Currently processing ${currentStep.urlLabel} with sequential server spacing...`,
           progressPercent: Math.round(((i + 0.5) / totalSteps) * 100)
         } : null);
 
@@ -890,7 +879,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
             })
           });
 
-          const pageData = await safeReadJson(pageRes);
+          const pageData = await safeParseJsonResponse(pageRes, currentStep.label);
 
           if (pageRes.ok && pageData.success && pageData.html) {
             const typeMapping: Record<string, string> = {
@@ -903,7 +892,9 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
             };
             const importType = typeMapping[pageKey] || pageKey;
 
-            // Import data into club state and localStorage
+            // Import data into club state and localStorage. Silent + progress
+            // so handleImport skips its own popup (the dial panel below shows
+            // the per-page confirmation instead) and can label the step.
             handleImport(pageData.html, importType, { silent: true, progress: { current: stepNumber, total: totalSteps } });
             completedCount++;
 
@@ -946,11 +937,13 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
             pageStatusRecords.push({ name: pageKey, success: true, error: null });
             addSyncLog(pageKey, `Direct sync synchronized ${currentStep.label} (${statBadge})`, 'success');
 
-            // Alert banner transition: show completion status before pacing to next step
+            // "Alert" phase: announce this page's result in the dial before
+            // moving on, so the user actually sees each confirmation instead
+            // of it flashing straight past to the next fetch.
             setSequentialModal(prev => prev ? {
               ...prev,
-              activeStepName: `✓ ${currentStep.label} Synced (${statBadge})`,
-              activeDetail: i < initialSteps.length - 1 ? `Proceeding to step ${stepNumber + 1}: ${initialSteps[i + 1].label}...` : 'All selected pages finished!'
+              activeStepName: `✓ ${currentStep.label} Synced!`,
+              activeDetail: `${statBadge}. ${i < initialSteps.length - 1 ? 'Getting ready for the next page...' : 'Wrapping up...'}`
             } : null);
 
           } else {
@@ -966,7 +959,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
             setSequentialModal(prev => prev ? {
               ...prev,
               activeStepName: `⚠ ${currentStep.label} Skipped`,
-              activeDetail: `${errStr} ${i < initialSteps.length - 1 ? '- continuing with next step...' : ''}`
+              activeDetail: `${errStr} ${i < initialSteps.length - 1 ? '- continuing with the next page...' : ''}`
             } : null);
           }
         } catch (stepErr: any) {
@@ -983,7 +976,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
           setSequentialModal(prev => prev ? {
             ...prev,
             activeStepName: `⚠ ${currentStep.label} Skipped`,
-            activeDetail: `${errStr} ${i < initialSteps.length - 1 ? '- continuing with next step...' : ''}`
+            activeDetail: `${errStr} ${i < initialSteps.length - 1 ? '- continuing with the next page...' : ''}`
           } : null);
         }
 
@@ -993,9 +986,11 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
           completedStats: [...collectedStats]
         } : null);
 
-        // Polite 700ms sequential spacing before moving to the next page
+        // Polite 800ms sequential spacing before moving to the next page -
+        // this is also the window during which the "✓ Synced!" alert above
+        // stays on screen before the next step's "Processing..." replaces it.
         if (i < initialSteps.length - 1) {
-          await new Promise(r => setTimeout(r, 700));
+          await new Promise(r => setTimeout(r, 800));
         }
       }
 
@@ -1733,219 +1728,102 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
         </div>
       )}
 
-      {/* Sequential Direct Sync Modal Dialog Pop */}
+      {/* Sequential Direct Sync progress dial - shows every page as it's
+          fetched, with a per-page confirmation badge, and clearly announces
+          "processing next step" as it moves down the queue. */}
       {sequentialModal && sequentialModal.isOpen && (
-        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-md z-[9999] flex items-center justify-center p-4 transition-all duration-300 animate-fadeIn">
-          <div className="bg-slate-900 border border-slate-700/80 shadow-2xl rounded-2xl max-w-lg w-full p-5 sm:p-6 flex flex-col gap-4.5 text-white animate-scaleUp max-h-[92vh] overflow-y-auto relative">
-            
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3.5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 flex-shrink-0">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 shadow-2xl rounded-2xl max-w-lg w-full p-6 flex flex-col gap-5 animate-scaleUp max-h-[90vh] overflow-y-auto">
+            {/* Progress dial */}
+            <div className="flex flex-col items-center gap-3">
+              <div className="relative w-28 h-28 flex-shrink-0">
+                <svg viewBox="0 0 120 120" className="w-28 h-28 -rotate-90">
+                  <circle cx="60" cy="60" r="52" fill="none" stroke="#e2e8f0" strokeWidth="10" />
+                  <circle
+                    cx="60" cy="60" r="52" fill="none"
+                    stroke={sequentialModal.isComplete ? (sequentialModal.hasErrors ? '#f43f5e' : '#10b981') : '#6366f1'}
+                    strokeWidth="10"
+                    strokeLinecap="round"
+                    strokeDasharray={2 * Math.PI * 52}
+                    strokeDashoffset={2 * Math.PI * 52 * (1 - sequentialModal.progressPercent / 100)}
+                    style={{ transition: 'stroke-dashoffset 0.5s ease, stroke 0.3s ease' }}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
                   {sequentialModal.isComplete ? (
-                    sequentialModal.hasErrors ? (
-                      <AlertCircle className="w-5 h-5 text-amber-400" />
-                    ) : (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                    )
+                    sequentialModal.hasErrors
+                      ? <AlertCircle className="w-8 h-8 text-rose-500" />
+                      : <CheckCircle2 className="w-8 h-8 text-emerald-500" />
                   ) : (
-                    <RefreshCw className="w-5 h-5 animate-spin text-indigo-400" />
+                    <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
                   )}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-display font-extrabold text-base text-white">Direct Battrick Sync</h3>
-                    {!sequentialModal.isComplete && (
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                        Live
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-400">Sequential direct session sync</p>
+                  <span className="text-xs font-black text-slate-700 mt-1">{sequentialModal.progressPercent}%</span>
                 </div>
               </div>
-
-              {/* Dismiss / Close Button */}
-              {sequentialModal.isComplete && (
-                <button
-                  type="button"
-                  onClick={() => setSequentialModal(null)}
-                  className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer border border-slate-700"
-                  aria-label="Close dialog"
-                >
-                  <XCircle className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-
-            {/* Progress Bar & Percentage */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-slate-300">
-                  {sequentialModal.isComplete
-                    ? 'Synchronization Complete'
-                    : `Processing Step ${sequentialModal.currentStepIndex + 1} of ${sequentialModal.totalSteps}`}
-                </span>
-                <span className="font-mono font-black text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-md border border-indigo-500/20">
-                  {sequentialModal.progressPercent}%
-                </span>
-              </div>
-              <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden p-0.5 border border-slate-700/50">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    sequentialModal.isComplete
-                      ? (sequentialModal.hasErrors ? 'bg-gradient-to-r from-amber-500 to-emerald-500' : 'bg-emerald-500')
-                      : 'bg-gradient-to-r from-indigo-500 to-cyan-400'
-                  }`}
-                  style={{ width: `${Math.max(5, sequentialModal.progressPercent)}%` }}
-                />
+              <div className="text-center">
+                <h3 className="font-display font-extrabold text-base text-slate-900">{sequentialModal.activeStepName}</h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">{sequentialModal.activeDetail}</p>
               </div>
             </div>
 
-            {/* Live Dynamic Status / Alert Banner */}
-            <div className={`p-3.5 rounded-xl border transition-all duration-300 flex items-start gap-3 ${
-              sequentialModal.isComplete
-                ? (sequentialModal.hasErrors
-                    ? 'bg-amber-950/40 border-amber-500/30 text-amber-200'
-                    : 'bg-emerald-950/40 border-emerald-500/30 text-emerald-200')
-                : 'bg-indigo-950/40 border-indigo-500/30 text-indigo-200'
-            }`}>
-              <div className="mt-0.5 flex-shrink-0">
-                {sequentialModal.isComplete ? (
-                  sequentialModal.hasErrors ? (
-                    <AlertCircle className="w-4 h-4 text-amber-400" />
-                  ) : (
-                    <CheckCircle className="w-4 h-4 text-emerald-400" />
-                  )
-                ) : (
-                  <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold leading-tight">
-                  {sequentialModal.activeStepName}
-                </p>
-                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
-                  {sequentialModal.activeDetail}
-                </p>
-              </div>
-            </div>
-
-            {/* Step-by-Step Pipeline */}
-            <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto pr-1">
-              {sequentialModal.steps.map((step, idx) => {
+            {/* Per-page status panel - one row per page, each becoming its
+                own confirmation box the instant it completes */}
+            <div className="flex flex-col gap-2">
+              {sequentialModal.steps.map((step) => {
                 const Icon = step.icon;
-                const isCurrent = sequentialModal.currentStepIndex === idx && step.status === 'processing';
                 return (
                   <div
                     key={step.id}
-                    className={`flex items-center gap-3 rounded-xl border px-3 py-2 transition-all duration-200 ${
-                      step.status === 'completed'
-                        ? 'bg-emerald-950/30 border-emerald-500/20 text-slate-200'
-                        : step.status === 'failed'
-                        ? 'bg-rose-950/30 border-rose-500/20 text-rose-200'
-                        : isCurrent
-                        ? 'bg-indigo-950/50 border-indigo-500/40 text-white ring-1 ring-indigo-500/30'
-                        : 'bg-slate-800/40 border-slate-800 text-slate-400'
+                    className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all duration-300 ${
+                      step.status === 'completed' ? 'bg-emerald-50 border-emerald-200' :
+                      step.status === 'failed' ? 'bg-rose-50 border-rose-200' :
+                      step.status === 'processing' ? 'bg-indigo-50 border-indigo-200 ring-2 ring-indigo-100' :
+                      'bg-slate-50 border-slate-100'
                     }`}
                   >
-                    <div
-                      className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 text-xs ${
-                        step.status === 'completed'
-                          ? 'bg-emerald-500/20 text-emerald-400'
-                          : step.status === 'failed'
-                          ? 'bg-rose-500/20 text-rose-400'
-                          : isCurrent
-                          ? 'bg-indigo-500/30 text-indigo-300'
-                          : 'bg-slate-800 text-slate-500'
-                      }`}
-                    >
-                      {step.status === 'processing' ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
-                      ) : step.status === 'completed' ? (
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      ) : step.status === 'failed' ? (
-                        <XCircle className="w-3.5 h-3.5 text-rose-400" />
-                      ) : (
-                        <Icon className="w-3.5 h-3.5" />
-                      )}
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                      step.status === 'completed' ? 'bg-emerald-100 text-emerald-600' :
+                      step.status === 'failed' ? 'bg-rose-100 text-rose-600' :
+                      step.status === 'processing' ? 'bg-indigo-100 text-indigo-600' :
+                      'bg-slate-100 text-slate-400'
+                    }`}>
+                      {step.status === 'processing' ? <Loader2 className="w-4 h-4 animate-spin" /> :
+                       step.status === 'completed' ? <Check className="w-4 h-4" /> :
+                       step.status === 'failed' ? <XCircle className="w-4 h-4" /> :
+                       <Icon className="w-4 h-4" />}
                     </div>
-
-                    <div className="min-w-0 flex-1 flex items-center justify-between gap-2">
-                      <span className={`text-xs font-semibold truncate ${isCurrent ? 'font-bold text-white' : ''}`}>
-                        {step.label}
-                      </span>
-                      {step.statBadge && step.status === 'completed' ? (
-                        <span className="text-[10px] font-black text-emerald-300 bg-emerald-500/20 border border-emerald-500/30 rounded-full px-2 py-0.5 flex-shrink-0">
-                          {step.statBadge}
-                        </span>
-                      ) : step.status === 'processing' ? (
-                        <span className="text-[10px] font-mono text-indigo-300 animate-pulse flex-shrink-0">
-                          syncing...
-                        </span>
-                      ) : step.status === 'failed' ? (
-                        <span className="text-[10px] font-bold text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded flex-shrink-0">
-                          failed
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-slate-500 flex-shrink-0">queued</span>
-                      )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-slate-800 truncate">{step.label}</span>
+                        {step.statBadge && step.status === 'completed' && (
+                          <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 rounded-full px-2 py-0.5 flex-shrink-0">
+                            {step.statBadge}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-[11px] mt-0.5 truncate ${step.status === 'failed' ? 'text-rose-600' : 'text-slate-500'}`}>
+                        {step.message}
+                      </p>
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            {/* Completion Summary Stats */}
-            {sequentialModal.isComplete && sequentialModal.completedStats.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
-                {sequentialModal.completedStats.map((stat, sIdx) => (
-                  <div key={sIdx} className="bg-slate-800/80 border border-slate-700/60 rounded-xl p-2.5">
-                    <span className="text-[9px] text-slate-400 font-mono font-bold uppercase tracking-wider block truncate">
-                      {stat.label}
-                    </span>
-                    <span className="text-xs font-black text-emerald-400 truncate block mt-0.5">
-                      {stat.value}
-                    </span>
-                  </div>
-                ))}
-              </div>
+            {/* Footer */}
+            {sequentialModal.isComplete ? (
+              <button
+                type="button"
+                onClick={() => setSequentialModal(null)}
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 rounded-xl transition shadow-md cursor-pointer"
+              >
+                {sequentialModal.hasErrors ? 'Got It - Review Warnings' : 'Awesome, All Synced!'}
+              </button>
+            ) : (
+              <p className="text-center text-[10px] text-slate-400 font-mono font-bold uppercase tracking-wide">
+                Syncing page by page - please keep this open...
+              </p>
             )}
-
-            {/* Modal Dialog Footer Controls */}
-            <div className="pt-2 border-t border-slate-800">
-              {sequentialModal.isComplete ? (
-                <div className="flex flex-col sm:flex-row items-center gap-2 w-full">
-                  {setActiveTab && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSequentialModal(null);
-                        setActiveTab('squad');
-                      }}
-                      className="w-full sm:flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition shadow-md cursor-pointer flex items-center justify-center gap-1.5"
-                    >
-                      <Users className="w-3.5 h-3.5" />
-                      View Squad Roster
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setSequentialModal(null)}
-                    className="w-full sm:flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition cursor-pointer border border-slate-700"
-                  >
-                    Done
-                  </button>
-                </div>
-              ) : (
-                <p className="text-center text-[10px] text-slate-400 font-mono flex items-center justify-center gap-1.5 py-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-                  Spacing requests sequentially to prevent rate limits...
-                </p>
-              )}
-            </div>
-
           </div>
         </div>
       )}
