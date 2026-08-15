@@ -1425,7 +1425,13 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
               </div>
 
               {/* Login Credentials Box */}
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleDirectSync();
+                }}
+                className="bg-slate-50 border border-slate-200 rounded-xl p-4"
+              >
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 block mb-2.5">
                   1. Battrick Account Credentials
                 </span>
@@ -1450,7 +1456,6 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
                       placeholder="Your Battrick password"
                       autoComplete="current-password"
                       className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleDirectSync(); }}
                     />
                   </div>
                 </div>
@@ -1466,7 +1471,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
                     Remember my username on this device (password is never saved)
                   </label>
                 </div>
-              </div>
+              </form>
 
               {/* Configurable Sync Sections Checklist */}
               <div className="bg-white border border-slate-200 rounded-xl p-4">
