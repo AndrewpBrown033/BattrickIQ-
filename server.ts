@@ -871,7 +871,7 @@ Respond with supportive, highly specialized, yet easy-to-read formatting. Use Ma
   });
 
   // Determine if we should run in development mode with Vite middleware
-  const isDev = process.env.NODE_ENV !== "production" || !process.argv[1]?.includes('dist/server.cjs');
+  const isDev = process.env.NODE_ENV !== "production";
 
   // Vite middleware for development
   if (isDev) {
@@ -884,12 +884,7 @@ Respond with supportive, highly specialized, yet easy-to-read formatting. Use Ma
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      // Only serve index.html for navigation requests, not for missing assets/scripts
-      if (req.headers.accept?.includes('text/html') || (!req.path.includes('.') && !req.path.startsWith('/api'))) {
-        res.sendFile(path.join(distPath, 'index.html'));
-      } else {
-        res.status(404).set('Content-Type', 'text/plain').send('Not Found');
-      }
+      res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
