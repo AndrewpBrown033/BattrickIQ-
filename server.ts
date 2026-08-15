@@ -395,6 +395,7 @@ async function startServer() {
       // Return raw HTML data for client-side parsing
       res.json({
         success: true,
+        pageStatuses: results.map(r => ({ name: r.name, success: r.success, error: r.error || null })),
         data: {
           squad: results.find(r => r.name === 'squad')?.html || '',
           nets: results.find(r => r.name === 'nets')?.html || '',

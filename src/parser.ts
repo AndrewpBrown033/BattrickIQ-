@@ -1277,23 +1277,80 @@ export function estimateWeeksToNextLevel(
   currentSkillLevel: number,
   playerAge: number,
   netsCount: number,
-  coachLevel: number = 9 // Default Superb Coach
+  coachLevel: number = 9, // Default Superb Coach
+  skillType: 'batting' | 'bowling' | 'keeping' | 'stamina' | 'fielding' = 'batting',
+  isSquadTraining: boolean = false
 ): number {
-  if (netsCount <= 0) return Infinity;
-  if (currentSkillLevel >= 20) return 0;
+  // Max skill levels in Battrick: Stamina max is 11 (superb*), other skills max is 20 (elite)
+  const maxLevel = skillType === 'stamina' ? 11 : 20;
+  if (currentSkillLevel >= maxLevel) return 0;
+  if (netsCount <= 0 && !isSquadTraining) return Infinity;
 
-  const ageFactor = Math.pow(1.22, playerAge - 17);
+  // 1. Stamina Training:
+  // Rule: Squad Training for stamina takes a flat 6 weeks to pop using one net per week for players aged 17 to 32.
+  if (skillType === 'stamina') {
+    let effectiveNets = isSquadTraining && netsCount === 0 ? 1 : netsCount;
+    let netMultiplier = 1.0;
+    if (effectiveNets === 1) netMultiplier = 1.0;
+    else if (effectiveNets === 2) netMultiplier = 1.5;
+    else if (effectiveNets >= 3) netMultiplier = 1.75;
+
+    // For ages 17 to 32: Flat 6 weeks per pop with 1 net/squad training
+    if (playerAge >= 17 && playerAge <= 32) {
+      const weeks = 6.0 / netMultiplier;
+      return parseFloat(weeks.toFixed(1));
+    }
+    
+    // For ages 33+: Stamina decay starts affecting training speed
+    const decayFactor = Math.pow(1.15, playerAge - 32);
+    const weeks = (6.0 * decayFactor) / netMultiplier;
+    return parseFloat(weeks.toFixed(1));
+  }
+
+  // 2. Fielding Training:
+  // Rule: Fielding squad training takes about 5 to 6 weeks per pop (~5.5 weeks standard)
+  if (skillType === 'fielding') {
+    let effectiveNets = isSquadTraining && netsCount === 0 ? 1 : netsCount;
+    let netMultiplier = 1.0;
+    if (effectiveNets === 1) netMultiplier = 1.0;
+    else if (effectiveNets === 2) netMultiplier = 1.5;
+    else if (effectiveNets >= 3) netMultiplier = 1.75;
+
+    const baseFieldingWeeks = 5.5; // 5 to 6 weeks standard
+    const coachFactor = 1.0 / (0.8 + (coachLevel * 0.022));
+
+    if (playerAge <= 30) {
+      const weeks = (baseFieldingWeeks * coachFactor) / netMultiplier;
+      return parseFloat(weeks.toFixed(1));
+    }
+
+    const agePenalty = Math.pow(1.08, playerAge - 30);
+    const weeks = (baseFieldingWeeks * agePenalty * coachFactor) / netMultiplier;
+    return parseFloat(weeks.toFixed(1));
+  }
+
+  // 3. Primary Skills (Batting, Bowling, Keeping):
+  // Age factor with 22% decay per year from 17, coach multiplier, and diminishing returns for multiple nets
+  const effectiveNets = Math.max(1, netsCount);
+  let effectiveNetStrength = 1.0;
+  if (effectiveNets === 2) effectiveNetStrength = 1.5;
+  else if (effectiveNets >= 3) effectiveNetStrength = 1.75;
+
+  const ageFactor = Math.pow(1.22, Math.max(0, playerAge - 17));
   const coachFactor = 1.0 / (0.6 + (coachLevel * 0.044));
-
-  let effectiveNetStrength = 0;
-  if (netsCount === 1) effectiveNetStrength = 1.0;
-  else if (netsCount === 2) effectiveNetStrength = 1.5;
-  else if (netsCount >= 3) effectiveNetStrength = 1.75;
-
-  const skillFactor = 3.5 + (currentSkillLevel * 0.12);
+  const skillFactor = 4.0 + (currentSkillLevel * 0.14);
   const totalWeeks = (skillFactor * ageFactor * coachFactor) / effectiveNetStrength;
 
   return parseFloat(totalWeeks.toFixed(1));
+}
+
+// Helper utilities for quick Stamina & Fielding calculations
+export function getStaminaPopWeeks(playerAge: number, netsCount: number = 1, isSquadTraining: boolean = false): number {
+  return estimateWeeksToNextLevel(0, playerAge, netsCount, 9, 'stamina', isSquadTraining);
+}
+
+export function getFieldingPopWeeks(playerAge: number, netsCount: number = 1, isSquadTraining: boolean = false, coachLevel: number = 9): number {
+  return estimateWeeksToNextLevel(0, playerAge, netsCount, coachLevel, 'fielding', isSquadTraining);
 }
 
 // Weighted squad player score calculation matching popup.js criteria

@@ -34,6 +34,24 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
     fielding: 0,
   });
   const [coachLevel, setCoachLevel] = useState<number>(9); // 9 = Superb Coach by default
+  const [squadTrainingStamina, setSquadTrainingStamina] = useState<boolean>(() => {
+    return localStorage.getItem('bt_squad_training_stamina') === 'true';
+  });
+  const [squadTrainingFielding, setSquadTrainingFielding] = useState<boolean>(() => {
+    return localStorage.getItem('bt_squad_training_fielding') === 'true';
+  });
+
+  const handleToggleSquadStamina = (enabled: boolean) => {
+    setSquadTrainingStamina(enabled);
+    localStorage.setItem('bt_squad_training_stamina', String(enabled));
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  const handleToggleSquadFielding = (enabled: boolean) => {
+    setSquadTrainingFielding(enabled);
+    localStorage.setItem('bt_squad_training_fielding', String(enabled));
+    window.dispatchEvent(new Event('storage'));
+  };
 
   useEffect(() => {
     if (!playerId) return;
@@ -71,6 +89,9 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
           console.error('Error loading player details:', e);
         }
       }
+
+      setSquadTrainingStamina(localStorage.getItem('bt_squad_training_stamina') === 'true');
+      setSquadTrainingFielding(localStorage.getItem('bt_squad_training_fielding') === 'true');
     };
 
     loadPlayer();
@@ -140,9 +161,20 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
     }
     
     const netsKeys = ['batting', 'bowling', 'keeping', 'stamina', 'fielding'] as const;
-    const activeNets = netsKeys.filter(k => plannerNets[k] > 0);
-    const chosenSkillKey = activeNets.length > 0 
-      ? activeNets[Math.floor(Math.random() * activeNets.length)] 
+    const activeCandidates: ('batting' | 'bowling' | 'keeping' | 'stamina' | 'fielding')[] = [];
+    
+    netsKeys.forEach(k => {
+      if (plannerNets[k] > 0) activeCandidates.push(k);
+    });
+    if (squadTrainingStamina && !activeCandidates.includes('stamina')) {
+      activeCandidates.push('stamina');
+    }
+    if (squadTrainingFielding && !activeCandidates.includes('fielding')) {
+      activeCandidates.push('fielding');
+    }
+    
+    const chosenSkillKey = activeCandidates.length > 0 
+      ? activeCandidates[Math.floor(Math.random() * activeCandidates.length)] 
       : 'batting';
       
     const updatedSkills = { ...player.skills };
@@ -151,7 +183,9 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
     const newLevel = Math.min(maxLevel, oldLevel + 1);
     updatedSkills[chosenSkillKey as keyof typeof updatedSkills] = newLevel;
     
-    const btrGain = Math.round(1200 + Math.random() * 800 + (plannerNets[chosenSkillKey] || 0) * 400);
+    const isSquadPop = (chosenSkillKey === 'stamina' && squadTrainingStamina && plannerNets.stamina === 0) ||
+                       (chosenSkillKey === 'fielding' && squadTrainingFielding && plannerNets.fielding === 0);
+    const btrGain = Math.round(1200 + Math.random() * 800 + (plannerNets[chosenSkillKey] || (isSquadPop ? 1 : 0)) * 400);
     const nextBtr = player.btRating + btrGain;
     
     let nextWage = player.wage;
@@ -160,7 +194,7 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
       nextWage = Math.round((player.wage * (isYoung ? 1.15 : 1.05)) / 100) * 100;
     }
     
-    const note = `Training Pop: ${chosenSkillKey.toUpperCase()} popped ${getSkillLabel(chosenSkillKey, oldLevel)} -> ${getSkillLabel(chosenSkillKey, newLevel)}`;
+    const note = `Training Pop: ${chosenSkillKey.toUpperCase()} popped ${getSkillLabel(chosenSkillKey, oldLevel)} -> ${getSkillLabel(chosenSkillKey, newLevel)}${isSquadPop ? ' (Squad Training)' : ''}`;
     
     const newHistoryEntry = {
       season: nextSeason,
@@ -490,6 +524,51 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
                   </select>
                 </div>
 
+                {/* Squad Training Toggles */}
+                <div className="bg-white p-3 rounded-xl border border-slate-200/60 shadow-sm flex flex-col gap-2">
+                  <div className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                    <span>Squad-Wide Training Flags</span>
+                    <span className="text-[10px] font-normal text-slate-400">Affects entire squad</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSquadStamina(!squadTrainingStamina)}
+                      className={`px-2.5 py-2 rounded-lg text-[11px] font-semibold flex flex-col items-start border transition cursor-pointer text-left ${
+                        squadTrainingStamina 
+                          ? 'bg-emerald-50 border-emerald-300 text-emerald-800 ring-1 ring-emerald-400/30' 
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span>⚡ Squad Stamina</span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${squadTrainingStamina ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-600'}`}>
+                          {squadTrainingStamina ? 'ON' : 'OFF'}
+                        </span>
+                      </div>
+                      <span className="text-[9px] opacity-75 mt-0.5 font-normal">Flat 6 wks (Age 17-32)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSquadFielding(!squadTrainingFielding)}
+                      className={`px-2.5 py-2 rounded-lg text-[11px] font-semibold flex flex-col items-start border transition cursor-pointer text-left ${
+                        squadTrainingFielding 
+                          ? 'bg-blue-50 border-blue-300 text-blue-800 ring-1 ring-blue-400/30' 
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span>🧤 Squad Fielding</span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${squadTrainingFielding ? 'bg-blue-200 text-blue-900' : 'bg-slate-200 text-slate-600'}`}>
+                          {squadTrainingFielding ? 'ON' : 'OFF'}
+                        </span>
+                      </div>
+                      <span className="text-[9px] opacity-75 mt-0.5 font-normal">5 to 6 wks per pop</span>
+                    </button>
+                  </div>
+                </div>
+
                 {/* Nets list */}
                 <div className="flex flex-col gap-2">
                   {[
@@ -548,32 +627,46 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
                   </div>
 
                   {(() => {
-                    const estimates: { label: string; weeks: number }[] = [];
+                    const estimates: { label: string; weeks: number; note?: string }[] = [];
                     if (plannerNets.batting > 0) {
-                      estimates.push({ label: 'Batting', weeks: estimateWeeksToNextLevel(player.skills.batting, player.age, plannerNets.batting, coachLevel) });
+                      estimates.push({ label: 'Batting', weeks: estimateWeeksToNextLevel(player.skills.batting, player.age, plannerNets.batting, coachLevel, 'batting') });
                     }
                     if (plannerNets.bowling > 0) {
-                      estimates.push({ label: 'Bowling', weeks: estimateWeeksToNextLevel(player.skills.bowling, player.age, plannerNets.bowling, coachLevel) });
+                      estimates.push({ label: 'Bowling', weeks: estimateWeeksToNextLevel(player.skills.bowling, player.age, plannerNets.bowling, coachLevel, 'bowling') });
                     }
                     if (plannerNets.keeping > 0) {
-                      estimates.push({ label: 'Keeping', weeks: estimateWeeksToNextLevel(player.skills.keeping, player.age, plannerNets.keeping, coachLevel) });
+                      estimates.push({ label: 'Keeping', weeks: estimateWeeksToNextLevel(player.skills.keeping, player.age, plannerNets.keeping, coachLevel, 'keeping') });
                     }
-                    if (plannerNets.stamina > 0) {
-                      estimates.push({ label: 'Stamina', weeks: estimateWeeksToNextLevel(player.skills.stamina, player.age, plannerNets.stamina * 2, coachLevel) }); // Stamina trains faster
+                    if (plannerNets.stamina > 0 || squadTrainingStamina) {
+                      const w = estimateWeeksToNextLevel(player.skills.stamina, player.age, plannerNets.stamina, coachLevel, 'stamina', squadTrainingStamina);
+                      const isFlat = player.age >= 17 && player.age <= 32;
+                      estimates.push({ 
+                        label: plannerNets.stamina > 0 ? 'Stamina' : 'Stamina (Squad Training)', 
+                        weeks: w,
+                        note: isFlat ? 'Flat 6.0 wks (Age 17-32)' : undefined
+                      });
                     }
-                    if (plannerNets.fielding > 0) {
-                      estimates.push({ label: 'Fielding', weeks: estimateWeeksToNextLevel(player.skills.fielding || 0, player.age, plannerNets.fielding, coachLevel) });
+                    if (plannerNets.fielding > 0 || squadTrainingFielding) {
+                      const w = estimateWeeksToNextLevel(player.skills.fielding || 0, player.age, plannerNets.fielding, coachLevel, 'fielding', squadTrainingFielding);
+                      estimates.push({ 
+                        label: plannerNets.fielding > 0 ? 'Fielding' : 'Fielding (Squad Training)', 
+                        weeks: w,
+                        note: '5 to 6 wks per pop'
+                      });
                     }
 
                     if (estimates.length === 0) {
-                      return <span className="text-slate-500 italic text-[11px] py-1">No coaching nets assigned. Set nets to view simulated pop timers.</span>;
+                      return <span className="text-slate-500 italic text-[11px] py-1">No nets or squad training active. Assign nets or toggle squad training.</span>;
                     }
 
                     return (
                       <div className="flex flex-col gap-1 font-semibold text-slate-700">
                         {estimates.map((est) => (
                           <div key={est.label} className="flex justify-between items-center bg-white/70 px-2 py-1.5 rounded-lg border border-slate-100">
-                            <span className="text-slate-650 font-semibold">{est.label}:</span>
+                            <span className="text-slate-650 font-semibold flex items-center gap-1">
+                              {est.label}:
+                              {est.note && <span className="text-[10px] text-slate-400 font-normal">({est.note})</span>}
+                            </span>
                             <span className="font-mono text-blue-700 font-bold">{est.weeks} weeks</span>
                           </div>
                         ))}
@@ -635,23 +728,23 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
                   }[] = [];
 
                   const activeNetsList = [
-                    { key: 'batting' as const, label: 'Batting', level: player.skills.batting },
-                    { key: 'bowling' as const, label: 'Bowling', level: player.skills.bowling },
-                    { key: 'keeping' as const, label: 'Wicket Keeping', level: player.skills.keeping },
-                    { key: 'stamina' as const, label: 'Stamina', level: player.skills.stamina },
-                    { key: 'fielding' as const, label: 'Fielding', level: player.skills.fielding || 0 },
+                    { key: 'batting' as const, label: 'Batting', level: player.skills.batting, isSquad: false },
+                    { key: 'bowling' as const, label: 'Bowling', level: player.skills.bowling, isSquad: false },
+                    { key: 'keeping' as const, label: 'Wicket Keeping', level: player.skills.keeping, isSquad: false },
+                    { key: 'stamina' as const, label: 'Stamina', level: player.skills.stamina, isSquad: squadTrainingStamina },
+                    { key: 'fielding' as const, label: 'Fielding', level: player.skills.fielding || 0, isSquad: squadTrainingFielding },
                   ];
 
                   activeNetsList.forEach((n) => {
                     const count = plannerNets[n.key];
                     const maxLevelForSkill = n.key === 'stamina' ? 11 : 20;
-                    if (count > 0 && n.level < maxLevelForSkill) {
-                      const multiplier = n.key === 'stamina' ? 2 : 1;
-                      const weeks = estimateWeeksToNextLevel(n.level, player.age, count * multiplier, coachLevel);
+                    const isTrainingActive = count > 0 || (n.isSquad && count === 0);
+                    if (isTrainingActive && n.level < maxLevelForSkill) {
+                      const weeks = estimateWeeksToNextLevel(n.level, player.age, count, coachLevel, n.key, n.isSquad);
                       if (weeks !== Infinity && weeks > 0) {
                         const target = addWeeks(currentSeason, currentWeek, weeks);
                         forecasts.push({
-                          skillName: n.label,
+                          skillName: n.label + (count === 0 && n.isSquad ? ' (Squad)' : ''),
                           currentLevel: n.level,
                           targetLevel: n.level + 1,
                           weeksNeeded: weeks,

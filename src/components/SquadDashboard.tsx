@@ -7,7 +7,8 @@ import {
 } from '../parser';
 import { 
   Search, Coins, User, TrendingUp, 
-  Shield, Award, Activity, Info, History, Plus, ChevronRight, Calendar, Sparkles
+  Shield, Award, Activity, Info, History, Plus, ChevronRight, Calendar, Sparkles,
+  LayoutGrid, List, X, ArrowUpDown
 } from 'lucide-react';
 import { 
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip 
@@ -48,8 +49,34 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [roleFilter, setRoleFilter] = useState<string>('All');
   const [sortBy, setSortBy] = useState<'name' | 'age' | 'wage' | 'btRating' | 'score'>('score');
+  const [viewMode, setViewMode] = useState<'cards' | 'compact'>(() => {
+    return (localStorage.getItem('bt_squad_view_mode') as 'cards' | 'compact') || 'cards';
+  });
   const [selectedPlayer, setSelectedPlayer] = useState<BattrickPlayer | null>(null);
   const [inspectorTab, setInspectorTab] = useState<'skills' | 'history'>('skills');
+
+  const handleSetViewMode = (mode: 'cards' | 'compact') => {
+    setViewMode(mode);
+    localStorage.setItem('bt_squad_view_mode', mode);
+  };
+
+  // Helper for top player skill
+  const getTopSkillInfo = (p: BattrickPlayer) => {
+    const list = [
+      { key: 'batting' as const, label: 'BAT', val: p.skills.batting },
+      { key: 'bowling' as const, label: 'BOWL', val: p.skills.bowling },
+      { key: 'keeping' as const, label: 'KEEP', val: p.skills.keeping },
+      { key: 'fielding' as const, label: 'FIELD', val: p.skills.fielding || 0 },
+      { key: 'stamina' as const, label: 'STAM', val: p.skills.stamina }
+    ];
+    list.sort((a, b) => b.val - a.val);
+    const top = list[0];
+    return {
+      label: top.label,
+      name: getSkillLabel(top.key, top.val),
+      val: top.val
+    };
+  };
 
   // Training planner states
   const [plannerNets, setPlannerNets] = useState<{ batting: number; bowling: number; keeping: number; stamina: number; fielding: number }>({
@@ -60,6 +87,24 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
     fielding: 0,
   });
   const [coachLevel, setCoachLevel] = useState<number>(9); // 9 = Superb Coach by default
+  const [squadTrainingStamina, setSquadTrainingStamina] = useState<boolean>(() => {
+    return localStorage.getItem('bt_squad_training_stamina') === 'true';
+  });
+  const [squadTrainingFielding, setSquadTrainingFielding] = useState<boolean>(() => {
+    return localStorage.getItem('bt_squad_training_fielding') === 'true';
+  });
+
+  const handleToggleSquadStamina = (enabled: boolean) => {
+    setSquadTrainingStamina(enabled);
+    localStorage.setItem('bt_squad_training_stamina', String(enabled));
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  const handleToggleSquadFielding = (enabled: boolean) => {
+    setSquadTrainingFielding(enabled);
+    localStorage.setItem('bt_squad_training_fielding', String(enabled));
+    window.dispatchEvent(new Event('storage'));
+  };
 
   const handleSimulateWeeklyPop = (player: BattrickPlayer) => {
     if (!player.history || player.history.length === 0) return;
@@ -73,9 +118,20 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
     }
     
     const netsKeys = ['batting', 'bowling', 'keeping', 'stamina', 'fielding'] as const;
-    const activeNets = netsKeys.filter(k => plannerNets[k] > 0);
-    const chosenSkillKey = activeNets.length > 0 
-      ? activeNets[Math.floor(Math.random() * activeNets.length)] 
+    const activeCandidates: ('batting' | 'bowling' | 'keeping' | 'stamina' | 'fielding')[] = [];
+    
+    netsKeys.forEach(k => {
+      if (plannerNets[k] > 0) activeCandidates.push(k);
+    });
+    if (squadTrainingStamina && !activeCandidates.includes('stamina')) {
+      activeCandidates.push('stamina');
+    }
+    if (squadTrainingFielding && !activeCandidates.includes('fielding')) {
+      activeCandidates.push('fielding');
+    }
+    
+    const chosenSkillKey = activeCandidates.length > 0 
+      ? activeCandidates[Math.floor(Math.random() * activeCandidates.length)] 
       : 'batting';
       
     const updatedSkills = { ...player.skills };
@@ -84,7 +140,9 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
     const newLevel = Math.min(maxLevel, oldLevel + 1);
     updatedSkills[chosenSkillKey as keyof typeof updatedSkills] = newLevel;
     
-    const btrGain = Math.round(1200 + Math.random() * 800 + (plannerNets[chosenSkillKey] || 0) * 400);
+    const isSquadPop = (chosenSkillKey === 'stamina' && squadTrainingStamina && plannerNets.stamina === 0) ||
+                       (chosenSkillKey === 'fielding' && squadTrainingFielding && plannerNets.fielding === 0);
+    const btrGain = Math.round(1200 + Math.random() * 800 + (plannerNets[chosenSkillKey] || (isSquadPop ? 1 : 0)) * 400);
     const nextBtr = player.btRating + btrGain;
     
     let nextWage = player.wage;
@@ -93,7 +151,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
       nextWage = Math.round((player.wage * (isYoung ? 1.15 : 1.05)) / 100) * 100;
     }
     
-    const note = `Training Pop: ${chosenSkillKey.toUpperCase()} popped ${getSkillLabel(chosenSkillKey, oldLevel)} -> ${getSkillLabel(chosenSkillKey, newLevel)}`;
+    const note = `Training Pop: ${chosenSkillKey.toUpperCase()} popped ${getSkillLabel(chosenSkillKey, oldLevel)} -> ${getSkillLabel(chosenSkillKey, newLevel)}${isSquadPop ? ' (Squad Training)' : ''}`;
     
     const newHistoryEntry = {
       season: nextSeason,
@@ -366,38 +424,94 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
       <div className="w-full flex flex-col gap-5">
         
         {/* Filters and List */}
-        <div className="bg-white border border-slate-300 rounded-xl p-5 shadow-lg shadow-slate-400/50">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-200 pb-4 mb-4">
-            <h3 className="font-display font-bold text-base text-slate-800 flex items-center gap-2">
-              <User className="w-4.5 h-4.5 text-slate-600" />
-              My Squad ({squad.length} Players)
-            </h3>
+        <div className="bg-white border border-slate-300 rounded-xl p-3.5 sm:p-5 shadow-lg shadow-slate-400/50">
+          {/* Header Row: Title, View Switcher & Search */}
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 border-b border-slate-200 pb-3.5 mb-3.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700">
+                  <User className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-display font-bold text-sm sm:text-base text-slate-800 flex items-center gap-1.5">
+                    My Squad
+                    <span className="text-xs font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/60 px-2 py-0.5 rounded-full">
+                      {squad.length}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400 hidden sm:block">
+                    Showing {filteredSquad.length} of {squad.length} players
+                  </p>
+                </div>
+              </div>
 
-            {/* Quick search input */}
-            <div className="relative w-full sm:w-64">
-              <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none">
-                <Search className="w-4 h-4 text-slate-400" />
+              {/* View mode toggle (Cards vs Compact Table) */}
+              <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => handleSetViewMode('cards')}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition ${
+                    viewMode === 'cards'
+                      ? 'bg-white text-slate-800 shadow-sm border border-slate-250'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                  title="Card View"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span className="hidden xs:inline text-[11px]">Cards</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetViewMode('compact')}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition ${
+                    viewMode === 'compact'
+                      ? 'bg-white text-slate-800 shadow-sm border border-slate-250'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                  title="Compact List View"
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span className="hidden xs:inline text-[11px]">List</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick search input with clear button */}
+            <div className="relative w-full md:w-64">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none text-slate-400">
+                <Search className="w-4 h-4" />
               </span>
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search player name..."
-                className="w-full pl-8.5 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                className="w-full pl-8.5 pr-8 py-2 sm:py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
               />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Table Filters header */}
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            {/* Role buttons */}
-            <div className="flex flex-wrap gap-1 bg-slate-200 p-1 rounded-lg border border-slate-300">
+          {/* Table Filters bar (Swipeable horizontal chips on mobile) */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3.5">
+            {/* Horizontal scrollable role pills */}
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5 -mx-1 px-1">
               {['All', 'Batter', 'Bowler', 'Keeper', 'All-rounder'].map(role => (
                 <button
                   key={role}
                   onClick={() => setRoleFilter(role)}
-                  className={`px-2.5 py-1 rounded text-xs font-semibold transition duration-150 ${
-                    roleFilter === role ? 'bg-white text-slate-800 shadow-sm border border-slate-250' : 'text-slate-500 hover:text-slate-700'
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition ${
+                    roleFilter === role 
+                      ? 'bg-slate-800 text-white shadow-sm' 
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80 border border-slate-200/60'
                   }`}
                 >
                   {role}
@@ -406,41 +520,138 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
             </div>
 
             {/* Sort Dropdown */}
-            <div className="flex items-center gap-1.5 text-xs text-slate-600">
-              <span className="font-medium">Sort by:</span>
+            <div className="flex items-center justify-between sm:justify-end gap-1.5 text-xs text-slate-600">
+              <span className="font-medium text-[11px] text-slate-500 flex items-center gap-1">
+                <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                Sort:
+              </span>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
-                className="bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-800 focus:outline-none"
+                className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               >
                 <option value="score">Performance Index</option>
-                <option value="btRating">Battrick Rating</option>
+                <option value="btRating">Battrick Rating (BTR)</option>
                 <option value="wage">Weekly Wage</option>
                 <option value="age">Player Age</option>
-                <option value="name">Full Name</option>
+                <option value="name">Player Name (A-Z)</option>
               </select>
             </div>
           </div>
 
-          {/* Players List Grid */}
+          {/* Players List */}
           {filteredSquad.length === 0 ? (
             <div className="text-center py-12 px-6 text-slate-400 border border-dashed border-slate-200 rounded-xl bg-slate-50 flex flex-col items-center justify-center">
               <User className="w-10 h-10 text-slate-300 mb-2" />
-              <p className="text-xs font-semibold text-slate-800">No active squad data found.</p>
+              <p className="text-xs font-semibold text-slate-800">No matching squad members found.</p>
               <p className="text-[11px] text-slate-500 mt-1 max-w-sm mx-auto leading-relaxed">
-                Paste your Battrick squad details in the Roster Sync tab, or load the complete Demo Club there to explore and play with pre-populated data.
+                {searchQuery || roleFilter !== 'All' 
+                  ? 'Try clearing your search query or role filter.'
+                  : 'Paste your Battrick squad details in the Roster Sync tab to populate your roster.'}
               </p>
-              {setActiveTab && (
+              {(searchQuery || roleFilter !== 'All') ? (
                 <button
-                  onClick={() => setActiveTab('sync')}
-                  className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition cursor-pointer"
+                  onClick={() => { setSearchQuery(''); setRoleFilter('All'); }}
+                  className="mt-3 px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-semibold transition"
                 >
-                  Go to Roster Sync
+                  Reset Filters
                 </button>
+              ) : (
+                setActiveTab && (
+                  <button
+                    onClick={() => setActiveTab('sync')}
+                    className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition cursor-pointer"
+                  >
+                    Go to Roster Sync
+                  </button>
+                )
               )}
             </div>
+          ) : viewMode === 'compact' ? (
+            /* Compact Mobile-First List View */
+            <div className="overflow-visible sm:max-h-[640px] sm:overflow-y-auto divide-y divide-slate-150 rounded-xl border border-slate-200 bg-white shadow-sm overscroll-contain">
+              {filteredSquad.map((player) => {
+                const pScore = getPlayerWeightedScore(player);
+                const isSelected = selectedPlayer?.id === player.id;
+                const changes = getWeeklyChanges(player);
+                const hasPop = changes && changes.skillPops && changes.skillPops.length > 0;
+                const topSkill = getTopSkillInfo(player);
+
+                return (
+                  <div
+                    key={player.id}
+                    onClick={() => {
+                      if (onSelectPlayer) {
+                        onSelectPlayer(player.id);
+                      } else {
+                        setSelectedPlayer(player);
+                      }
+                    }}
+                    className={`p-3 transition duration-150 cursor-pointer flex items-center justify-between gap-3 hover:bg-slate-50 active:bg-slate-100 ${
+                      isSelected ? 'bg-indigo-50/70' : hasPop ? 'bg-emerald-50/30' : ''
+                    }`}
+                  >
+                    {/* Left: Avatar + Details */}
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 font-bold text-xs border ${
+                        player.role === 'Batter' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                        player.role === 'Bowler' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                        player.role === 'Keeper' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                        'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      }`}>
+                        {player.name.charAt(0)}
+                      </div>
+                      
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-bold text-slate-800 truncate">{player.name}</span>
+                          <span className="text-[10px] text-slate-400">({player.age}y)</span>
+                          {primaryKeeper && primaryKeeper.id === player.id && (
+                            <span className="bg-amber-100 text-amber-800 border border-amber-200 text-[8px] px-1 py-0.2 rounded font-bold uppercase">
+                              WK
+                            </span>
+                          )}
+                          {hasPop && (
+                            <span className="bg-emerald-100 text-emerald-800 text-[8px] px-1 py-0.2 rounded font-bold">
+                              ▲ POP
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                          <span className="font-medium">{player.role}</span>
+                          <span>•</span>
+                          <span>BTR <strong className="text-slate-700 font-mono">{player.btRating.toLocaleString()}</strong></span>
+                          <span>•</span>
+                          <span>£{player.wage.toLocaleString()}/wk</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: Top Skill + IQ + Chevron */}
+                    <div className="flex items-center gap-2.5 shrink-0 text-right">
+                      <div className="hidden xs:flex flex-col items-end">
+                        <span className="text-[9px] uppercase font-bold text-slate-400 font-mono">
+                          {topSkill.label}
+                        </span>
+                        <span className="text-[11px] font-bold text-slate-700 truncate max-w-[80px]">
+                          {topSkill.name}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col items-end">
+                        <span className="text-[8px] uppercase font-bold text-slate-400">IQ</span>
+                        <span className="font-mono font-black text-xs text-indigo-700">{pScore}</span>
+                      </div>
+
+                      <ChevronRight className="w-4 h-4 text-slate-400" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-1">
+            /* Cards View (Mobile-Friendly Responsive Grid) */
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 overflow-visible sm:max-h-[640px] sm:overflow-y-auto pr-0 sm:pr-1 overscroll-contain">
               {filteredSquad.map((player) => {
                 const pScore = getPlayerWeightedScore(player);
                 const isSelected = selectedPlayer?.id === player.id;
@@ -485,12 +696,12 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                         setSelectedPlayer(player);
                       }
                     }}
-                    className={`p-3.5 rounded-xl border text-left transition duration-150 cursor-pointer flex flex-col justify-between gap-2.5 ${borderHighlight} ${cardBgClass} ${shadowClass}`}
+                    className={`p-3.5 sm:p-4 rounded-xl border text-left transition duration-150 cursor-pointer active:scale-[0.99] flex flex-col justify-between gap-2.5 ${borderHighlight} ${cardBgClass} ${shadowClass}`}
                   >
                     <div className="flex justify-between items-start w-full">
-                      <div>
-                        <div className="text-xs font-bold text-slate-800 flex items-center gap-2 flex-wrap">
-                          {player.name}
+                      <div className="min-w-0 pr-2">
+                        <div className="text-xs sm:text-sm font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+                          <span className="truncate">{player.name}</span>
                           <span className="text-[10px] text-slate-400 font-normal">Age {player.age}</span>
                           {primaryKeeper && primaryKeeper.id === player.id && (
                             <span className="inline-flex items-center gap-0.5 bg-amber-100 text-amber-800 border border-amber-200 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider shadow-sm shrink-0">
@@ -498,7 +709,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                             </span>
                           )}
                         </div>
-                        <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-1">
+                        <div className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-1 flex-wrap">
                           <span className="font-semibold">{player.role}</span>
                           <span>•</span>
                           <span>BT {player.btRating.toLocaleString()}</span>
@@ -519,8 +730,8 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                       </div>
 
                       <div className="text-right shrink-0">
-                        <div className="text-[10px] text-slate-400 uppercase font-semibold">IQ INDEX</div>
-                        <div className="font-mono font-bold text-sm text-indigo-700">{pScore}</div>
+                        <div className="text-[9px] text-slate-400 uppercase font-semibold">IQ INDEX</div>
+                        <div className="font-mono font-black text-sm sm:text-base text-indigo-700">{pScore}</div>
                         {player.nets.batting + player.nets.bowling + player.nets.keeping > 0 && (
                           <div className="inline-block mt-1 px-1.5 py-0.2 bg-indigo-50 text-indigo-700 border border-indigo-200/50 text-[9px] rounded font-mono font-bold">
                             Active Nets
@@ -531,7 +742,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
 
                     {/* Weekly Changes Quick Info */}
                     {changes && (changes.btRatingDiff !== 0 || changes.formDiff !== 0 || changes.fitnessDiff !== 0 || changes.skillPops.length > 0) && (
-                      <div className="flex flex-wrap gap-1.5 mt-0.5 bg-slate-50 p-1.5 rounded-lg border border-slate-100">
+                      <div className="flex flex-wrap gap-1 mt-0.5 bg-slate-50 p-1.5 rounded-lg border border-slate-100">
                         {changes.skillPops.map((pop, i) => (
                           <span key={i} className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-bold rounded flex items-center gap-0.5">
                             ▲ Pop: {pop.skill}
@@ -555,16 +766,16 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                     )}
 
                     {/* Compact Player Skills Direct Display */}
-                    <div className="border-t border-slate-200 pt-2 grid grid-cols-4 gap-1.5 text-[10px]">
+                    <div className="border-t border-slate-200 pt-2 grid grid-cols-4 gap-1 sm:gap-1.5 text-[10px]">
                       {/* BAT */}
-                      <div className={`px-1.5 py-1 rounded border flex flex-col transition-colors duration-150 ${
+                      <div className={`px-1 sm:px-1.5 py-1 rounded border flex flex-col transition-colors duration-150 ${
                         batPop 
                           ? batPop.to > batPop.from 
                             ? 'bg-emerald-100 border-emerald-400 ring-1 ring-emerald-400/30 shadow-sm' 
                             : 'bg-rose-100 border-rose-400 ring-1 ring-rose-400/30 shadow-sm'
                           : 'bg-slate-200/50 border-slate-300'
                       }`}>
-                        <span className={`text-[8px] font-bold uppercase tracking-wider font-mono ${
+                        <span className={`text-[7.5px] sm:text-[8px] font-bold uppercase tracking-wider font-mono ${
                           batPop 
                             ? batPop.to > batPop.from 
                               ? 'text-emerald-700 font-extrabold' 
@@ -573,7 +784,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                         }`}>
                           BAT {batPop ? (batPop.to > batPop.from ? '▲' : '▼') : ''}
                         </span>
-                        <span className={`font-bold truncate capitalize ${
+                        <span className={`font-bold text-[9px] sm:text-[10px] truncate capitalize ${
                           batPop 
                             ? batPop.to > batPop.from 
                               ? 'text-emerald-800' 
@@ -585,14 +796,14 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                       </div>
 
                       {/* BOWL */}
-                      <div className={`px-1.5 py-1 rounded border flex flex-col transition-colors duration-150 ${
+                      <div className={`px-1 sm:px-1.5 py-1 rounded border flex flex-col transition-colors duration-150 ${
                         bowlPop 
                           ? bowlPop.to > bowlPop.from 
                             ? 'bg-emerald-100 border-emerald-400 ring-1 ring-emerald-400/30 shadow-sm' 
                             : 'bg-rose-100 border-rose-400 ring-1 ring-rose-400/30 shadow-sm'
                           : 'bg-slate-200/50 border-slate-300'
                       }`}>
-                        <span className={`text-[8px] font-bold uppercase tracking-wider font-mono ${
+                        <span className={`text-[7.5px] sm:text-[8px] font-bold uppercase tracking-wider font-mono ${
                           bowlPop 
                             ? bowlPop.to > bowlPop.from 
                               ? 'text-emerald-700 font-extrabold' 
@@ -601,7 +812,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                         }`}>
                           BOWL {bowlPop ? (bowlPop.to > bowlPop.from ? '▲' : '▼') : ''}
                         </span>
-                        <span className={`font-bold truncate capitalize ${
+                        <span className={`font-bold text-[9px] sm:text-[10px] truncate capitalize ${
                           bowlPop 
                             ? bowlPop.to > bowlPop.from 
                               ? 'text-emerald-800' 
@@ -613,14 +824,14 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                       </div>
 
                       {/* KEEP */}
-                      <div className={`px-1.5 py-1 rounded border flex flex-col transition-colors duration-150 ${
+                      <div className={`px-1 sm:px-1.5 py-1 rounded border flex flex-col transition-colors duration-150 ${
                         keepPop 
                           ? keepPop.to > keepPop.from 
                             ? 'bg-emerald-100 border-emerald-400 ring-1 ring-emerald-400/30 shadow-sm' 
                             : 'bg-rose-100 border-rose-400 ring-1 ring-rose-400/30 shadow-sm'
                           : 'bg-slate-200/50 border-slate-300'
                       }`}>
-                        <span className={`text-[8px] font-bold uppercase tracking-wider font-mono ${
+                        <span className={`text-[7.5px] sm:text-[8px] font-bold uppercase tracking-wider font-mono ${
                           keepPop 
                             ? keepPop.to > keepPop.from 
                               ? 'text-emerald-700 font-extrabold' 
@@ -629,7 +840,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                         }`}>
                           KEEP {keepPop ? (keepPop.to > keepPop.from ? '▲' : '▼') : ''}
                         </span>
-                        <span className={`font-bold truncate capitalize ${
+                        <span className={`font-bold text-[9px] sm:text-[10px] truncate capitalize ${
                           keepPop 
                             ? keepPop.to > keepPop.from 
                               ? 'text-emerald-800' 
@@ -641,14 +852,14 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                       </div>
 
                       {/* STAM */}
-                      <div className={`px-1.5 py-1 rounded border flex flex-col transition-colors duration-150 ${
+                      <div className={`px-1 sm:px-1.5 py-1 rounded border flex flex-col transition-colors duration-150 ${
                         stamPop 
                           ? stamPop.to > stamPop.from 
                             ? 'bg-emerald-100 border-emerald-400 ring-1 ring-emerald-400/30 shadow-sm' 
                             : 'bg-rose-100 border-rose-400 ring-1 ring-rose-400/30 shadow-sm'
                           : 'bg-slate-200/50 border-slate-300'
                       }`}>
-                        <span className={`text-[8px] font-bold uppercase tracking-wider font-mono ${
+                        <span className={`text-[7.5px] sm:text-[8px] font-bold uppercase tracking-wider font-mono ${
                           stamPop 
                             ? stamPop.to > stamPop.from 
                               ? 'text-emerald-700 font-extrabold' 
@@ -657,7 +868,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                         }`}>
                           STAM {stamPop ? (stamPop.to > stamPop.from ? '▲' : '▼') : ''}
                         </span>
-                        <span className={`font-bold truncate capitalize ${
+                        <span className={`font-bold text-[9px] sm:text-[10px] truncate capitalize ${
                           stamPop 
                             ? stamPop.to > stamPop.from 
                               ? 'text-emerald-800' 
@@ -667,6 +878,12 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                           {getSkillLabel('stamina', player.skills.stamina)}
                         </span>
                       </div>
+                    </div>
+
+                    {/* Mobile Tap Prompt */}
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-[10px] text-slate-400">
+                      <span className="truncate">Tap to inspect career stats & training</span>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     </div>
                   </div>
                 );
@@ -948,6 +1165,51 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                       </select>
                     </div>
 
+                    {/* Squad Training Toggles */}
+                    <div className="bg-white p-2.5 rounded border border-slate-200/60 flex flex-col gap-2">
+                      <div className="text-[11px] font-bold text-slate-700 flex items-center justify-between">
+                        <span>Squad-Wide Training Flags</span>
+                        <span className="text-[9px] font-normal text-slate-400">Affects entire squad</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSquadStamina(!squadTrainingStamina)}
+                          className={`px-2 py-1.5 rounded text-[10px] font-semibold flex flex-col items-start border transition cursor-pointer text-left ${
+                            squadTrainingStamina 
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-800 ring-1 ring-emerald-400/30' 
+                              : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span>⚡ Squad Stamina</span>
+                            <span className={`text-[8px] font-bold px-1 rounded ${squadTrainingStamina ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-600'}`}>
+                              {squadTrainingStamina ? 'ON' : 'OFF'}
+                            </span>
+                          </div>
+                          <span className="text-[8px] opacity-75 mt-0.5 font-normal">Flat 6 wks (Age 17-32)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSquadFielding(!squadTrainingFielding)}
+                          className={`px-2 py-1.5 rounded text-[10px] font-semibold flex flex-col items-start border transition cursor-pointer text-left ${
+                            squadTrainingFielding 
+                              ? 'bg-blue-50 border-blue-300 text-blue-800 ring-1 ring-blue-400/30' 
+                              : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span>🧤 Squad Fielding</span>
+                            <span className={`text-[8px] font-bold px-1 rounded ${squadTrainingFielding ? 'bg-blue-200 text-blue-900' : 'bg-slate-200 text-slate-600'}`}>
+                              {squadTrainingFielding ? 'ON' : 'OFF'}
+                            </span>
+                          </div>
+                          <span className="text-[8px] opacity-75 mt-0.5 font-normal">5 to 6 wks per pop</span>
+                        </button>
+                      </div>
+                    </div>
+
                     {/* Nets Editor list */}
                     <div className="flex flex-col gap-1.5">
                       {[
@@ -1009,32 +1271,46 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
 
                       {/* Weeks estimates output */}
                       {(() => {
-                        const estimates: { label: string; weeks: number }[] = [];
+                        const estimates: { label: string; weeks: number; note?: string }[] = [];
                         if (plannerNets.batting > 0) {
-                          estimates.push({ label: 'Batting', weeks: estimateWeeksToNextLevel(selectedPlayer.skills.batting, selectedPlayer.age, plannerNets.batting, coachLevel) });
+                          estimates.push({ label: 'Batting', weeks: estimateWeeksToNextLevel(selectedPlayer.skills.batting, selectedPlayer.age, plannerNets.batting, coachLevel, 'batting') });
                         }
                         if (plannerNets.bowling > 0) {
-                          estimates.push({ label: 'Bowling', weeks: estimateWeeksToNextLevel(selectedPlayer.skills.bowling, selectedPlayer.age, plannerNets.bowling, coachLevel) });
+                          estimates.push({ label: 'Bowling', weeks: estimateWeeksToNextLevel(selectedPlayer.skills.bowling, selectedPlayer.age, plannerNets.bowling, coachLevel, 'bowling') });
                         }
                         if (plannerNets.keeping > 0) {
-                          estimates.push({ label: 'Keeping', weeks: estimateWeeksToNextLevel(selectedPlayer.skills.keeping, selectedPlayer.age, plannerNets.keeping, coachLevel) });
+                          estimates.push({ label: 'Keeping', weeks: estimateWeeksToNextLevel(selectedPlayer.skills.keeping, selectedPlayer.age, plannerNets.keeping, coachLevel, 'keeping') });
                         }
-                        if (plannerNets.stamina > 0) {
-                          estimates.push({ label: 'Stamina', weeks: estimateWeeksToNextLevel(selectedPlayer.skills.stamina, selectedPlayer.age, plannerNets.stamina * 2, coachLevel) }); // Stamina trains faster
+                        if (plannerNets.stamina > 0 || squadTrainingStamina) {
+                          const w = estimateWeeksToNextLevel(selectedPlayer.skills.stamina, selectedPlayer.age, plannerNets.stamina, coachLevel, 'stamina', squadTrainingStamina);
+                          const isFlat = selectedPlayer.age >= 17 && selectedPlayer.age <= 32;
+                          estimates.push({ 
+                            label: plannerNets.stamina > 0 ? 'Stamina' : 'Stamina (Squad Training)', 
+                            weeks: w,
+                            note: isFlat ? 'Flat 6.0 wks (Age 17-32)' : undefined
+                          });
                         }
-                        if (plannerNets.fielding > 0) {
-                          estimates.push({ label: 'Fielding', weeks: estimateWeeksToNextLevel(selectedPlayer.skills.fielding || 0, selectedPlayer.age, plannerNets.fielding, coachLevel) });
+                        if (plannerNets.fielding > 0 || squadTrainingFielding) {
+                          const w = estimateWeeksToNextLevel(selectedPlayer.skills.fielding || 0, selectedPlayer.age, plannerNets.fielding, coachLevel, 'fielding', squadTrainingFielding);
+                          estimates.push({ 
+                            label: plannerNets.fielding > 0 ? 'Fielding' : 'Fielding (Squad Training)', 
+                            weeks: w,
+                            note: '5 to 6 wks per pop'
+                          });
                         }
 
                         if (estimates.length === 0) {
-                          return <span className="text-slate-500 italic text-[10px]">No coaching nets assigned. Set nets to view simulated pop timers.</span>;
+                          return <span className="text-slate-500 italic text-[10px]">No nets or squad training active. Assign nets or toggle squad training.</span>;
                         }
 
                         return (
                           <div className="flex flex-col gap-1 font-semibold text-slate-700">
                             {estimates.map((est) => (
                               <div key={est.label} className="flex justify-between items-center bg-white/70 px-2 py-1 rounded">
-                                <span className="text-slate-600 font-medium">{est.label}:</span>
+                                <span className="text-slate-600 font-medium flex items-center gap-1">
+                                  {est.label}:
+                                  {est.note && <span className="text-[9px] text-slate-400 font-normal">({est.note})</span>}
+                                </span>
                                 <span className="font-mono text-indigo-700 font-bold">{est.weeks} weeks</span>
                               </div>
                             ))}
@@ -1099,23 +1375,23 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                       }[] = [];
 
                       const activeNetsList = [
-                        { key: 'batting' as const, label: 'Batting', level: selectedPlayer.skills.batting },
-                        { key: 'bowling' as const, label: 'Bowling', level: selectedPlayer.skills.bowling },
-                        { key: 'keeping' as const, label: 'Wicket Keeping', level: selectedPlayer.skills.keeping },
-                        { key: 'stamina' as const, label: 'Stamina', level: selectedPlayer.skills.stamina },
-                        { key: 'fielding' as const, label: 'Fielding', level: selectedPlayer.skills.fielding || 0 },
+                        { key: 'batting' as const, label: 'Batting', level: selectedPlayer.skills.batting, isSquad: false },
+                        { key: 'bowling' as const, label: 'Bowling', level: selectedPlayer.skills.bowling, isSquad: false },
+                        { key: 'keeping' as const, label: 'Wicket Keeping', level: selectedPlayer.skills.keeping, isSquad: false },
+                        { key: 'stamina' as const, label: 'Stamina', level: selectedPlayer.skills.stamina, isSquad: squadTrainingStamina },
+                        { key: 'fielding' as const, label: 'Fielding', level: selectedPlayer.skills.fielding || 0, isSquad: squadTrainingFielding },
                       ];
 
                       activeNetsList.forEach((n) => {
                         const count = plannerNets[n.key];
                         const maxLevelForSkill = n.key === 'stamina' ? 11 : 20;
-                        if (count > 0 && n.level < maxLevelForSkill) {
-                          const multiplier = n.key === 'stamina' ? 2 : 1;
-                          const weeks = estimateWeeksToNextLevel(n.level, selectedPlayer.age, count * multiplier, coachLevel);
+                        const isTrainingActive = count > 0 || (n.isSquad && count === 0);
+                        if (isTrainingActive && n.level < maxLevelForSkill) {
+                          const weeks = estimateWeeksToNextLevel(n.level, selectedPlayer.age, count, coachLevel, n.key, n.isSquad);
                           if (weeks !== Infinity && weeks > 0) {
                             const target = addWeeks(currentSeason, currentWeek, weeks);
                             forecasts.push({
-                              skillName: n.label,
+                              skillName: n.label + (count === 0 && n.isSquad ? ' (Squad)' : ''),
                               currentLevel: n.level,
                               targetLevel: n.level + 1,
                               weeksNeeded: weeks,
