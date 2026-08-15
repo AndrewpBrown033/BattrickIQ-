@@ -33,21 +33,21 @@ async function startServer() {
   // In-memory cache for bookmarklet syncs (expiring in 10 mins)
   const bookmarkletCache = new Map<string, { url: string; html: string; timestamp: number }>();
 
-  // CORS middleware specifically for the bookmarklet endpoints
+  // Universal CORS middleware for all API routes
   app.use((req, res, next) => {
-    if (req.path.startsWith('/api/sync-')) {
+    if (req.path.startsWith('/api')) {
       const origin = req.headers.origin;
       if (origin) {
         res.setHeader('Access-Control-Allow-Origin', origin);
       } else {
         res.setHeader('Access-Control-Allow-Origin', '*');
       }
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Requested-With, Authorization');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Requested-With, Authorization, Accept');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
       res.setHeader('Access-Control-Allow-Credentials', 'true');
     }
     
-    if (req.method === 'OPTIONS' && req.path.startsWith('/api/sync-')) {
+    if (req.method === 'OPTIONS' && req.path.startsWith('/api')) {
       res.sendStatus(200);
       return;
     }

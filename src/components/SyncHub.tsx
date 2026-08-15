@@ -645,18 +645,20 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       if (!raw || raw.trim().length === 0) {
         return {
           success: false,
-          error: `Empty response received for ${context} (HTTP ${res.status}).`
+          error: `Empty response received during ${context} (HTTP ${res.status}).`
         };
       }
       try {
         const json = JSON.parse(raw);
         return json;
       } catch {
+        console.warn(`[SyncHub] Non-JSON payload received during ${context} (status: ${res.status}):`, raw.slice(0, 200));
+        
         // Response was not JSON (e.g. HTML proxy error or session redirection)
         if (res.status === 504 || raw.includes('504 Gateway') || raw.includes('Gateway Timeout')) {
           return {
             success: false,
-            error: `Battrick servers timed out (HTTP 504). Please try again in a few moments, or use the Cut & Paste tab.`
+            error: `Battrick servers timed out (HTTP 504). Please try again in a few moments or use the Cut & Paste tab.`
           };
         }
         if (res.status === 502 || res.status === 503) {
@@ -668,18 +670,18 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
         if (raw.includes('login.asp') || raw.includes('Log In to Battrick')) {
           return {
             success: false,
-            error: `Invalid credentials or session expired during ${context}. Please verify your username and password.`
+            error: `Invalid credentials or session expired during ${context}. Please verify your username and password or use the Cut & Paste tab.`
           };
         }
         return {
           success: false,
-          error: `Server responded with HTTP ${res.status} (${res.statusText || 'Non-JSON response'}) during ${context}.`
+          error: `Server returned an HTML or non-JSON response during ${context} (HTTP ${res.status}). Please verify credentials, refresh the page, or use the 1-Click Bookmarklet / Cut & Paste tabs.`
         };
       }
     } catch (networkErr: any) {
       return {
         success: false,
-        error: `Network error during ${context}: ${networkErr?.message || 'Could not reach server.'}`
+        error: `Network connection error during ${context}: ${networkErr?.message || 'Could not reach server.'}`
       };
     }
   };
