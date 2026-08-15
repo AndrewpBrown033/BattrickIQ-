@@ -235,7 +235,55 @@ async function startServer() {
     }
   }, 60000);
 
-  // Helper to execute Battrick login and establish session
+  // Helper to extract cookies from responses
+  const parseCookieString = (c: string, cookieMap: Record<string, string>) => {
+    const parts = c.split(';')[0].split('=');
+    if (parts.length >= 2) {
+      const name = parts[0].trim();
+      const val = parts.slice(1).join('=').trim();
+      if (name && !['path', 'domain', 'expires', 'secure', 'httponly', 'samesite'].includes(name.toLowerCase())) {
+        cookieMap[name] = val;
+      }
+    }
+  };
+
+  const extractSetCookies = (res: Response): string[] => {
+    if (typeof res.headers.getSetCookie === 'function') {
+      return res.headers.getSetCookie();
+    }
+    const rawCookie = res.headers.get('set-cookie');
+    return rawCookie ? rawCookie.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/) : [];
+  };
+
+  // Helper following redirects manually and accumulating Set-Cookie at every hop
+  async function fetchFollowingRedirects(
+    url: string,
+    init: RequestInit,
+    cookieMap: Record<string, string>,
+    maxHops = 5
+  ) {
+    let currentUrl = url;
+    for (let hop = 0; hop <= maxHops; hop++) {
+      const cookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
+      const res = await fetch(currentUrl, {
+        ...init,
+        headers: { ...(init.headers as Record<string, string>), 'Cookie': cookieHeader },
+        redirect: 'manual'
+      });
+      extractSetCookies(res).forEach(c => parseCookieString(c, cookieMap));
+
+      if ([301, 302, 303, 307, 308].includes(res.status)) {
+        const location = res.headers.get('location');
+        if (!location) return res;
+        currentUrl = new URL(location, currentUrl).toString();
+        continue;
+      }
+      return res;
+    }
+    throw new Error('redirect count exceeded (manual follow)');
+  }
+
+  // Helper to execute Battrick login and establish session using manual redirect loop
   async function authenticateBattrickUser(username: string, password: string): Promise<{
     success: boolean;
     cookieHeader: string;
@@ -245,7 +293,7 @@ async function startServer() {
   }> {
     try {
       const initialUrl = 'https://www.battrick.org/nl/login.asp?private=1';
-      console.log(`[Battrick Auth] Requesting initial session from ${initialUrl}`);
+      console.log(`[Battrick Sync] 1. GET initial session from: ${initialUrl}`);
       
       const initialRes = await fetch(initialUrl, {
         headers: {
@@ -254,90 +302,45 @@ async function startServer() {
         signal: AbortSignal.timeout(15000)
       });
 
-      let initialCookies: string[] = [];
-      if (typeof initialRes.headers.getSetCookie === 'function') {
-        initialCookies = initialRes.headers.getSetCookie();
-      } else {
-        const rawCookie = initialRes.headers.get('set-cookie');
-        if (rawCookie) {
-          initialCookies = rawCookie.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/);
-        }
-      }
-
       const cookieMap: Record<string, string> = {};
-      const parseCookie = (c: string) => {
-        const parts = c.split(';')[0].split('=');
-        if (parts.length >= 2) {
-          const name = parts[0].trim();
-          const val = parts.slice(1).join('=').trim();
-          if (name && !['path', 'domain', 'expires', 'secure', 'httponly', 'samesite'].includes(name.toLowerCase())) {
-            cookieMap[name] = val;
-          }
-        }
-      };
-
-      initialCookies.forEach(parseCookie);
+      extractSetCookies(initialRes).forEach(c => parseCookieString(c, cookieMap));
       let cookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
+      console.log(`[Battrick Sync] GET cookies: ${cookieHeader || 'None'}`);
 
+      // 2. POST to Battrick Login with the initial session cookies following redirects
       const loginParams = new URLSearchParams();
       loginParams.append('username', username);
       loginParams.append('password', password);
       loginParams.append('referrer', '');
 
-      console.log(`[Battrick Auth] Sending credentials for ${username}...`);
-      const loginRes = await fetch('https://www.battrick.org/nl/login.asp?private=1', {
+      console.log(`[Battrick Sync] 2. POST login credentials for ${username}...`);
+      const loginRes = await fetchFollowingRedirects('https://www.battrick.org/nl/login.asp?private=1', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'Cookie': cookieHeader,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
           'Origin': 'https://www.battrick.org',
-          'Referer': 'https://www.battrick.org/nl/login.asp?private=1'
+          'Referer': 'https://www.battrick.org/nl/login.asp?private=1',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
         },
-        body: loginParams.toString(),
-        redirect: 'manual',
-        signal: AbortSignal.timeout(15000)
-      });
+        body: loginParams.toString()
+      }, cookieMap);
 
-    let postCookies: string[] = [];
-    if (typeof loginRes.headers.getSetCookie === 'function') {
-      postCookies = loginRes.headers.getSetCookie();
-    } else {
-      const rawCookie = loginRes.headers.get('set-cookie');
-      if (rawCookie) {
-        postCookies = rawCookie.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/);
+      cookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
+      console.log(`[Battrick Sync] Merged active cookies: ${cookieHeader}`);
+
+      const loginBodyHtml = await loginRes.text().catch(() => '');
+      const hasValidAuthCookie = Boolean(cookieMap['BTUser'] && cookieMap['BTUser'].length > 0);
+      const isExplicitLoginError = loginBodyHtml.includes('Invalid login details') || loginBodyHtml.includes('notification error');
+
+      if (!hasValidAuthCookie && isExplicitLoginError) {
+        console.warn(`[Battrick Auth] Authentication rejected for user ${username}: Invalid login details.`);
+        return {
+          success: false,
+          cookieHeader: '',
+          cookieMap: {},
+          error: "Battrick returned: 'Invalid login details'. Please double-check your username and password."
+        };
       }
-    }
-
-    const postCookieRaw = loginRes.headers.get('set-cookie') || '';
-    postCookies.forEach(parseCookie);
-    cookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
-
-    const loginBodyHtml = await loginRes.text().catch(() => '');
-    const isLoginRedirect = (loginRes.status === 302 || loginRes.status === 301 || loginRes.status === 303);
-    const hasValidAuthCookie = Boolean(cookieMap['BTUser'] && cookieMap['BTUser'].length > 0 && !postCookieRaw.includes('BTUser=;'));
-    const isExplicitLoginError = loginBodyHtml.includes('Invalid login details') || loginBodyHtml.includes('notification error');
-
-    console.log(`[Battrick Auth Result] status=${loginRes.status}, isRedirect=${isLoginRedirect}, hasValidAuthCookie=${hasValidAuthCookie}, isExplicitLoginError=${isExplicitLoginError}, cookieCount=${Object.keys(cookieMap).length}`);
-
-    if (!isLoginRedirect && !hasValidAuthCookie) {
-      let specificReason = "Invalid username or password according to Battrick.";
-      if (isExplicitLoginError) {
-        specificReason = "Battrick returned: 'Invalid login details'. Please double-check your username & password.";
-      } else if (loginRes.status >= 500) {
-        specificReason = `Battrick server error (HTTP ${loginRes.status}). Battrick.org may be under high load or maintenance.`;
-      } else if (loginBodyHtml.includes('Cloudflare') || loginBodyHtml.includes('Attention Required')) {
-        specificReason = "Battrick Cloudflare challenge encountered on cloud network IP.";
-      }
-      
-      console.warn(`[Battrick Auth] Authentication rejected for user ${username}: ${specificReason}`);
-      return {
-        success: false,
-        cookieHeader: '',
-        cookieMap: {},
-        error: `Battrick login failed: ${specificReason} (HTTP ${loginRes.status})`
-      };
-    }
 
       const sessionToken = `btsess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       battrickSessionStore.set(sessionToken, {
@@ -364,100 +367,43 @@ async function startServer() {
     }
   }
 
-  // Helper to fetch a single Battrick page with bounded redirect guard
+  // Helper to fetch a single Battrick page using manual redirect loop
   async function fetchBattrickPageWithSession(
     cookieHeader: string,
     cookieMap: Record<string, string>,
     pageUrl: string
   ): Promise<{ success: boolean; html: string; status: number; isRedirect?: boolean; error?: string; updatedCookieHeader?: string }> {
     try {
-      let currentUrl = pageUrl;
-      let hops = 0;
-      const maxHops = 2;
-      let currentCookieHeader = cookieHeader;
-
-      const parseCookie = (c: string) => {
-        const parts = c.split(';')[0].split('=');
-        if (parts.length >= 2) {
-          const name = parts[0].trim();
-          const val = parts.slice(1).join('=').trim();
-          if (name && !['path', 'domain', 'expires', 'secure', 'httponly', 'samesite'].includes(name.toLowerCase())) {
-            cookieMap[name] = val;
-          }
+      const pageRes = await fetchFollowingRedirects(pageUrl, {
+        headers: {
+          'Referer': 'https://www.battrick.org/nl/login.asp?private=1',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
         }
-      };
+      }, cookieMap);
 
-      while (hops <= maxHops) {
-        hops++;
-        const pageRes = await fetch(currentUrl, {
-          headers: {
-            'Cookie': currentCookieHeader,
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Referer': 'https://www.battrick.org/nl/login.asp?private=1'
-          },
-          redirect: 'manual',
-          signal: AbortSignal.timeout(15000)
-        });
+      const html = await pageRes.text();
+      const updatedCookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
+      
+      const isRedirected = pageRes.url && pageRes.url.includes('login.asp');
+      const hasLoginForms = html.includes("Log In to Battrick") || html.includes("Username:") || html.includes("Password:") || html.includes("login.asp");
 
-        let stepCookies: string[] = [];
-        if (typeof pageRes.headers.getSetCookie === 'function') {
-          stepCookies = pageRes.headers.getSetCookie();
-        } else {
-          const raw = pageRes.headers.get('set-cookie');
-          if (raw) stepCookies = raw.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/);
-        }
-        stepCookies.forEach(parseCookie);
-        currentCookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
-
-        if ([301, 302, 303, 307].includes(pageRes.status)) {
-          const loc = pageRes.headers.get('location');
-          if (!loc) break;
-          const nextUrl = new URL(loc, currentUrl).toString();
-
-          if (nextUrl.includes('login.asp')) {
-            return {
-              success: false,
-              html: '',
-              status: pageRes.status,
-              isRedirect: true,
-              error: 'Unauthenticated (redirected to login page)'
-            };
-          }
-
-          currentUrl = nextUrl;
-          continue;
-        }
-
-        if (pageRes.status >= 400) {
-          const errHtml = await pageRes.text().catch(() => '');
-          const isAspAuthErr = errHtml.includes('login.asp') || errHtml.includes('Log In to Battrick');
-          return {
-            success: false,
-            html: '',
-            status: pageRes.status,
-            isRedirect: isAspAuthErr,
-            error: isAspAuthErr ? 'Unauthenticated (session expired or invalid)' : `Server responded with HTTP ${pageRes.status}`
-          };
-        }
-
-        const html = await pageRes.text();
-        const hasLoginForms = (html.includes("Log In to Battrick") || html.includes("login.asp?private=1")) &&
-          (html.includes("Username:") || html.includes("Password:") || html.includes("name=\"username\"") || html.includes("name=\"password\""));
-
-        if (hasLoginForms) {
-          return {
-            success: false,
-            html: '',
-            status: pageRes.status,
-            isRedirect: true,
-            error: 'Unauthenticated (login form detected)'
-          };
-        }
-
-        return { success: true, html, status: pageRes.status, updatedCookieHeader: currentCookieHeader };
+      if (isRedirected || hasLoginForms) {
+        console.warn(`[Battrick Sync] Redirect/unauthenticated state detected on ${pageUrl}.`);
+        return {
+          success: false,
+          html: '',
+          status: pageRes.status,
+          isRedirect: true,
+          error: 'Authentication failed (redirected to login page)'
+        };
       }
 
-      return { success: false, html: '', status: 0, error: 'Redirect limit exceeded during navigation' };
+      return {
+        success: true,
+        html,
+        status: pageRes.status,
+        updatedCookieHeader
+      };
     } catch (fetchErr: any) {
       console.error(`[Battrick Page Fetch Exception for ${pageUrl}]:`, fetchErr);
       return {
