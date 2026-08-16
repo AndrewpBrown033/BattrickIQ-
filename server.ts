@@ -54,19 +54,9 @@ async function startServer() {
     next();
   });
 
-  // Backend build metadata
-  const BACKEND_BUILD_VERSION = "2026.08.15.v2_upstream_detection";
-  const BACKEND_DEPLOY_TIME = new Date().toISOString();
-
-  // Health check endpoint with build signature
+  // Health check endpoint
   app.get("/api/health", (req, res) => {
-    res.json({
-      status: "ok",
-      version: BACKEND_BUILD_VERSION,
-      deployTime: BACKEND_DEPLOY_TIME,
-      uptime: process.uptime(),
-      timestamp: Date.now()
-    });
+    res.json({ status: "ok", uptime: process.uptime(), timestamp: Date.now() });
   });
 
   // POST endpoint for form-based sync (works with hidden forms inside CSP-restricted pages)
@@ -609,7 +599,7 @@ async function startServer() {
     const { username, password } = req.body;
     const diagLog: string[] = [];
 
-    diagLog.push(`[1/4] Initiating direct diagnostic test at ${new Date().toISOString()} (Backend: ${BACKEND_BUILD_VERSION})...`);
+    diagLog.push(`[1/4] Initiating direct diagnostic test at ${new Date().toISOString()}...`);
     
     if (!username || !password) {
       res.status(400).json({ success: false, log: diagLog, error: "Username and password are required for diagnostic test." });
