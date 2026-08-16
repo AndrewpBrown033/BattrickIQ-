@@ -194,6 +194,8 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     error?: string;
     log: string[];
     htmlLength?: number;
+    backendVersion?: string;
+    backendDeployTime?: string;
   } | null>(null);
 
   const runDiagnosticTest = async () => {
@@ -206,6 +208,20 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     setDirectSyncError(null);
 
     try {
+      // First query health for version signature
+      let serverVer = '';
+      let serverDeploy = '';
+      try {
+        const healthRes = await fetch('/api/health');
+        if (healthRes.ok) {
+          const healthData = await healthRes.json();
+          serverVer = healthData.version || '';
+          serverDeploy = healthData.deployTime || '';
+        }
+      } catch (hErr) {
+        console.warn('Health check pre-flight skipped:', hErr);
+      }
+
       const res = await fetch('/api/debug-battrick-direct', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -216,12 +232,18 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       });
       const data = await safeParseJsonResponse(res, 'Diagnostic Test');
       if (data && data.log) {
-        setDiagnosticResult(data);
+        setDiagnosticResult({
+          ...data,
+          backendVersion: serverVer || data.backendVersion,
+          backendDeployTime: serverDeploy || data.backendDeployTime
+        });
       } else {
         setDiagnosticResult({
           success: false,
           error: data.error || `HTTP ${res.status}: Could not complete diagnostic test`,
-          log: [`Diagnostic request completed with HTTP ${res.status}`]
+          log: [`Diagnostic request completed with HTTP ${res.status}`],
+          backendVersion: serverVer,
+          backendDeployTime: serverDeploy
         });
       }
     } catch (e: any) {
@@ -1634,10 +1656,18 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
               {diagnosticResult && (
                 <div className="border border-slate-700 bg-slate-950 rounded-xl p-4 text-slate-200 shadow-md animate-fadeIn font-mono text-[11px]">
                   <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2.5">
-                    <span className="font-bold flex items-center gap-2 text-slate-100">
-                      <span className={`w-2.5 h-2.5 rounded-full ${diagnosticResult.success ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                      Live Server-to-Battrick Connection Diagnostics
-                    </span>
+                    <div className="flex flex-col">
+                      <span className="font-bold flex items-center gap-2 text-slate-100">
+                        <span className={`w-2.5 h-2.5 rounded-full ${diagnosticResult.success ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                        Live Server-to-Battrick Connection Diagnostics
+                      </span>
+                      {diagnosticResult.backendVersion && (
+                        <span className="text-[10px] text-slate-400 pl-4.5 mt-0.5 flex items-center gap-1.5 font-mono">
+                          <span className="text-emerald-400">● Backend Active:</span>
+                          <span className="text-indigo-300 font-semibold">{diagnosticResult.backendVersion}</span>
+                        </span>
+                      )}
+                    </div>
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                       diagnosticResult.success ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'
                     }`}>
