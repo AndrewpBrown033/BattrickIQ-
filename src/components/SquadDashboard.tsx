@@ -1283,11 +1283,11 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                         }
                         if (plannerNets.stamina > 0 || squadTrainingStamina) {
                           const w = estimateWeeksToNextLevel(selectedPlayer.skills.stamina, selectedPlayer.age, plannerNets.stamina, coachLevel, 'stamina', squadTrainingStamina);
-                          const isFlat = selectedPlayer.age >= 17 && selectedPlayer.age <= 32;
+                          const isIndividualFlatRange = !squadTrainingStamina && selectedPlayer.age >= 17 && selectedPlayer.age <= 32;
                           estimates.push({ 
                             label: plannerNets.stamina > 0 ? 'Stamina' : 'Stamina (Squad Training)', 
                             weeks: w,
-                            note: isFlat ? 'Flat 6.0 wks (Age 17-32)' : undefined
+                            note: squadTrainingStamina ? 'Flat 5-6 wks (All Ages)' : (isIndividualFlatRange ? 'Flat 6.0 wks (Age 17-32)' : undefined)
                           });
                         }
                         if (plannerNets.fielding > 0 || squadTrainingFielding) {
@@ -1295,7 +1295,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                           estimates.push({ 
                             label: plannerNets.fielding > 0 ? 'Fielding' : 'Fielding (Squad Training)', 
                             weeks: w,
-                            note: '5 to 6 wks per pop'
+                            note: squadTrainingFielding ? 'Flat 5-6 wks (All Ages)' : '5 to 6 wks per pop'
                           });
                         }
 

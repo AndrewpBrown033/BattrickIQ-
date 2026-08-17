@@ -1287,7 +1287,9 @@ export function estimateWeeksToNextLevel(
   if (netsCount <= 0 && !isSquadTraining) return Infinity;
 
   // 1. Stamina Training:
-  // Rule: Squad Training for stamina takes a flat 6 weeks to pop using one net per week for players aged 17 to 32.
+  // Rule: Squad Training for stamina is a flat 5-6 weeks per pop, and this
+  // is IDENTICAL for every player age - unlike one-on-one net training,
+  // squad sessions don't scale with player age or decay for veterans.
   if (skillType === 'stamina') {
     let effectiveNets = isSquadTraining && netsCount === 0 ? 1 : netsCount;
     let netMultiplier = 1.0;
@@ -1295,20 +1297,27 @@ export function estimateWeeksToNextLevel(
     else if (effectiveNets === 2) netMultiplier = 1.5;
     else if (effectiveNets >= 3) netMultiplier = 1.75;
 
-    // For ages 17 to 32: Flat 6 weeks per pop with 1 net/squad training
+    if (isSquadTraining) {
+      const weeks = 5.5 / netMultiplier; // flat 5-6 wks, same for all ages
+      return parseFloat(weeks.toFixed(1));
+    }
+
+    // For ages 17 to 32: Flat 6 weeks per pop with 1 net (individual coaching)
     if (playerAge >= 17 && playerAge <= 32) {
       const weeks = 6.0 / netMultiplier;
       return parseFloat(weeks.toFixed(1));
     }
     
-    // For ages 33+: Stamina decay starts affecting training speed
+    // For ages 33+: Stamina decay starts affecting individual training speed
     const decayFactor = Math.pow(1.15, playerAge - 32);
     const weeks = (6.0 * decayFactor) / netMultiplier;
     return parseFloat(weeks.toFixed(1));
   }
 
   // 2. Fielding Training:
-  // Rule: Fielding squad training takes about 5 to 6 weeks per pop (~5.5 weeks standard)
+  // Rule: Squad Training for fielding is also a flat 5-6 weeks per pop and
+  // is IDENTICAL for every player age - same as stamina squad training, it
+  // does not scale with coach quality or age the way individual coaching does.
   if (skillType === 'fielding') {
     let effectiveNets = isSquadTraining && netsCount === 0 ? 1 : netsCount;
     let netMultiplier = 1.0;
@@ -1317,6 +1326,13 @@ export function estimateWeeksToNextLevel(
     else if (effectiveNets >= 3) netMultiplier = 1.75;
 
     const baseFieldingWeeks = 5.5; // 5 to 6 weeks standard
+
+    if (isSquadTraining) {
+      const weeks = baseFieldingWeeks / netMultiplier; // flat 5-6 wks, same for all ages
+      return parseFloat(weeks.toFixed(1));
+    }
+
+    // Individual coached fielding nets still scale with coach quality and age
     const coachFactor = 1.0 / (0.8 + (coachLevel * 0.022));
 
     if (playerAge <= 30) {
