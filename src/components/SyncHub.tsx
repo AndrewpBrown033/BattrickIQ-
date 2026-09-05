@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { BattrickPlayer, ClubFinances, BattrickGame, PavilionInfo } from '../types';
 import { parseBattrickPage, isNameMatch } from '../parser';
 import { mergePlayerAndTrackHistory, generateRealisticHistory } from '../utils/history';
@@ -17,7 +18,7 @@ import {
   Calendar, Landmark as StadiumIcon, ShieldCheck,
   Check, Wifi, Activity, CheckSquare, Square, Clipboard, ArrowRight,
   KeyRound, Play, CheckCircle2, XCircle, Clock, ArrowUpRight, Zap,
-  Loader2
+  Loader2, X
 } from 'lucide-react';
 
 export interface SequentialStepItem {
@@ -259,6 +260,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
 
   // --- Sequential Sync Progression Modal State ---
   const [sequentialModal, setSequentialModal] = useState<SequentialModalState | null>(null);
+  const abortSyncRef = useRef<boolean>(false);
 
   // Selected pages to sync (default: all)
   const [selectedSyncPages, setSelectedSyncPages] = useState<string[]>(() => {
@@ -782,6 +784,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     setDirectSyncing(true);
     setDirectSyncError(null);
     setDirectPageStatuses(null);
+    abortSyncRef.current = false;
 
     if (rememberDirectUsername) {
       localStorage.setItem('bt_battrick_username', directUsername.trim());
@@ -960,6 +963,11 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
 
       // 2. PROCESS SELECTED PAGES SEQUENTIALLY
       for (let i = 1; i < initialSteps.length; i++) {
+        if (abortSyncRef.current) {
+          console.log('[Sequential Sync] Aborted by user.');
+          break;
+        }
+
         const currentStep = initialSteps[i];
         const pageKey = currentStep.id;
         const stepNumber = i + 1;
@@ -987,7 +995,8 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
               sessionToken: activeSessionToken,
               username: directUsername.trim(),
               password: directPassword
-            })
+            }),
+            signal: AbortSignal.timeout(15000)
           });
 
           const pageData = await safeParseJsonResponse(pageRes, currentStep.label);
@@ -1097,12 +1106,19 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
           completedStats: [...collectedStats]
         } : null);
 
-        // Polite 800ms sequential spacing before moving to the next page -
-        // this is also the window during which the "✓ Synced!" alert above
-        // stays on screen before the next step's "Processing..." replaces it.
+        // Polite 800ms sequential spacing before moving to the next page
         if (i < initialSteps.length - 1) {
-          await new Promise(r => setTimeout(r, 800));
+          for (let s = 0; s < 8; s++) {
+            if (abortSyncRef.current) break;
+            await new Promise(r => setTimeout(r, 100));
+          }
         }
+      }
+
+      if (abortSyncRef.current) {
+        setDirectSyncing(false);
+        setSequentialModal(null);
+        return;
       }
 
       setDirectPageStatuses(pageStatusRecords);
@@ -1900,8 +1916,11 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       </div>
 
       {/* Wipe confirmation */}
-      {showWipeConfirm && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+      {showWipeConfirm && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowWipeConfirm(false); }}
+        >
           <div className="bg-white border border-slate-200 shadow-2xl rounded-2xl max-w-md w-full p-6 text-center flex flex-col items-center gap-4 animate-scaleUp">
             <div className="w-14 h-14 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600">
               <Trash2 className="w-7 h-7" />
@@ -1929,15 +1948,39 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Sequential Direct Sync progress dial - shows every page as it's
           fetched, with a per-page confirmation badge, and clearly announces
           "processing next step" as it moves down the queue. */}
-      {sequentialModal && sequentialModal.isOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 shadow-2xl rounded-2xl max-w-lg w-full p-6 flex flex-col gap-5 animate-scaleUp max-h-[90vh] overflow-y-auto">
+      {sequentialModal && sequentialModal.isOpen && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              abortSyncRef.current = true;
+              setSequentialModal(null);
+              setDirectSyncing(false);
+            }
+          }}
+        >
+          <div className="relative bg-white border border-slate-200 shadow-2xl rounded-2xl max-w-lg w-full p-6 flex flex-col gap-5 animate-scaleUp max-h-[90vh] overflow-y-auto">
+            {/* Top Close Button */}
+            <button
+              type="button"
+              onClick={() => {
+                abortSyncRef.current = true;
+                setSequentialModal(null);
+                setDirectSyncing(false);
+              }}
+              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+              title="Close & Cancel Sync"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
             {/* Progress dial */}
             <div className="flex flex-col items-center gap-3">
               <div className="relative w-28 h-28 flex-shrink-0">
@@ -2024,17 +2067,37 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
                 {sequentialModal.hasErrors ? 'Got It - Review Warnings' : 'Awesome, All Synced!'}
               </button>
             ) : (
-              <p className="text-center text-[10px] text-slate-400 font-mono font-bold uppercase tracking-wide">
-                Syncing page by page - please keep this open...
-              </p>
+              <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-3.5 h-3.5 text-indigo-500 animate-spin" />
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Syncing step {sequentialModal.currentStepIndex + 1} of {sequentialModal.totalSteps}...
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    abortSyncRef.current = true;
+                    setSequentialModal(null);
+                    setDirectSyncing(false);
+                  }}
+                  className="text-xs font-bold text-slate-500 hover:text-rose-600 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-rose-200 hover:bg-rose-50 transition cursor-pointer"
+                >
+                  Cancel Sync
+                </button>
+              </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Success Modal */}
-      {successModal && successModal.isOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+      {successModal && successModal.isOpen && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setSuccessModal(null); }}
+        >
           <div className="bg-white border border-slate-200 shadow-2xl rounded-2xl max-w-md w-full p-6 text-center flex flex-col items-center gap-4 animate-scaleUp">
             <div className="w-14 h-14 rounded-full flex items-center justify-center bg-emerald-50 text-emerald-600 border border-emerald-200">
               <CheckCircle className="w-7 h-7" />
@@ -2061,7 +2124,8 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
               Awesome, Got It!
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

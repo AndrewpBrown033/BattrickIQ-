@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 
 let aiClient: any = null;
@@ -273,7 +272,8 @@ async function startServer() {
       const res = await fetch(currentUrl, {
         ...init,
         headers: { ...(init.headers as Record<string, string>), 'Cookie': cookieHeader },
-        redirect: 'manual'
+        redirect: 'manual',
+        signal: init.signal || AbortSignal.timeout(12000)
       });
       extractSetCookies(res).forEach(c => parseCookieString(c, cookieMap));
 
@@ -913,6 +913,7 @@ Respond with supportive, highly specialized, yet easy-to-read formatting. Use Ma
 
   // Vite middleware for development
   if (isDev) {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
