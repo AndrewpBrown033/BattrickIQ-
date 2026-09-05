@@ -12,11 +12,12 @@ import LoginPage from './components/LoginPage';
 import AdminDashboard from './components/AdminDashboard';
 import PlayerDetails from './components/PlayerDetails';
 import OpponentScout from './components/OpponentScout';
+import { LeagueStandings } from './components/LeagueStandings';
 import { onCustomAuthStateChanged, customSignOut, getCustomUser, CustomUser } from './lib/customAuth';
 import { Award, Calculator, Users, FolderOpen, Heart, RefreshCw, Landmark, Bot, BookOpen, Trophy, Clock, ShieldAlert, LogOut, Eye, Activity, History, LayoutGrid, Wallet, MoreHorizontal, X, ChevronUp, Swords } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-type TabType = 'summary' | 'sync' | 'squad' | 'lineup' | 'scout' | 'wage' | 'stadium' | 'coach' | 'coach-history' | 'rules' | 'admin' | 'player-details';
+type TabType = 'summary' | 'sync' | 'squad' | 'lineup' | 'scout' | 'league' | 'wage' | 'stadium' | 'coach' | 'coach-history' | 'rules' | 'admin' | 'player-details';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('summary');
@@ -192,15 +193,16 @@ export default function App() {
     { id: 'squad' as TabType, step: '02', label: 'Squad & Pops', icon: <FolderOpen className="w-4 h-4" />, desc: 'Roster & Skill Pops', status: 'Ready' },
     { id: 'lineup' as TabType, step: '03', label: 'Lineup XI', icon: <Users className="w-4 h-4" />, desc: 'Rating Optimizer', status: 'Draft' },
     { id: 'scout' as TabType, step: '04', label: 'Opponent Scout', icon: <Swords className="w-4 h-4" />, desc: 'Tactical Analysis & Tail Vulnerabilities', status: 'Tactics' },
-    { id: 'wage' as TabType, step: '05', label: 'Financial Forecast', icon: <Calculator className="w-4 h-4" />, desc: 'Wages & Cashflow Projections', status: 'Config' },
-    { id: 'stadium' as TabType, step: '06', label: 'Stadium Plan', icon: <Landmark className="w-4 h-4" />, desc: 'Expansion Helper', status: 'Auto' },
-    { id: 'coach' as TabType, step: '07', label: 'Tactical AI', icon: <Bot className="w-4 h-4" />, desc: 'AI Tactical Advice', status: 'AI Ready' },
-    { id: 'sync' as TabType, step: '08', label: 'Roster Sync', icon: <RefreshCw className="w-4 h-4" />, desc: 'Paste Battrick Pages', status: 'Active' },
-    { id: 'rules' as TabType, step: '09', label: 'Club Setup', icon: <BookOpen className="w-4 h-4" />, desc: 'Profile & Tactical Rules', status: 'Setup' },
+    { id: 'league' as TabType, step: '05', label: 'League Ladders', icon: <Trophy className="w-4 h-4 text-amber-500" />, desc: 'First Class, One Day & BT20 Ladders', status: 'Standings' },
+    { id: 'wage' as TabType, step: '06', label: 'Financial Forecast', icon: <Calculator className="w-4 h-4" />, desc: 'Wages & Cashflow Projections', status: 'Config' },
+    { id: 'stadium' as TabType, step: '07', label: 'Stadium Plan', icon: <Landmark className="w-4 h-4" />, desc: 'Expansion Helper', status: 'Auto' },
+    { id: 'coach' as TabType, step: '08', label: 'Tactical AI', icon: <Bot className="w-4 h-4" />, desc: 'AI Tactical Advice', status: 'AI Ready' },
+    { id: 'sync' as TabType, step: '09', label: 'Roster Sync', icon: <RefreshCw className="w-4 h-4" />, desc: 'Paste Battrick Pages', status: 'Active' },
+    { id: 'rules' as TabType, step: '10', label: 'Club Setup', icon: <BookOpen className="w-4 h-4" />, desc: 'Profile & Tactical Rules', status: 'Setup' },
   ];
 
   const tabs = user?.role === 'admin'
-    ? [...baseTabs, { id: 'admin' as TabType, step: '10', label: 'Admin Portal', icon: <Trophy className="w-4 h-4 text-indigo-600" />, desc: 'Usage & Team Switcher', status: 'Control' }]
+    ? [...baseTabs, { id: 'admin' as TabType, step: '11', label: 'Admin Portal', icon: <Trophy className="w-4 h-4 text-indigo-600" />, desc: 'Usage & Team Switcher', status: 'Control' }]
     : baseTabs;
 
 
@@ -472,6 +474,8 @@ export default function App() {
                     {activeTab === 'sync' && "Club Sync & Status Hub"}
                     {activeTab === 'squad' && "Squad Roster & Training"}
                     {activeTab === 'lineup' && "Matchday XI Rating Optimizer"}
+                    {activeTab === 'scout' && "Opponent Tactical Scout"}
+                    {activeTab === 'league' && "Official League Standings & Ladder Hub"}
                     {activeTab === 'wage' && "Financial Forecast & Club Health"}
                     {activeTab === 'stadium' && "Stadium Expansion Planner"}
                     {activeTab === 'coach' && "Coach Jarvis AI Assistant"}
@@ -483,6 +487,8 @@ export default function App() {
                     {activeTab === 'sync' && "Paste raw Battrick page source codes or text to sync your squad roster, fixtures, pavilion, and finances instantly."}
                     {activeTab === 'squad' && "Analyze player skills, track training pops, view BTR ratings, and verify hold/develop/sell advice."}
                     {activeTab === 'lineup' && "Formulate your match starting XI and model expected ratings for different pitches."}
+                    {activeTab === 'scout' && "Analyze opponent squads, past scorecards, tail vulnerabilities, and tactical counters."}
+                    {activeTab === 'league' && "Inspect First Class, One Day, and BT20 league tables, track promotion zones, and scout rival teams."}
                     {activeTab === 'wage' && "Evaluate club health, optimize backroom staff count, and forecast player wage growth and cashflow."}
                     {activeTab === 'stadium' && "Plan expansion projects, allocate ticket types, and balance seats against member count."}
                     {activeTab === 'coach' && "Consult with Coach Jarvis regarding lineup strategy, pitch matches, and transfer advise."}
@@ -524,6 +530,7 @@ export default function App() {
                   )}
                   {activeTab === 'lineup' && <LineupOptimizer setActiveTab={setActiveTab} />}
                   {activeTab === 'scout' && <OpponentScout setActiveTab={setActiveTab} />}
+                  {activeTab === 'league' && <LeagueStandings setActiveTab={setActiveTab} />}
                   {activeTab === 'wage' && <WageCalculator />}
                   {activeTab === 'stadium' && <StadiumPlanner setActiveTab={setActiveTab} />}
                   {activeTab === 'coach' && <AICoach />}

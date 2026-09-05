@@ -111,11 +111,19 @@ const AVAILABLE_SYNC_OPTIONS: SyncOptionItem[] = [
   },
   {
     id: 'pavilion',
-    label: 'Pavilion & Stadium Ground',
-    url: 'ground.asp',
-    description: 'Arena seating capacity breakdown, pitch type preparation & weather conditions',
+    label: 'Pavilion & Manager Office',
+    url: 'myoffice.asp',
+    description: 'General manager ID, country, region, league rankings & stadium pitch conditions',
     icon: StadiumIcon,
     color: 'text-rose-600 bg-rose-50 border-rose-200'
+  },
+  {
+    id: 'league',
+    label: 'League Standings & Ladders',
+    url: 'leagues.asp',
+    description: 'First Class, One Day, and BT20 league tables, points, NRR & rival positions',
+    icon: Trophy,
+    color: 'text-amber-600 bg-amber-50 border-amber-200'
   }
 ];
 
@@ -1148,9 +1156,13 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
           completedStats: [...collectedStats]
         } : null);
 
-        // Polite 800ms sequential spacing before moving to the next page
+        // Polite 3000ms (3.0s) sequential rate-limiting protection delay before moving to the next page
         if (i < initialSteps.length - 1) {
-          for (let s = 0; s < 8; s++) {
+          setSequentialModal(prev => prev ? {
+            ...prev,
+            activeDetail: `✓ ${currentStep.label} Synced! Spacing out next request (3.0s delay) to respect Battrick rate limits...`
+          } : null);
+          for (let s = 0; s < 30; s++) {
             if (abortSyncRef.current) break;
             await new Promise(r => setTimeout(r, 100));
           }

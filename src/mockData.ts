@@ -184,12 +184,62 @@ export const SAMPLE_FIXTURES_HTML = `
 
 export const SAMPLE_PAVILION_HTML = `
 <div>
-  <h2>Club Pavilion</h2>
-  <p>Ground Name: BattrickIQ Lord's Arena</p>
-  <p>Pitch Type: Flat</p>
-  <p>Weather: Sunny</p>
-  <p>Established: Season 24</p>
-  <p>Membership Status: Elite Manager</p>
+  <h2>Club Pavilion & Manager Office</h2>
+  <table>
+    <tbody>
+      <tr>
+        <th>General Manager:</th>
+        <td>
+          <a href="myoffice.asp?userID=132175">Browny33</a>&nbsp;<img src="gfx/user_online.png" width="10" height="10" alt="Online" title="Last activity was less than 10 minutes ago" />
+          (132175)
+        </td>
+      </tr>
+      <tr>
+        <th>Country:</th>
+        <td><a href="country.asp?countryID=2">Australia</a></td>
+      </tr>
+      <tr>
+        <th>Region:</th>
+        <td><a href="regiondetails.asp?regionID=21">Queensland</a></td>
+      </tr>
+      <tr>
+        <th>First Class League:</th>
+        <td>#6 in <a href="leagues.asp?leagueID=2749">V.7</a></td>
+      </tr>
+      <tr>
+        <th>One Day League:</th>
+        <td>#2 in <a href="leagues.asp?leagueID=212">IV.2</a></td>
+      </tr>
+      <tr>
+        <th>BT20:</th>
+        <td>#7 in <a href="leagues.asp?leagueID=7532">IV.51</a></td>
+      </tr>
+      <tr>
+        <th>Team Ranking:</th>
+        <td>#170 in Australia<br />#1202 in the World<br /></td>
+      </tr>
+      <tr>
+        <th>Ground:</th>
+        <td><a href="ground.asp?groundID=5250">HairyBeanBags CG</a></td>
+      </tr>
+      <tr>
+        <th>Pitch Type:</th>
+        <td>Flat</td>
+      </tr>
+      <tr>
+        <th>Weather:</th>
+        <td>Sunny</td>
+      </tr>
+      <tr>
+        <th>Established:</th>
+        <td>Season 24</td>
+      </tr>
+      <tr>
+        <th>Membership Status:</th>
+        <td>Elite Manager</td>
+      </tr>
+    </tbody>
+  </table>
 </div>
 `;
 

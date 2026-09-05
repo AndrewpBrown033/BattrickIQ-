@@ -70,10 +70,22 @@ export default function SummaryDashboard({ setActiveTab }: SummaryDashboardProps
       try { setStadium(JSON.parse(savedStadium)); } catch (e) { setStadium(null); }
     } else { setStadium(null); }
 
-    const savedFixtures = localStorage.getItem('bt_fixtures');
-    if (savedFixtures) {
-      try { setFixtures(JSON.parse(savedFixtures)); } catch (e) { setFixtures([]); }
-    } else { setFixtures([]); }
+    const getFixturesFromStorage = (): BattrickGame[] => {
+      const keys = ['bt_fixtures', 'bt_league_office_fixtures', 'bt_scout_fixtures'];
+      for (const k of keys) {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+      return [];
+    };
+    setFixtures(getFixturesFromStorage());
 
     const savedPavilion = localStorage.getItem('bt_pavilion');
     if (savedPavilion) {
@@ -668,6 +680,93 @@ Please analyze my club details and explain:
         </div>
       </div>
 
+      {/* Official Battrick League Standings & Manager Office Banner */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center font-bold shadow-xs">
+              🏆
+            </div>
+            <div>
+              <h3 className="font-display font-extrabold text-base text-slate-900 tracking-tight">
+                Manager Office & League Standings
+              </h3>
+              <p className="text-xs text-slate-500">
+                General Manager: <strong className="text-slate-800">{pavilion?.generalManager || 'Browny33'} ({pavilion?.gmUserId || '132175'})</strong> • {pavilion?.country || 'Australia'} ({pavilion?.region || 'Queensland'})
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('league')}
+            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shadow-xs self-start sm:self-auto cursor-pointer"
+          >
+            <span>View League Ladders</span>
+            <ChevronRight className="w-4 h-4 text-emerald-400" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* First Class */}
+          <div 
+            onClick={() => setActiveTab('league')}
+            className="p-3.5 rounded-xl bg-slate-50 hover:bg-amber-50/50 border border-slate-200 hover:border-amber-300 transition cursor-pointer flex items-center justify-between group"
+          >
+            <div>
+              <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">First Class League</span>
+              <strong className="text-sm font-bold text-slate-900 group-hover:text-amber-700 transition">
+                {pavilion?.firstClassLeague?.name || 'V.7'}
+              </strong>
+              <span className="text-xs font-mono font-bold text-amber-700 ml-2">
+                ({pavilion?.firstClassLeague?.rankText || '#6'})
+              </span>
+            </div>
+            <span className="text-[10px] font-mono font-semibold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200 group-hover:border-amber-300">
+              ID {pavilion?.firstClassLeague?.leagueId || '2749'}
+            </span>
+          </div>
+
+          {/* One Day */}
+          <div 
+            onClick={() => setActiveTab('league')}
+            className="p-3.5 rounded-xl bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 hover:border-emerald-300 transition cursor-pointer flex items-center justify-between group"
+          >
+            <div>
+              <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">One Day League</span>
+              <strong className="text-sm font-bold text-slate-900 group-hover:text-emerald-700 transition">
+                {pavilion?.oneDayLeague?.name || 'IV.2'}
+              </strong>
+              <span className="text-xs font-mono font-bold text-emerald-700 ml-2">
+                ({pavilion?.oneDayLeague?.rankText || '#2'})
+              </span>
+            </div>
+            <span className="text-[10px] font-mono font-semibold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200 group-hover:border-emerald-300">
+              ID {pavilion?.oneDayLeague?.leagueId || '212'}
+            </span>
+          </div>
+
+          {/* BT20 */}
+          <div 
+            onClick={() => setActiveTab('league')}
+            className="p-3.5 rounded-xl bg-slate-50 hover:bg-cyan-50/50 border border-slate-200 hover:border-cyan-300 transition cursor-pointer flex items-center justify-between group"
+          >
+            <div>
+              <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">BT20 League</span>
+              <strong className="text-sm font-bold text-slate-900 group-hover:text-cyan-700 transition">
+                {pavilion?.bt20League?.name || 'IV.51'}
+              </strong>
+              <span className="text-xs font-mono font-bold text-cyan-700 ml-2">
+                ({pavilion?.bt20League?.rankText || '#7'})
+              </span>
+            </div>
+            <span className="text-[10px] font-mono font-semibold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200 group-hover:border-cyan-300">
+              ID {pavilion?.bt20League?.leagueId || '7532'}
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* "This week" Card */}
       <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-2xs">
         <div className="flex items-center justify-between mb-3">
@@ -695,7 +794,17 @@ Please analyze my club details and explain:
           {displayFixtures.map((game, idx) => (
             <div 
               key={idx}
-              onClick={() => setActiveTab('scout')}
+              onClick={() => {
+                if (game.opponent) {
+                  localStorage.setItem('bt_scout_target_team', JSON.stringify({
+                    teamName: game.opponent,
+                    matchId: game.matchId,
+                    type: game.type,
+                    venue: game.venue
+                  }));
+                }
+                setActiveTab('scout');
+              }}
               className="flex items-center justify-between py-3.5 first:pt-1 last:pb-1 group hover:bg-slate-50 -mx-3 px-3 rounded-xl transition cursor-pointer"
             >
               <div>

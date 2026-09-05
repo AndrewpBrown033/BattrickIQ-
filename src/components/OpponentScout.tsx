@@ -130,8 +130,8 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   const [fetchStatusMessage, setFetchStatusMessage] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Load user data on mount
-  useEffect(() => {
+  // Load user data on mount and listen to storage synchronization events
+  const loadLocalData = () => {
     try {
       const savedSquadStr = localStorage.getItem('bt_squad');
       const loadedSquad = savedSquadStr ? JSON.parse(savedSquadStr) : [];
@@ -144,8 +144,13 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
       const savedFixtures = localStorage.getItem('bt_fixtures');
       let loadedFixtures: BattrickGame[] = [];
       if (savedFixtures) {
-        loadedFixtures = JSON.parse(savedFixtures);
-        setFixtures(loadedFixtures);
+        try {
+          loadedFixtures = JSON.parse(savedFixtures);
+          setFixtures(loadedFixtures);
+        } catch {
+          loadedFixtures = parseFixtures('');
+          setFixtures(loadedFixtures);
+        }
       } else {
         // Populate default user fixtures from real schedule
         loadedFixtures = parseFixtures('');
@@ -181,6 +186,12 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
     } catch (e) {
       console.error('Error loading local data for opponent scout:', e);
     }
+  };
+
+  useEffect(() => {
+    loadLocalData();
+    window.addEventListener('storage', loadLocalData);
+    return () => window.removeEventListener('storage', loadLocalData);
   }, []);
 
   // Compute My Squad average BTR
@@ -214,6 +225,8 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
     const parsed = parseFixtures(pastedFixturesText);
     if (parsed.length > 0) {
       setFixtures(parsed);
+      localStorage.setItem('bt_fixtures', JSON.stringify(parsed));
+      window.dispatchEvent(new Event('storage'));
       setIsFixturesPasteOpen(false);
       setPastedFixturesText('');
       const first = parsed[0];
@@ -1080,23 +1093,37 @@ TACTICAL ORDERS:
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-mono">
                     {activeInnings.bowlers.map((bw, idx) => {
-                      const isWeakest = idx === 4 || bw.economy >= 6.5;
+                      const cleanBowlerName = bw.name
+                        .replace(/\(5th Bowler - /gi, '(')
+                        .replace(/5th Bowler \/ /gi, '')
+                        .replace(/\(5th Bowler\)/gi, '')
+                        .trim();
+                      const isFifthBowler = idx === 4;
+                      const isPartTimer = idx >= 5;
+                      const isHighEcon = bw.economy >= 6.5;
+
                       return (
-                        <tr key={idx} className={isWeakest ? 'bg-amber-50/40 font-bold' : ''}>
+                        <tr key={idx} className={isFifthBowler || isPartTimer || isHighEcon ? 'bg-amber-50/40 font-bold' : ''}>
                           <td className="py-2 px-3 text-slate-400">{idx + 1}</td>
-                          <td className="py-2 px-3 font-sans text-slate-900">{bw.name}</td>
+                          <td className="py-2 px-3 font-sans text-slate-900">{cleanBowlerName}</td>
                           <td className="py-2 px-3 text-slate-700">{bw.overs}</td>
                           <td className="py-2 px-3 text-slate-600">{bw.maidens}</td>
                           <td className="py-2 px-3 text-slate-900">{bw.runs}</td>
                           <td className="py-2 px-3 font-bold text-blue-700">{bw.wickets}</td>
                           <td className="py-2 px-3">{bw.economy.toFixed(2)}</td>
                           <td className="py-2 px-3">
-                            {isWeakest ? (
-                              <span className="text-[10px] text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                            {isFifthBowler ? (
+                              <span className="text-[10px] text-amber-900 bg-amber-100 font-bold px-2 py-0.5 rounded-full border border-amber-300">
                                 5th Bowler Target
                               </span>
+                            ) : isPartTimer ? (
+                              <span className="text-[10px] text-purple-800 bg-purple-100 font-bold px-2 py-0.5 rounded-full border border-purple-200">
+                                Part-Timer / 6th+
+                              </span>
+                            ) : idx <= 1 ? (
+                              <span className="text-[10px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded">Frontline Opener</span>
                             ) : (
-                              <span className="text-[10px] text-slate-500">Frontline Bowler</span>
+                              <span className="text-[10px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded">Frontline Change</span>
                             )}
                           </td>
                         </tr>

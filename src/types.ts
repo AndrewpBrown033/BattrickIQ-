@@ -73,6 +73,19 @@ export interface BattrickPlayer {
   btRating: number;
   bowlingType: string;
   role: 'Batter' | 'Bowler' | 'Keeper' | 'All-rounder' | 'Prospect';
+  battingHand?: string;
+  battingStyle?: string;
+  bowlingHand?: string;
+  bowlingStyle?: string;
+  bowlingAggression?: string;
+  battingFormLabel?: string;
+  bowlingFormLabel?: string;
+  fitnessLabel?: string;
+  estimatedSkillLabel?: string;
+  estimatedSkillLevel?: number;
+  primaryRoleClassifier?: 'Batter' | 'Bowler' | 'All-Rounder' | 'Wicketkeeper';
+  teamId?: string;
+  teamName?: string;
   skills: {
     batting: number;
     bowling: number;
@@ -140,12 +153,55 @@ export interface BattrickGame {
   isBot?: boolean;
 }
 
+export interface LeagueLinkInfo {
+  name: string; // e.g. "V.7", "IV.2", "IV.51"
+  rankText?: string; // e.g. "#6", "#2", "#7"
+  leagueId: string; // e.g. "2749", "212", "7532"
+  url?: string;
+}
+
 export interface PavilionInfo {
   groundName: string;
+  groundId?: string;
   pitchType?: string;
   weather: string;
   established: string;
   membershipStatus: string;
+  generalManager?: string;
+  gmUserId?: string;
+  country?: string;
+  countryId?: string;
+  region?: string;
+  regionId?: string;
+  firstClassLeague?: LeagueLinkInfo;
+  oneDayLeague?: LeagueLinkInfo;
+  bt20League?: LeagueLinkInfo;
+  teamRankingNational?: string; // e.g. "#170 in Australia"
+  teamRankingWorld?: string; // e.g. "#1202 in the World"
+}
+
+export interface BattrickLeagueTeam {
+  position: number;
+  teamName: string;
+  teamId?: string;
+  played: number;
+  won: number;
+  tied: number;
+  lost: number;
+  points: number;
+  netRunRate?: string;
+  bonusPoints?: number;
+  isMyTeam?: boolean;
+}
+
+export interface BattrickLeagueTable {
+  leagueId: string;
+  leagueName: string; // e.g. "V.7", "IV.2", "IV.51"
+  leagueType: 'First Class' | 'One Day' | 'BT20';
+  country?: string;
+  season?: string;
+  teams: BattrickLeagueTeam[];
+  lastUpdated?: string;
 }
 
 export interface ClubFinances {
@@ -208,6 +264,17 @@ export interface OpponentPlayer {
   consistency?: number;
   fielding?: number;
   order?: number;
+  battingHand?: string;
+  battingStyle?: string;
+  bowlingHand?: string;
+  bowlingStyle?: string;
+  bowlingAggression?: string;
+  battingFormLabel?: string;
+  bowlingFormLabel?: string;
+  fitnessLabel?: string;
+  estimatedSkillLabel?: string;
+  estimatedSkillLevel?: number;
+  primaryRoleClassifier?: 'Batter' | 'Bowler' | 'All-Rounder' | 'Wicketkeeper';
 }
 
 export interface OpponentVulnerability {

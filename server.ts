@@ -255,33 +255,89 @@ async function startServer() {
     return rawCookie ? rawCookie.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/) : [];
   };
 
-  // Helper following redirects manually and accumulating Set-Cookie at every hop
-  async function fetchFollowingRedirects(
+  // Outbound request pacing queue to prevent Battrick HTTP 429 Rate Limits
+  let lastBattrickRequestTime = 0;
+  const MIN_BATTRICK_REQUEST_INTERVAL_MS = 3000; // 3 seconds minimum spacing between requests to battrick.org by default
+
+  async function spaceOutBattrickRequest() {
+    const now = Date.now();
+    const elapsed = now - lastBattrickRequestTime;
+    if (elapsed < MIN_BATTRICK_REQUEST_INTERVAL_MS) {
+      const waitTime = MIN_BATTRICK_REQUEST_INTERVAL_MS - elapsed;
+      console.log(`[Battrick Rate Pacing] Spacing request by ${waitTime}ms to prevent HTTP 429...`);
+      await new Promise(r => setTimeout(r, waitTime));
+    }
+    lastBattrickRequestTime = Date.now();
+  }
+
+  // Helper following redirects manually and accumulating Set-Cookie at every hop with 429 retry backoff
+  async function fetchWithPacingAndRetry(
     url: string,
     init: RequestInit,
     cookieMap: Record<string, string>,
-    maxHops = 5
-  ) {
-    let currentUrl = url;
-    for (let hop = 0; hop <= maxHops; hop++) {
-      const cookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
-      const res = await fetch(currentUrl, {
-        ...init,
-        headers: { ...(init.headers as Record<string, string>), 'Cookie': cookieHeader },
-        redirect: 'manual',
-        signal: init.signal || AbortSignal.timeout(12000)
-      });
-      extractSetCookies(res).forEach(c => parseCookieString(c, cookieMap));
+    maxHops = 5,
+    maxRetries = 3
+  ): Promise<Response> {
+    let lastResponse: Response | null = null;
 
-      if ([301, 302, 303, 307, 308].includes(res.status)) {
-        const location = res.headers.get('location');
-        if (!location) return res;
-        currentUrl = new URL(location, currentUrl).toString();
-        continue;
+    for (let retry = 0; retry <= maxRetries; retry++) {
+      if (retry > 0) {
+        const backoffMs = 2500 * retry; // 2.5s, 5.0s, 7.5s
+        console.warn(`[Battrick HTTP 429 Backoff] Rate limit hit on ${url}. Spacing request for ${backoffMs}ms before retry ${retry}/${maxRetries}...`);
+        await new Promise(r => setTimeout(r, backoffMs));
       }
-      return res;
+
+      await spaceOutBattrickRequest();
+
+      let currentUrl = url;
+      let res: Response | null = null;
+      let redirectError: any = null;
+
+      try {
+        for (let hop = 0; hop <= maxHops; hop++) {
+          const cookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
+          const response = await fetch(currentUrl, {
+            ...init,
+            headers: { ...(init.headers as Record<string, string>), 'Cookie': cookieHeader },
+            redirect: 'manual',
+            signal: init.signal || AbortSignal.timeout(15000)
+          });
+          extractSetCookies(response).forEach(c => parseCookieString(c, cookieMap));
+
+          if ([301, 302, 303, 307, 308].includes(response.status)) {
+            const location = response.headers.get('location');
+            if (!location) {
+              res = response;
+              break;
+            }
+            currentUrl = new URL(location, currentUrl).toString();
+            continue;
+          }
+
+          res = response;
+          break;
+        }
+      } catch (err) {
+        redirectError = err;
+      }
+
+      if (res) {
+        lastResponse = res;
+        // If HTTP 429 Too Many Requests, loop to next retry attempt
+        if (res.status === 429) {
+          console.warn(`[Battrick Sync] HTTP 429 received from ${url} (Attempt ${retry + 1}/${maxRetries + 1})`);
+          continue;
+        }
+        return res;
+      }
+
+      if (redirectError && retry === maxRetries) {
+        throw redirectError;
+      }
     }
-    throw new Error('redirect count exceeded (manual follow)');
+
+    if (lastResponse) return lastResponse;
+    throw new Error('HTTP 429 Too Many Requests: Battrick rate limit reached after retries.');
   }
 
   // Helper to execute Battrick login and establish session using manual redirect loop
@@ -298,7 +354,7 @@ async function startServer() {
       const initialUrl = 'https://www.battrick.org/nl/login.asp?private=1';
       console.log(`[Battrick Sync] 1. GET initial session from: ${initialUrl}`);
       
-      const initialRes = await fetch(initialUrl, {
+      const initialRes = await fetchWithPacingAndRetry(initialUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -311,18 +367,11 @@ async function startServer() {
           'Upgrade-Insecure-Requests': '1'
         },
         signal: AbortSignal.timeout(15000)
-      });
+      }, {});
 
       // Battrick (or a WAF/CDN in front of it) can reject the connection
       // outright - most commonly HTTP 403 (blocked/rate-limited) or 429
       // (too many requests) - before we ever get a real login page back.
-      // Previously this fell through silently: no cookies got set, the
-      // POST login attempt below was doomed to fail, and the resulting
-      // error message said "invalid username or password" - which sent
-      // people chasing their credentials for a problem that was actually
-      // Battrick blocking this server's outbound connection. Surfacing it
-      // here, immediately, with the real HTTP status makes that distinction
-      // unambiguous.
       if (!initialRes.ok) {
         console.warn(`[Battrick Sync] Initial connection blocked: HTTP ${initialRes.status} ${initialRes.statusText}`);
         return {
@@ -333,7 +382,7 @@ async function startServer() {
             (initialRes.status === 403
               ? `. This is Battrick blocking/rate-limiting this server's outbound request - it happens before any credentials are checked, so it is NOT a username/password issue. It usually means Battrick's WAF has flagged this server's IP address or request pattern.`
               : initialRes.status === 429
-              ? `. Battrick is rate-limiting this server - too many requests too quickly. Wait a bit and try again.`
+              ? `. Battrick is rate-limiting this server (HTTP 429). Requests have been automatically spaced out — please wait a few seconds and try again.`
               : `. This is an upstream connectivity issue with Battrick, unrelated to your credentials.`),
           httpStatus: initialRes.status,
           blockedByUpstream: true
@@ -352,7 +401,7 @@ async function startServer() {
       loginParams.append('referrer', '');
 
       console.log(`[Battrick Sync] 2. POST login credentials for ${username}...`);
-      const loginRes = await fetchFollowingRedirects('https://www.battrick.org/nl/login.asp?private=1', {
+      const loginRes = await fetchWithPacingAndRetry('https://www.battrick.org/nl/login.asp?private=1', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -432,14 +481,14 @@ async function startServer() {
     }
   }
 
-  // Helper to fetch a single Battrick page using manual redirect loop
+  // Helper to fetch a single Battrick page using manual redirect loop with pacing & retries
   async function fetchBattrickPageWithSession(
     cookieHeader: string,
     cookieMap: Record<string, string>,
     pageUrl: string
   ): Promise<{ success: boolean; html: string; status: number; isRedirect?: boolean; error?: string; updatedCookieHeader?: string }> {
     try {
-      const pageRes = await fetchFollowingRedirects(pageUrl, {
+      const pageRes = await fetchWithPacingAndRetry(pageUrl, {
         headers: {
           'Referer': 'https://www.battrick.org/nl/login.asp?private=1',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
@@ -520,13 +569,16 @@ async function startServer() {
       }
 
       const pageUrlMap: Record<string, string> = {
-        squad: 'https://www.battrick.org/nl/squad.asp',
+        squad: req.body.teamId ? `https://www.battrick.org/nl/squad.asp?teamID=${req.body.teamId}` : 'https://www.battrick.org/nl/squad.asp',
         nets: 'https://www.battrick.org/nl/nets.asp',
         finances: 'https://www.battrick.org/nl/finances.asp',
         club: 'https://www.battrick.org/nl/club.asp',
         fixtures: 'https://www.battrick.org/nl/fixtures.asp',
-        pavilion: 'https://www.battrick.org/nl/ground.asp',
+        pavilion: 'https://www.battrick.org/nl/myoffice.asp',
+        office: 'https://www.battrick.org/nl/myoffice.asp',
+        myoffice: 'https://www.battrick.org/nl/myoffice.asp',
         ground: 'https://www.battrick.org/nl/ground.asp',
+        league: req.body.leagueId ? `https://www.battrick.org/nl/leagues.asp?leagueID=${req.body.leagueId}` : 'https://www.battrick.org/nl/leagues.asp',
         matchinfo: req.body.matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${req.body.matchId}` : '',
         matchsummary: req.body.matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${req.body.matchId}&action=summary` : ''
       };
@@ -808,7 +860,7 @@ async function startServer() {
         { name: 'finances', url: 'https://www.battrick.org/nl/finances.asp' },
         { name: 'club', url: 'https://www.battrick.org/nl/club.asp' },
         { name: 'fixtures', url: 'https://www.battrick.org/nl/fixtures.asp' },
-        { name: 'pavilion', url: 'https://www.battrick.org/nl/ground.asp' }
+        { name: 'pavilion', url: 'https://www.battrick.org/nl/myoffice.asp' }
       ];
 
       const pagesToFetch = Array.isArray(requestedPages) && requestedPages.length > 0

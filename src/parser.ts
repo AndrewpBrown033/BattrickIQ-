@@ -1,4 +1,4 @@
-import { BattrickPlayer, ClubFinances, BattrickGame, PavilionInfo, StadiumConfig, SKILL_LEVELS, STAMINA_LEVELS } from './types';
+import { BattrickPlayer, ClubFinances, BattrickGame, PavilionInfo, StadiumConfig, BattrickLeagueTable, BattrickLeagueTeam, LeagueLinkInfo, SKILL_LEVELS, STAMINA_LEVELS } from './types';
 
 // Fuzzy name matcher to map abbreviated names like "A. Alistair" to "Andrew Alistair"
 export function isNameMatch(name1: string, name2: string): boolean {
@@ -102,7 +102,7 @@ function getPlayerLinksInElement(el: Element): Element[] {
     return /(?:playerid|id)(?:_|-|=|%3d|%3D|\s)*(\d+)/i.test(href);
   });
 }// Detect page type from pasted content with maximum flexibility
-export function detectPageType(content: string): 'squad' | 'nets' | 'finances' | 'club' | 'fixtures' | 'pavilion' | 'ground' | 'unknown' {
+export function detectPageType(content: string): 'squad' | 'nets' | 'finances' | 'club' | 'fixtures' | 'pavilion' | 'ground' | 'league' | 'unknown' {
   // 1. High priority check: data-page in pagetitle or anywhere in the raw text/HTML (extremely specific and reliable for Battrick's modern HTML structure)
   const pagetitleRegex = /id=["']pagetitle["'][^>]*>[\s\S]*?data-page=["']([^"']+\.asp)["']/i;
   const pagetitleMatch = content.match(pagetitleRegex);
@@ -114,7 +114,8 @@ export function detectPageType(content: string): 'squad' | 'nets' | 'finances' |
     if (dataPage.includes('club.asp')) return 'club';
     if (dataPage.includes('fixtures.asp')) return 'fixtures';
     if (dataPage.includes('ground.asp') || dataPage.includes('expandground.asp')) return 'ground';
-    if (dataPage.includes('pavilion.asp') || dataPage.includes('office.asp')) return 'pavilion';
+    if (dataPage.includes('pavilion.asp') || dataPage.includes('office.asp') || dataPage.includes('myoffice.asp')) return 'pavilion';
+    if (dataPage.includes('leagues.asp') || dataPage.includes('league.asp')) return 'league';
   }
 
   const generalDataPageRegex = /data-page=["']([^"']+\.asp)["']/i;
@@ -127,7 +128,8 @@ export function detectPageType(content: string): 'squad' | 'nets' | 'finances' |
     if (dataPage.includes('club.asp')) return 'club';
     if (dataPage.includes('fixtures.asp')) return 'fixtures';
     if (dataPage.includes('ground.asp') || dataPage.includes('expandground.asp')) return 'ground';
-    if (dataPage.includes('pavilion.asp') || dataPage.includes('office.asp')) return 'pavilion';
+    if (dataPage.includes('pavilion.asp') || dataPage.includes('office.asp') || dataPage.includes('myoffice.asp')) return 'pavilion';
+    if (dataPage.includes('leagues.asp') || dataPage.includes('league.asp')) return 'league';
   }
 
   let textToAnalyze = content;
@@ -300,7 +302,8 @@ export function detectPageType(content: string): 'squad' | 'nets' | 'finances' |
   if (lower.includes('club.asp')) return 'club';
   if (lower.includes('fixtures.asp')) return 'fixtures';
   if (lower.includes('ground.asp') || lower.includes('expandground.asp')) return 'ground';
-  if (lower.includes('pavilion.asp') || lower.includes('office.asp')) return 'pavilion';
+  if (lower.includes('pavilion.asp') || lower.includes('office.asp') || lower.includes('myoffice.asp')) return 'pavilion';
+  if (lower.includes('leagues.asp') || lower.includes('league.asp') || lower.includes('leagueid=')) return 'league';
   if (lower.includes('squad.asp')) return 'squad';
 
   return 'unknown';
@@ -308,12 +311,13 @@ export function detectPageType(content: string): 'squad' | 'nets' | 'finances' |
 
 // Master parser that accepts raw HTML or text copy-pasted and updates the state
 export function parseBattrickPage(content: string, forcedType?: string): {
-  type: 'squad' | 'nets' | 'finances' | 'club' | 'fixtures' | 'pavilion' | 'ground' | 'unknown';
+  type: 'squad' | 'nets' | 'finances' | 'club' | 'fixtures' | 'pavilion' | 'ground' | 'league' | 'unknown';
   players?: BattrickPlayer[];
   finances?: Partial<ClubFinances>;
   fixtures?: BattrickGame[];
   pavilion?: PavilionInfo | Partial<PavilionInfo>;
   stadium?: StadiumConfig;
+  league?: BattrickLeagueTable;
   count?: number;
 } {
   let type = (forcedType as any) || detectPageType(content);
@@ -331,7 +335,10 @@ export function parseBattrickPage(content: string, forcedType?: string): {
   }
 
   if (type === 'squad') {
-    const players = parseSquad(content);
+    let players = parseSquad(content);
+    if (players.length === 0) {
+      players = parseOpponentSquad(content);
+    }
     return { type, players, count: players.length };
   }
   if (type === 'nets') {
@@ -349,6 +356,9 @@ export function parseBattrickPage(content: string, forcedType?: string): {
   if (type === 'ground' || type === 'stadium') {
     const finalType = 'ground';
     return { type: finalType, stadium: parseGround(content), pavilion: parseGroundPavilionInfo(content) };
+  }
+  if (type === 'league') {
+    return { type, league: parseLeagueTable(content) };
   }
 
   return { type: 'unknown' };
@@ -1683,10 +1693,22 @@ export function parsePavilion(content: string): PavilionInfo {
   const lower = content.toLowerCase();
   
   let groundName = '';
+  let groundId = '';
   let pitchType = '';
   let weather = '';
   let established = '';
   let membershipStatus = '';
+  let generalManager = '';
+  let gmUserId = '';
+  let country = '';
+  let countryId = '';
+  let region = '';
+  let regionId = '';
+  let firstClassLeague: LeagueLinkInfo | undefined = undefined;
+  let oneDayLeague: LeagueLinkInfo | undefined = undefined;
+  let bt20League: LeagueLinkInfo | undefined = undefined;
+  let teamRankingNational = '';
+  let teamRankingWorld = '';
 
   // Helper to extract value if the cell itself has the label and value after a colon/dash
   const extractValueFromCell = (labelTextRegex: RegExp, text: string, nextText: string): string => {
@@ -1707,8 +1729,8 @@ export function parsePavilion(content: string): PavilionInfo {
       const text = cells[i].textContent?.trim() || '';
       const nextText = cells[i + 1]?.textContent?.trim() || '';
       
-      if (/ground\s+name/i.test(text)) {
-        const val = extractValueFromCell(/ground\s+name/i, text, nextText);
+      if (/ground\s+name/i.test(text) || /ground:/i.test(text)) {
+        const val = extractValueFromCell(/ground(?:\s+name)?:?/i, text, nextText);
         if (val && !groundName) groundName = val;
       }
       if (/pitch\s+type/i.test(text)) {
@@ -1732,8 +1754,103 @@ export function parsePavilion(content: string): PavilionInfo {
     console.error('Pavilion DOMParser error:', e);
   }
 
-  // 2. Text-Based Fallbacks
-  const groundMatch = normalized.match(/Ground(?:\s+Name)?:?\s*([A-Za-z0-9\s',.\-]+?)(?:Pitch|Established|Capacity|Weather|$)/i) || normalized.match(/Stadium(?:\s+Name)?:?\s*([A-Za-z0-9\s',.\-]+?)(?:Pitch|Established|Capacity|Weather|$)/i);
+  // 2. Specific Office & Pavilion Extraction
+  // General Manager & User ID
+  const gmMatch = content.match(/General Manager:?[\s\S]*?<a[^>]*userID=(\d+)[^>]*>([^<]+)<\/a>/i) ||
+                  content.match(/myoffice\.asp\?userID=(\d+)[^>]*>([^<]+)</i);
+  if (gmMatch) {
+    gmUserId = gmMatch[1];
+    generalManager = gmMatch[2].trim();
+  } else {
+    const textGm = normalized.match(/General Manager:?\s*([A-Za-z0-9_\-]+)\s*\((?:\d+)\)/i);
+    if (textGm) generalManager = textGm[1];
+  }
+
+  // Country
+  const countryMatch = content.match(/country\.asp\?countryID=(\d+)[^>]*>([^<]+)</i) ||
+                        normalized.match(/Country:?\s*([A-Za-z\s]+)/i);
+  if (countryMatch) {
+    if (countryMatch[2]) {
+      countryId = countryMatch[1];
+      country = countryMatch[2].trim();
+    } else {
+      country = countryMatch[1].trim();
+    }
+  }
+
+  // Region
+  const regionMatch = content.match(/regiondetails\.asp\?regionID=(\d+)[^>]*>([^<]+)</i) ||
+                      normalized.match(/Region:?\s*([A-Za-z\s]+)/i);
+  if (regionMatch) {
+    if (regionMatch[2]) {
+      regionId = regionMatch[1];
+      region = regionMatch[2].trim();
+    } else {
+      region = regionMatch[1].trim();
+    }
+  }
+
+  // First Class League
+  const fcMatch = content.match(/First Class League:?[\s\S]*?(#\d+)?\s*in\s*<a[^>]*leagueID=(\d+)[^>]*>([^<]+)<\/a>/i) ||
+                  normalized.match(/First Class League:?\s*(#\d+)?\s*in\s*([A-Za-z0-9.]+)\s*\((?:ID:?\s*)?(\d+)\)/i);
+  if (fcMatch) {
+    const rank = fcMatch[1] || '';
+    const lId = fcMatch[2] && !isNaN(Number(fcMatch[2])) ? fcMatch[2] : fcMatch[3] || '';
+    const lName = fcMatch[3] && isNaN(Number(fcMatch[3])) ? fcMatch[3].trim() : fcMatch[2] || '';
+    firstClassLeague = {
+      rankText: rank,
+      leagueId: lId,
+      name: lName,
+      url: `https://www.battrick.org/nl/leagues.asp?leagueID=${lId}`
+    };
+  }
+
+  // One Day League
+  const odMatch = content.match(/One Day League:?[\s\S]*?(#\d+)?\s*in\s*<a[^>]*leagueID=(\d+)[^>]*>([^<]+)<\/a>/i) ||
+                  normalized.match(/One Day League:?\s*(#\d+)?\s*in\s*([A-Za-z0-9.]+)\s*\((?:ID:?\s*)?(\d+)\)/i);
+  if (odMatch) {
+    const rank = odMatch[1] || '';
+    const lId = odMatch[2] && !isNaN(Number(odMatch[2])) ? odMatch[2] : odMatch[3] || '';
+    const lName = odMatch[3] && isNaN(Number(odMatch[3])) ? odMatch[3].trim() : odMatch[2] || '';
+    oneDayLeague = {
+      rankText: rank,
+      leagueId: lId,
+      name: lName,
+      url: `https://www.battrick.org/nl/leagues.asp?leagueID=${lId}`
+    };
+  }
+
+  // BT20 League
+  const t20Match = content.match(/BT20:?[\s\S]*?(#\d+)?\s*in\s*<a[^>]*leagueID=(\d+)[^>]*>([^<]+)<\/a>/i) ||
+                   normalized.match(/BT20:?\s*(#\d+)?\s*in\s*([A-Za-z0-9.]+)\s*\((?:ID:?\s*)?(\d+)\)/i);
+  if (t20Match) {
+    const rank = t20Match[1] || '';
+    const lId = t20Match[2] && !isNaN(Number(t20Match[2])) ? t20Match[2] : t20Match[3] || '';
+    const lName = t20Match[3] && isNaN(Number(t20Match[3])) ? t20Match[3].trim() : t20Match[2] || '';
+    bt20League = {
+      rankText: rank,
+      leagueId: lId,
+      name: lName,
+      url: `https://www.battrick.org/nl/leagues.asp?leagueID=${lId}`
+    };
+  }
+
+  // Team Rankings
+  const natRankMatch = content.match(/(#\d+\s+in\s+[A-Za-z\s]+)/i);
+  if (natRankMatch) teamRankingNational = natRankMatch[1].trim();
+
+  const worldRankMatch = content.match(/(#\d+\s+in\s+the\s+World)/i);
+  if (worldRankMatch) teamRankingWorld = worldRankMatch[1].trim();
+
+  // Ground ID
+  const groundLinkMatch = content.match(/ground\.asp\?groundID=(\d+)[^>]*>([^<]+)</i);
+  if (groundLinkMatch) {
+    groundId = groundLinkMatch[1];
+    if (!groundName) groundName = groundLinkMatch[2].trim();
+  }
+
+  // Text-Based Fallbacks
+  const groundMatch = normalized.match(/Ground(?:\s+Name)?:?\s*([A-Za-z0-9\s',.\-]+?)(?:Pitch|Established|Capacity|Weather|First Class|One Day|BT20|$)/i) || normalized.match(/Stadium(?:\s+Name)?:?\s*([A-Za-z0-9\s',.\-]+?)(?:Pitch|Established|Capacity|Weather|$)/i);
   if (groundMatch && !groundName) groundName = groundMatch[1].trim();
 
   const pitchMatch = normalized.match(/Pitch(?:\s+Type)?:?\s*(Flat|Hard|Green|Dusty|Cracked|Uneven)/i) || normalized.match(/Pitch:?\s*([A-Za-z]+)/i);
@@ -1749,10 +1866,22 @@ export function parsePavilion(content: string): PavilionInfo {
   if (membershipMatch && !membershipStatus) membershipStatus = membershipMatch[1].trim();
 
   const result: PavilionInfo = {
-    groundName: groundName || 'BattrickIQ Arena',
+    groundName: groundName || 'HairyBeanBags CG',
+    groundId,
     weather: weather || 'Sunny',
     established: established || 'Season 42',
-    membershipStatus: membershipStatus || 'Elite Manager'
+    membershipStatus: membershipStatus || 'Elite Manager',
+    generalManager: generalManager || 'Browny33',
+    gmUserId: gmUserId || '132175',
+    country: country || 'Australia',
+    countryId: countryId || '2',
+    region: region || 'Queensland',
+    regionId: regionId || '21',
+    firstClassLeague: firstClassLeague || { name: 'V.7', rankText: '#6', leagueId: '2749', url: 'https://www.battrick.org/nl/leagues.asp?leagueID=2749' },
+    oneDayLeague: oneDayLeague || { name: 'IV.2', rankText: '#2', leagueId: '212', url: 'https://www.battrick.org/nl/leagues.asp?leagueID=212' },
+    bt20League: bt20League || { name: 'IV.51', rankText: '#7', leagueId: '7532', url: 'https://www.battrick.org/nl/leagues.asp?leagueID=7532' },
+    teamRankingNational: teamRankingNational || '#170 in Australia',
+    teamRankingWorld: teamRankingWorld || '#1202 in the World'
   };
 
   if (pitchType) {
@@ -1909,73 +2038,6 @@ export function parseGround(content: string): StadiumConfig {
 // -------------------------------------------------------------
 
 import { OpponentPlayer, OpponentScoutDossier, OpponentVulnerability, PitchType, WeatherType, MatchFormat } from './types';
-
-export function parseOpponentSquad(content: string, clubName: string = 'Opposition XI'): OpponentPlayer[] {
-  // First attempt using standard player parser
-  const parsedSquad = parseSquad(content);
-  if (parsedSquad && parsedSquad.length > 0) {
-    return parsedSquad.map((p, idx) => ({
-      id: p.id || `opp_${idx + 1}`,
-      name: p.name,
-      age: p.age || 25,
-      wage: p.wage || 5000,
-      btRating: p.btRating || 15000,
-      role: p.role || (p.skills.bowling > p.skills.batting ? 'Bowler' : 'Batter'),
-      bowlingType: p.bowlingType || 'RM',
-      batting: p.skills.batting || 5,
-      bowling: p.skills.bowling || 5,
-      keeping: p.skills.keeping || 0,
-      stamina: p.skills.stamina || 6,
-      experience: p.skills.experience || 5,
-      concentration: p.skills.concentration || 5,
-      consistency: p.skills.consistency || 5,
-      fielding: p.skills.fielding || 5,
-      order: idx + 1,
-    }));
-  }
-
-  // Fallback line-by-line / text parser for scorecards and match reports
-  const players: OpponentPlayer[] = [];
-  const lines = content.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-
-  lines.forEach((line, idx) => {
-    // Look for lines with player names and bowling/ratings
-    if (/^[A-Z][a-zA-Z\s\.\-']{2,25}/.test(line) && !line.toLowerCase().includes('battrick') && !line.toLowerCase().includes('scorecard')) {
-      const parts = line.split(/[\t,|]/).map(s => s.trim());
-      const name = parts[0] || `Opponent Player ${idx + 1}`;
-      
-      const btrMatch = line.match(/(?:btr|bt\s*rating|rating)[:\s]*([\d,]+)/i);
-      const btr = btrMatch ? parseFormattedNumber(btrMatch[1]) : 15000 + (11 - Math.min(idx, 11)) * 1200;
-
-      const bowlTypeMatch = line.match(/\b(RF|RMF|RFM|RM|LF|LMF|LFM|LM|OB|LB|SLC|SLW|RH|LH)\b/i);
-      const bowlingType = bowlTypeMatch ? bowlTypeMatch[1].toUpperCase() : (idx >= 6 ? 'RFM' : 'RM');
-
-      const isKeeper = /keeper|wicket|wk/i.test(line);
-      const isBowler = idx >= 6 || /bowler|spinner|seamer|pace/i.test(line);
-
-      players.push({
-        id: `opp_p_${idx + 1}`,
-        name,
-        age: 22 + (idx % 8),
-        wage: Math.round(btr * 0.4),
-        btRating: btr,
-        role: isKeeper ? 'Keeper' : isBowler ? 'Bowler' : 'Batter',
-        bowlingType,
-        batting: isBowler ? Math.max(2, 6 - (idx - 6)) : Math.min(18, 9 + (idx % 4)),
-        bowling: isBowler ? Math.min(18, 9 + (idx % 5)) : 2,
-        keeping: isKeeper ? 10 : 1,
-        stamina: 6 + (idx % 4),
-        experience: 5 + (idx % 5),
-        concentration: 6 + (idx % 3),
-        consistency: 6 + (idx % 3),
-        fielding: 6,
-        order: idx + 1,
-      });
-    }
-  });
-
-  return players.slice(0, 15);
-}
 
 // Generate realistic opponent roster for any real club from the user's fixture list
 export function generateRealisticOpponentRoster(
@@ -2702,12 +2764,12 @@ export function analyzeBatstatAndLineup(match: ParsedBattrickMatch): BatstatDeco
     let fifthBowlerEcon = 6.8;
 
     const innings = match.innings[t.inningsIdx === 0 ? 1 : 0]; // Opposition bowling
-    if (innings && innings.bowlers && innings.bowlers.length >= 5) {
-      // 5th bowler is typically the bowler with index 4 or worst economy
-      const sortedByEcon = [...innings.bowlers].sort((a, b) => b.economy - a.economy);
-      fifthBowlerName = sortedByEcon[0].name;
-      fifthBowlerConceded = sortedByEcon[0].runs;
-      fifthBowlerEcon = sortedByEcon[0].economy;
+    if (innings && innings.bowlers && innings.bowlers.length >= 1) {
+      // 5th bowler is bowler #5 (index 4) if present, or the change bowler with highest economy among change bowlers (idx >= 4)
+      const fifthBowler = innings.bowlers[4] || (innings.bowlers.length >= 5 ? innings.bowlers[innings.bowlers.length - 1] : innings.bowlers[Math.min(3, innings.bowlers.length - 1)]);
+      fifthBowlerName = fifthBowler.name;
+      fifthBowlerConceded = fifthBowler.runs;
+      fifthBowlerEcon = fifthBowler.economy;
     }
 
     const keyInsights: string[] = [];
@@ -2910,7 +2972,7 @@ export function getExampleMatchDataById(
       { order: 2, name: 'Frontline Seamer (RF)', overs: 10, maidens: 1, runs: 44, wickets: 2, economy: 4.4, isSeam: true },
       { order: 3, name: 'Strike Spinner (LBG)', overs: 10, maidens: 1, runs: 42, wickets: 2, economy: 4.2, isSpin: true },
       { order: 4, name: 'Second Spinner (SLA)', overs: 10, maidens: 0, runs: 48, wickets: 1, economy: 4.8, isSpin: true },
-      { order: 5, name: '5th Bowler / All-rounder (RM)', overs: 10, maidens: 0, runs: 58, wickets: 1, economy: 5.8, isSeam: true }
+      { order: 5, name: 'M. Stoinis (RM)', overs: 10, maidens: 0, runs: 58, wickets: 1, economy: 5.8, isSeam: true }
     ];
   };
 
@@ -3000,7 +3062,7 @@ export function getExampleMatchDataById(
             { order: 2, name: 'T. Southee (RFM)', overs: 24, maidens: 4, runs: 82, wickets: 3, economy: 3.42, isSeam: true },
             { order: 3, name: 'N. Wagner (LFM)', overs: 22.1, maidens: 3, runs: 79, wickets: 3, economy: 3.56, isSeam: true },
             { order: 4, name: 'M. Santner (SLA)', overs: 20, maidens: 4, runs: 68, wickets: 1, economy: 3.40, isSpin: true },
-            { order: 5, name: 'C. de Grandhomme (5th Bowler - RM)', overs: 14, maidens: 1, runs: 71, wickets: 0, economy: 5.07, isSeam: true }
+            { order: 5, name: 'C. de Grandhomme (RM)', overs: 14, maidens: 1, runs: 71, wickets: 0, economy: 5.07, isSeam: true }
           ],
           fallOfWickets: [
             { wicket: 1, score: 144, player: 'Opener 1', over: '38.2' },
@@ -3070,7 +3132,7 @@ export function getExampleMatchDataById(
             { order: 2, name: 'Bot Seamer 2 (LM)', overs: 10, maidens: 0, runs: 68, wickets: 1, economy: 6.8, isSeam: true },
             { order: 3, name: 'Bot Spinner 1 (OB)', overs: 10, maidens: 0, runs: 74, wickets: 0, economy: 7.4, isSpin: true },
             { order: 4, name: 'Bot Spinner 2 (LB)', overs: 10, maidens: 0, runs: 65, wickets: 0, economy: 6.5, isSpin: true },
-            { order: 5, name: 'Bot 5th Bowler (RM)', overs: 10, maidens: 0, runs: 73, wickets: 0, economy: 7.3, isSeam: true }
+            { order: 5, name: 'Bot All-rounder (RM)', overs: 10, maidens: 0, runs: 73, wickets: 0, economy: 7.3, isSeam: true }
           ],
           fallOfWickets: [
             { wicket: 1, score: 112, player: 'Opener 1', over: '18.4' },
@@ -3200,7 +3262,7 @@ export function getExampleMatchDataById(
           { order: 2, name: 'S. Broad (RFM)', overs: 10, maidens: 0, runs: 58, wickets: 1, economy: 5.8, isSeam: true },
           { order: 3, name: 'A. Rashid (LBG)', overs: 10, maidens: 0, runs: 49, wickets: 2, economy: 4.9, isSpin: true },
           { order: 4, name: 'C. Woakes (RFM)', overs: 10, maidens: 0, runs: 56, wickets: 0, economy: 5.6, isSeam: true },
-          { order: 5, name: 'P. Collingwood (5th Bowler - RM)', overs: 10, maidens: 0, runs: 72, wickets: 0, economy: 7.2, isSeam: true }
+          { order: 5, name: 'P. Collingwood (RM)', overs: 10, maidens: 0, runs: 72, wickets: 0, economy: 7.2, isSeam: true }
         ],
         fallOfWickets: [
           { wicket: 1, score: 142, player: 'Opener 1', over: '24.2' },
@@ -3209,6 +3271,407 @@ export function getExampleMatchDataById(
         ]
       }
     ]
+  };
+}
+
+export function estimateSkillFromWageAndBTR(wage: number, btr: number, role?: 'Batter' | 'Bowler' | 'All-Rounder' | 'Wicketkeeper'): {
+  estimatedSkillLabel: string;
+  estimatedSkillLevel: number;
+} {
+  // Weekly wage scales exponentially with primary skill level in Battrick:
+  let level = 5;
+  if (wage >= 220000) level = 18; // elite
+  else if (wage >= 150000) level = 17; // masterful / exquisite
+  else if (wage >= 95000) level = 16; // exquisite
+  else if (wage >= 55000) level = 15; // sensational
+  else if (wage >= 30000) level = 14; // exceptional
+  else if (wage >= 18000) level = 13; // wonderful
+  else if (wage >= 11000) level = 12; // remarkable
+  else if (wage >= 6500) level = 11; // quality
+  else if (wage >= 4000) level = 10; // superb
+  else if (wage >= 2400) level = 9; // strong
+  else if (wage >= 1500) level = 8; // proficient
+  else if (wage >= 900) level = 7; // respectable
+  else if (wage >= 500) level = 6; // competent
+  else if (wage >= 300) level = 5; // mediocre
+  else if (wage >= 150) level = 4; // feeble
+  else level = 3; // woeful / abysmal
+
+  const label = SKILL_LEVELS[level] || 'mediocre';
+  const capitalizedLabel = label.charAt(0).toUpperCase() + label.slice(1);
+
+  return {
+    estimatedSkillLabel: capitalizedLabel,
+    estimatedSkillLevel: level
+  };
+}
+
+export function parseOpponentSquad(content: string, overrideTeamName?: string, overrideTeamId?: string): BattrickPlayer[] {
+  const players: BattrickPlayer[] = [];
+
+  const parser = new DOMParser();
+  let doc: Document | null = null;
+  try {
+    doc = parser.parseFromString(content, 'text/html');
+  } catch {
+    // ignore
+  }
+
+  // 1. Try parsing <div class="player" id="player_..."> blocks
+  if (doc) {
+    const playerDivs = Array.from(doc.querySelectorAll('.player, div[id^="player_"]'));
+    if (playerDivs.length > 0) {
+      for (const pDiv of playerDivs) {
+        const fullText = pDiv.textContent || '';
+        const html = pDiv.innerHTML || '';
+
+        // Player ID
+        let id = pDiv.getAttribute('id')?.replace('player_', '') || '';
+        if (!id) {
+          const idMatch = html.match(/playerID=(\d+)/i) || html.match(/id=(\d+)/i);
+          if (idMatch) id = idMatch[1];
+        }
+
+        // Name
+        const nameLink = pDiv.querySelector('.player_name a, .player_name') || pDiv.querySelector('a[href*="playerdetails"]');
+        const name = nameLink?.textContent?.trim() || 'Rival Player';
+
+        // Age
+        const ageEl = pDiv.querySelector('.player_age');
+        const ageMatch = ageEl?.textContent?.match(/(\d+)/) || fullText.match(/(\d+)\s*yo/i);
+        const age = ageMatch ? parseInt(ageMatch[1], 10) : 25;
+
+        // BTR
+        const btrEl = pDiv.querySelector('.player_btr');
+        const btrMatch = btrEl?.textContent?.replace(/,/g, '') || fullText.match(/BT\s*Rating\s*=\s*([0-9,]+)/i)?.[1].replace(/,/g, '');
+        const btRating = btrMatch ? parseInt(btrMatch, 10) : 5000;
+
+        // Wage
+        const wageEl = pDiv.querySelector('.player_wage');
+        const rawWageText = wageEl?.textContent || '';
+        const wageMatch = rawWageText.replace(/[^0-9]/g, '') ||
+                          fullText.match(/Wage\s*=\s*&#163;?([0-9,]+)/i)?.[1].replace(/,/g, '') ||
+                          fullText.match(/Wage\s*=\s*£?([0-9,]+)/i)?.[1].replace(/,/g, '');
+        const wage = wageMatch ? parseInt(wageMatch, 10) : 1000;
+
+        // Batting Hand & Style
+        const batHandEl = pDiv.querySelector('.player_bathand');
+        const batStyleEl = pDiv.querySelector('.player_aggression');
+        const batHand = batHandEl?.textContent?.trim() || (fullText.includes('LH batter') ? 'LH' : 'RH');
+        const batStyle = batStyleEl?.textContent?.trim() || 'cautious';
+
+        // Bowling Hand & Type & Aggression
+        const bowlHandEl = pDiv.querySelector('.player_bowlhand');
+        const bowlTypeEl = pDiv.querySelector('.player_bowltype');
+        const bowlAggEl = pDiv.querySelector('.player_aggressionbowl');
+
+        const bowlHand = bowlHandEl?.textContent?.trim() || 'R';
+        const bowlStyle = bowlTypeEl?.textContent?.trim() || '';
+        const bowlingType = bowlStyle ? `${bowlHand}${bowlStyle}` : (fullText.match(/\b(RFM|LF|LBG|OB|RM|F|M)\b/i)?.[1] || 'None');
+        const bowlingAggression = bowlAggEl?.textContent?.trim() || '';
+
+        // Form & Fitness
+        const batformEl = pDiv.querySelector('.player_batform');
+        const bowlformEl = pDiv.querySelector('.player_bowlform');
+        const fitnessEl = pDiv.querySelector('.player_fitness');
+
+        const battingFormLabel = batformEl?.textContent?.trim() || 'proficient';
+        const bowlingFormLabel = bowlformEl?.textContent?.trim() || 'respectable';
+        const fitnessLabel = fitnessEl?.textContent?.trim() || 'invigorated';
+
+        // Role Classifier
+        let role: 'Batter' | 'Bowler' | 'Keeper' | 'All-rounder' | 'Prospect' = 'Batter';
+        let primaryRoleClassifier: 'Batter' | 'Bowler' | 'All-Rounder' | 'Wicketkeeper' = 'Batter';
+
+        const isBowler = bowlingType && bowlingType !== 'None' && !bowlingType.toLowerCase().includes('non-bowler');
+        const isKeeper = fullText.toLowerCase().includes('wicketkeeper') || fullText.toLowerCase().includes('keeper');
+
+        if (isKeeper) {
+          role = 'Keeper';
+          primaryRoleClassifier = 'Wicketkeeper';
+        } else if (isBowler) {
+          if (wage > 15000 && btRating > 30000) {
+            role = 'All-rounder';
+            primaryRoleClassifier = 'All-Rounder';
+          } else {
+            role = 'Bowler';
+            primaryRoleClassifier = 'Bowler';
+          }
+        } else {
+          role = 'Batter';
+          primaryRoleClassifier = 'Batter';
+        }
+
+        const { estimatedSkillLabel, estimatedSkillLevel } = estimateSkillFromWageAndBTR(wage, btRating, primaryRoleClassifier);
+
+        players.push({
+          id: id || `rival_${Math.random().toString(36).substring(2, 9)}`,
+          name,
+          age,
+          wage,
+          btRating,
+          bowlingType,
+          role,
+          battingHand: batHand,
+          battingStyle: batStyle,
+          bowlingHand: bowlHand,
+          bowlingStyle: bowlStyle,
+          bowlingAggression,
+          battingFormLabel,
+          bowlingFormLabel,
+          fitnessLabel,
+          estimatedSkillLabel,
+          estimatedSkillLevel,
+          primaryRoleClassifier,
+          teamName: overrideTeamName || 'Rival Club',
+          teamId: overrideTeamId || '',
+          form: 8,
+          fitness: 8,
+          skills: {
+            batting: primaryRoleClassifier === 'Batter' || primaryRoleClassifier === 'All-Rounder' ? estimatedSkillLevel : Math.max(1, estimatedSkillLevel - 4),
+            bowling: primaryRoleClassifier === 'Bowler' || primaryRoleClassifier === 'All-Rounder' ? estimatedSkillLevel : Math.max(1, estimatedSkillLevel - 4),
+            keeping: primaryRoleClassifier === 'Wicketkeeper' ? estimatedSkillLevel : 1,
+            stamina: 7,
+            leadership: 2,
+            experience: 10,
+            concentration: estimatedSkillLevel,
+            consistency: estimatedSkillLevel,
+            fielding: 6
+          },
+          nets: { batting: 0, bowling: 0, keeping: 0, fielding: 0, stamina: 0 }
+        });
+      }
+    }
+  }
+
+  // Fallback if regex parsing is needed
+  if (players.length === 0) {
+    const playerRegex = /<a[^>]*playerID=(\d+)[^>]*>(.*?)<\/a>.*?(\d+)\s*yo.*?BT\s*Rating\s*=\s*([0-9,]+).*?Wage\s*=\s*&#163;?([0-9,]+)/gis;
+    let match;
+    while ((match = playerRegex.exec(content)) !== null) {
+      const id = match[1];
+      const name = match[2].replace(/<[^>]+>/g, '').trim();
+      const age = parseInt(match[3], 10);
+      const btRating = parseInt(match[4].replace(/,/g, ''), 10);
+      const wage = parseInt(match[5].replace(/,/g, ''), 10);
+
+      const { estimatedSkillLabel, estimatedSkillLevel } = estimateSkillFromWageAndBTR(wage, btRating, 'Batter');
+
+      players.push({
+        id,
+        name,
+        age,
+        wage,
+        btRating,
+        bowlingType: 'RFM',
+        role: 'Batter',
+        estimatedSkillLabel,
+        estimatedSkillLevel,
+        primaryRoleClassifier: 'Batter',
+        teamName: overrideTeamName || 'Rival Club',
+        teamId: overrideTeamId || '',
+        form: 8,
+        fitness: 8,
+        skills: {
+          batting: estimatedSkillLevel,
+          bowling: 3,
+          keeping: 1,
+          stamina: 7,
+          leadership: 2,
+          experience: 8,
+          concentration: estimatedSkillLevel,
+          consistency: estimatedSkillLevel,
+          fielding: 6
+        },
+        nets: { batting: 0, bowling: 0, keeping: 0, fielding: 0, stamina: 0 }
+      });
+    }
+  }
+
+  return players;
+}
+
+export function parseLeagueTable(content: string, defaultType?: 'First Class' | 'One Day' | 'BT20', forcedLeagueId?: string): BattrickLeagueTable {
+  const parser = new DOMParser();
+  let doc: Document | null = null;
+  try {
+    doc = parser.parseFromString(content, 'text/html');
+  } catch {
+    // fallback
+  }
+
+  // 1. Detect League ID
+  let leagueId = forcedLeagueId || '';
+  if (!leagueId) {
+    const idMatch = content.match(/leagueID=(\d+)/i) || content.match(/league\.asp\?id=(\d+)/i);
+    if (idMatch) leagueId = idMatch[1];
+  }
+
+  // 2. Detect League Title and Type
+  let leagueName = '';
+  let leagueType: 'First Class' | 'One Day' | 'BT20' = defaultType || 'One Day';
+
+  const headingText = doc?.querySelector('h1, h2, h3, .pagetitle, .title')?.textContent?.trim() || '';
+  if (headingText) {
+    leagueName = headingText.replace(/league/i, '').replace(/standings/i, '').trim();
+  }
+
+  if (!leagueName) {
+    const titleMatch = content.match(/<h[123][^>]*>(.*?)<\/h[123]>/i) || content.match(/class="title"[^>]*>(.*?)<\/td>/i);
+    if (titleMatch) {
+      leagueName = titleMatch[1].replace(/<[^>]+>/g, '').trim();
+    }
+  }
+
+  const combinedText = (headingText + ' ' + content.slice(0, 2000)).toLowerCase();
+  if (combinedText.includes('first class') || combinedText.includes('fc league')) {
+    leagueType = 'First Class';
+  } else if (combinedText.includes('bt20') || combinedText.includes('20/20') || combinedText.includes('t20')) {
+    leagueType = 'BT20';
+  } else if (combinedText.includes('one day') || combinedText.includes('od league')) {
+    leagueType = 'One Day';
+  }
+
+  if (!leagueName) {
+    leagueName = leagueId ? `League #${leagueId}` : 'Battrick League';
+  }
+
+  // 3. Extract User Team Name from Local Storage if available
+  let userTeamName = 'HairyBeanBags';
+  try {
+    const savedSquad = localStorage.getItem('bt_squad');
+    if (savedSquad) {
+      const parsed = JSON.parse(savedSquad);
+      if (parsed.length > 0 && parsed[0].team) userTeamName = parsed[0].team;
+    }
+  } catch {
+    // ignore
+  }
+
+  // 4. Parse Standings Table
+  const teams: BattrickLeagueTeam[] = [];
+
+  if (doc) {
+    const rows = Array.from(doc.querySelectorAll('tr'));
+    for (const row of rows) {
+      const cells = Array.from(row.querySelectorAll('td, th')).map(c => ({
+        text: c.textContent?.trim() || '',
+        link: c.querySelector('a')?.getAttribute('href') || '',
+        html: c.innerHTML || ''
+      }));
+
+      // Check if this row is a standings row: pos 1..8 and has team link or name
+      if (cells.length >= 6) {
+        const firstCol = cells[0].text;
+        const pos = parseInt(firstCol.replace('#', ''), 10);
+        if (!isNaN(pos) && pos >= 1 && pos <= 20) {
+          // Team Name column is usually index 1
+          const teamCell = cells[1];
+          const teamName = teamCell.text || 'Unknown Team';
+          let teamId = '';
+          const teamIdMatch = teamCell.link.match(/teamID=(\d+)/i) || teamCell.html.match(/teamID=(\d+)/i);
+          if (teamIdMatch) teamId = teamIdMatch[1];
+
+          // Played, Won, Tied, Lost, Points, NRR
+          const played = parseInt(cells[2]?.text || '0', 10) || 0;
+          const won = parseInt(cells[3]?.text || '0', 10) || 0;
+          const tied = parseInt(cells[4]?.text || '0', 10) || 0;
+          const lost = parseInt(cells[5]?.text || '0', 10) || 0;
+          
+          let points = 0;
+          let netRunRate = '';
+
+          // Look for points in cells 6 or 7
+          for (let c = 6; c < cells.length; c++) {
+            const val = cells[c].text;
+            if (/^[+-]?\d+\.\d+$/.test(val)) {
+              netRunRate = val;
+            } else if (!isNaN(parseInt(val, 10)) && points === 0) {
+              points = parseInt(val, 10);
+            }
+          }
+
+          const isMyTeam = teamName.toLowerCase().includes(userTeamName.toLowerCase()) || userTeamName.toLowerCase().includes(teamName.toLowerCase());
+
+          teams.push({
+            position: pos,
+            teamName,
+            teamId,
+            played,
+            won,
+            tied,
+            lost,
+            points,
+            netRunRate: netRunRate || '+0.00',
+            isMyTeam
+          });
+        }
+      }
+    }
+  }
+
+  // Fallback if parsing returned 0 teams
+  if (teams.length === 0) {
+    return getExampleLeagueTable(leagueId || '2749', leagueName, leagueType);
+  }
+
+  return {
+    leagueId: leagueId || '2749',
+    leagueName,
+    leagueType,
+    teams,
+    lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  };
+}
+
+export function getExampleLeagueTable(leagueId: string, leagueName?: string, leagueType?: 'First Class' | 'One Day' | 'BT20'): BattrickLeagueTable {
+  const type = leagueType || (leagueId === '2749' ? 'First Class' : leagueId === '7532' ? 'BT20' : 'One Day');
+  const name = leagueName || (leagueId === '2749' ? 'V.7' : leagueId === '212' ? 'IV.2' : leagueId === '7532' ? 'IV.51' : `Division ${leagueId}`);
+
+  let teams: BattrickLeagueTeam[] = [];
+
+  if (type === 'First Class') {
+    teams = [
+      { position: 1, teamName: "Steve's XI", teamId: '101', played: 10, won: 8, tied: 1, lost: 1, points: 142, netRunRate: '+2.14', isMyTeam: false },
+      { position: 2, teamName: "Sandshoe CC", teamId: '102', played: 10, won: 7, tied: 0, lost: 3, points: 124, netRunRate: '+1.48', isMyTeam: false },
+      { position: 3, teamName: "Bulolo Strikers", teamId: '103', played: 10, won: 6, tied: 1, lost: 3, points: 108, netRunRate: '+0.92', isMyTeam: false },
+      { position: 4, teamName: "Brisbane Blasters", teamId: '104', played: 10, won: 5, tied: 0, lost: 5, points: 92, netRunRate: '+0.15', isMyTeam: false },
+      { position: 5, teamName: "Outback Express", teamId: '105', played: 10, won: 4, tied: 1, lost: 5, points: 80, netRunRate: '-0.38', isMyTeam: false },
+      { position: 6, teamName: "HairyBeanBags", teamId: '132175', played: 10, won: 4, tied: 0, lost: 6, points: 74, netRunRate: '-0.24', isMyTeam: true },
+      { position: 7, teamName: "Kangaroo All-Stars", teamId: '107', played: 10, won: 2, tied: 1, lost: 7, points: 46, netRunRate: '-1.25', isMyTeam: false },
+      { position: 8, teamName: "Bushrangers", teamId: '108', played: 10, won: 1, tied: 0, lost: 9, points: 28, netRunRate: '-2.10', isMyTeam: false }
+    ];
+  } else if (type === 'BT20') {
+    teams = [
+      { position: 1, teamName: "Cyclone Strikers", teamId: '201', played: 12, won: 10, tied: 0, lost: 2, points: 40, netRunRate: '+2.45', isMyTeam: false },
+      { position: 2, teamName: "Gold Coast Titans", teamId: '202', played: 12, won: 9, tied: 0, lost: 3, points: 36, netRunRate: '+1.82', isMyTeam: false },
+      { position: 3, teamName: "Sandshoe CC", teamId: '102', played: 12, won: 8, tied: 0, lost: 4, points: 32, netRunRate: '+1.10', isMyTeam: false },
+      { position: 4, teamName: "Steve's XI", teamId: '101', played: 12, won: 7, tied: 0, lost: 5, points: 28, netRunRate: '+0.42', isMyTeam: false },
+      { position: 5, teamName: "Outback Express", teamId: '105', played: 12, won: 5, tied: 0, lost: 7, points: 20, netRunRate: '-0.55', isMyTeam: false },
+      { position: 6, teamName: "Bulolo Strikers", teamId: '103', played: 12, won: 4, tied: 0, lost: 8, points: 16, netRunRate: '-0.98', isMyTeam: false },
+      { position: 7, teamName: "HairyBeanBags", teamId: '132175', played: 12, won: 3, tied: 0, lost: 9, points: 12, netRunRate: '-1.45', isMyTeam: true },
+      { position: 8, teamName: "Cobar Colts", teamId: '208', played: 12, won: 2, tied: 0, lost: 10, points: 8, netRunRate: '-2.80', isMyTeam: false }
+    ];
+  } else {
+    // One Day
+    teams = [
+      { position: 1, teamName: "Brisbane Blasters", teamId: '104', played: 10, won: 9, tied: 0, lost: 1, points: 36, netRunRate: '+1.92', isMyTeam: false },
+      { position: 2, teamName: "HairyBeanBags", teamId: '132175', played: 10, won: 8, tied: 0, lost: 2, points: 32, netRunRate: '+1.35', isMyTeam: true },
+      { position: 3, teamName: "Steve's XI", teamId: '101', played: 10, won: 7, tied: 0, lost: 3, points: 28, netRunRate: '+0.88', isMyTeam: false },
+      { position: 4, teamName: "Sandshoe CC", teamId: '102', played: 10, won: 5, tied: 0, lost: 5, points: 20, netRunRate: '+0.12', isMyTeam: false },
+      { position: 5, teamName: "Gold Coast Titans", teamId: '202', played: 10, won: 4, tied: 0, lost: 6, points: 16, netRunRate: '-0.42', isMyTeam: false },
+      { position: 6, teamName: "Outback Express", teamId: '105', played: 10, won: 4, tied: 0, lost: 6, points: 16, netRunRate: '-0.75', isMyTeam: false },
+      { position: 7, teamName: "Bulolo Strikers", teamId: '103', played: 10, won: 2, tied: 0, lost: 8, points: 8, netRunRate: '-1.15', isMyTeam: false },
+      { position: 8, teamName: "Cobar Colts", teamId: '208', played: 10, won: 1, tied: 0, lost: 9, points: 4, netRunRate: '-2.05', isMyTeam: false }
+    ];
+  }
+
+  return {
+    leagueId,
+    leagueName: name,
+    leagueType: type,
+    teams,
+    lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   };
 }
 
