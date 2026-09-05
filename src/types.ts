@@ -127,6 +127,7 @@ export interface BattrickPlayer {
     };
     note?: string;
   }[];
+  stats?: any;
 }
 
 export interface StadiumConfig {
@@ -275,6 +276,11 @@ export interface OpponentPlayer {
   estimatedSkillLabel?: string;
   estimatedSkillLevel?: number;
   primaryRoleClassifier?: 'Batter' | 'Bowler' | 'All-Rounder' | 'Wicketkeeper';
+  battingAverage?: number;
+  bowlingAverage?: number;
+  teamId?: string;
+  teamName?: string;
+  playerId?: string;
 }
 
 export interface OpponentVulnerability {

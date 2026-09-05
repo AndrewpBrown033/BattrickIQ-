@@ -14,7 +14,10 @@ import {
   MapPin, 
   ChevronRight,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown
 } from 'lucide-react';
 import { PavilionInfo, BattrickLeagueTable, BattrickLeagueTeam, LeagueLinkInfo } from '../types';
 import { parseLeagueTable, getExampleLeagueTable, parseBattrickPage } from '../parser';
@@ -43,6 +46,46 @@ export const LeagueStandings: React.FC<LeagueStandingsProps> = ({ setActiveTab, 
   const [isPasteOpen, setIsPasteOpen] = useState<boolean>(false);
   const [pastedText, setPastedText] = useState<string>('');
   const [pasteError, setPasteError] = useState<string | null>(null);
+
+  // Standings Sorting State
+  const [sortField, setSortField] = useState<keyof BattrickLeagueTeam>('position');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const handleSort = (field: keyof BattrickLeagueTeam) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      if (field === 'position' || field === 'teamName') {
+        setSortDirection('asc');
+      } else {
+        setSortDirection('desc');
+      }
+    }
+  };
+
+  const renderHeader = (label: string, field: keyof BattrickLeagueTeam, className = "text-center") => {
+    const isSorted = sortField === field;
+    const isRight = className.includes('text-right');
+    const isLeft = className.includes('text-left') || className === '';
+    return (
+      <th 
+        onClick={() => handleSort(field)}
+        className={`py-3 px-4 cursor-pointer select-none hover:bg-slate-200 hover:text-slate-950 transition-colors uppercase tracking-wider text-[11px] font-bold ${className}`}
+      >
+        <div className={`inline-flex items-center gap-1 ${isRight ? 'justify-end' : isLeft ? 'justify-start' : 'justify-center'}`}>
+          <span>{label}</span>
+          <span className={`shrink-0 transition-opacity ${isSorted ? 'text-emerald-600 opacity-100' : 'opacity-40 group-hover:opacity-100 text-slate-400'}`}>
+            {isSorted ? (
+              sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+            ) : (
+              <ArrowUpDown className="w-3 h-3" />
+            )}
+          </span>
+        </div>
+      </th>
+    );
+  };
 
   // Load Pavilion and Stored Leagues on Mount
   useEffect(() => {
@@ -356,21 +399,78 @@ export const LeagueStandings: React.FC<LeagueStandingsProps> = ({ setActiveTab, 
           </div>
         </div>
 
-        {/* Custom League ID Search Bar */}
-        <div className="flex items-center gap-3 pt-1">
-          <div className="relative flex-1 max-w-xs">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={customLeagueId}
-              onChange={(e) => setCustomLeagueId(e.target.value)}
-              placeholder={`League ID (e.g. ${activeLink?.leagueId || '2749'})`}
-              className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 font-mono"
-            />
+        {/* Custom League ID Search Bar & My Leagues Fast Shortcuts */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative w-full sm:w-64">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={customLeagueId}
+                onChange={(e) => setCustomLeagueId(e.target.value)}
+                placeholder={`League ID (e.g. ${activeLink?.leagueId || '2749'})`}
+                className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 font-mono"
+              />
+            </div>
+            <span className="text-xs text-slate-500 font-mono">
+              Active Target: <strong>League ID {activeLeagueId}</strong> ({activeTable.leagueName})
+            </span>
           </div>
-          <span className="text-xs text-slate-500 font-mono">
-            Active Target: <strong>League ID {activeLeagueId}</strong> ({activeTable.leagueName})
-          </span>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-mono text-slate-400 font-bold uppercase">My Leagues:</span>
+            {pavilion?.firstClassLeague && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveLeagueType('First Class');
+                  setCustomLeagueId('');
+                }}
+                className={`text-[11px] font-mono font-bold px-3 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
+                  !customLeagueId && activeLeagueType === 'First Class'
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                    : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200'
+                }`}
+              >
+                <span>FC: {pavilion.firstClassLeague.name}</span>
+                <span className="text-[9px] opacity-70">({pavilion.firstClassLeague.leagueId})</span>
+              </button>
+            )}
+            {pavilion?.oneDayLeague && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveLeagueType('One Day');
+                  setCustomLeagueId('');
+                }}
+                className={`text-[11px] font-mono font-bold px-3 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
+                  !customLeagueId && activeLeagueType === 'One Day'
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                    : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200'
+                }`}
+              >
+                <span>OD: {pavilion.oneDayLeague.name}</span>
+                <span className="text-[9px] opacity-70">({pavilion.oneDayLeague.leagueId})</span>
+              </button>
+            )}
+            {pavilion?.bt20League && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveLeagueType('BT20');
+                  setCustomLeagueId('');
+                }}
+                className={`text-[11px] font-mono font-bold px-3 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
+                  !customLeagueId && activeLeagueType === 'BT20'
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                    : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200'
+                }`}
+              >
+                <span>T20: {pavilion.bt20League.name}</span>
+                <span className="text-[9px] opacity-70">({pavilion.bt20League.leagueId})</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Paste HTML Drawer */}
@@ -444,35 +544,50 @@ export const LeagueStandings: React.FC<LeagueStandingsProps> = ({ setActiveTab, 
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
-                <th className="py-3 px-4 w-12 text-center">Pos</th>
-                <th className="py-3 px-4">Team Name</th>
-                <th className="py-3 px-4 text-center">P</th>
-                <th className="py-3 px-4 text-center">W</th>
-                <th className="py-3 px-4 text-center">T/D</th>
-                <th className="py-3 px-4 text-center">L</th>
-                <th className="py-3 px-4 text-center font-extrabold text-slate-900">Pts</th>
-                <th className="py-3 px-4 text-right">Net RR</th>
-                <th className="py-3 px-4 text-center w-36">Scout Action</th>
+                {renderHeader('Pos', 'position', 'w-12 text-center')}
+                {renderHeader('Team Name', 'teamName', 'text-left')}
+                {renderHeader('P', 'played', 'text-center')}
+                {renderHeader('W', 'won', 'text-center')}
+                {renderHeader('T/D', 'tied', 'text-center')}
+                {renderHeader('L', 'lost', 'text-center')}
+                {renderHeader('Pts', 'points', 'text-center font-extrabold text-slate-900')}
+                {renderHeader('Net RR', 'netRunRate', 'text-right')}
+                <th className="py-3 px-4 text-center w-36 font-bold uppercase tracking-wider text-[11px]">Scout Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {activeTable.teams.map((team) => {
-                const isChampion = team.position === 1;
-                const isRelegation = team.position >= 7;
+              {[...activeTable.teams]
+                .sort((a, b) => {
+                  let valA = a[sortField];
+                  let valB = b[sortField];
+                  
+                  if (typeof valA === 'string' && typeof valB === 'string') {
+                    return sortDirection === 'asc' 
+                      ? valA.localeCompare(valB) 
+                      : valB.localeCompare(valA);
+                  } else {
+                    const numA = (valA as number) || 0;
+                    const numB = (valB as number) || 0;
+                    return sortDirection === 'asc' ? numA - numB : numB - numA;
+                  }
+                })
+                .map((team) => {
+                  const isChampion = team.position === 1;
+                  const isRelegation = team.position >= 7;
 
-                return (
-                  <tr
-                    key={team.position}
-                    className={`transition-colors hover:bg-slate-50/80 ${
-                      team.isMyTeam
-                        ? 'bg-emerald-50/80 font-bold border-l-4 border-l-emerald-500'
-                        : isChampion
-                        ? 'bg-amber-50/40'
-                        : isRelegation
-                        ? 'bg-rose-50/20'
-                        : ''
-                    }`}
-                  >
+                  return (
+                    <tr
+                      key={team.position}
+                      className={`transition-colors hover:bg-slate-50/80 ${
+                        team.isMyTeam
+                          ? 'bg-emerald-50/80 font-bold border-l-4 border-l-emerald-500'
+                          : isChampion
+                          ? 'bg-amber-50/40'
+                          : isRelegation
+                          ? 'bg-rose-50/20'
+                          : ''
+                      }`}
+                    >
                     <td className="py-3 px-4 text-center">
                       <span
                         className={`inline-flex items-center justify-center w-6 h-6 rounded-full font-mono text-xs font-bold ${

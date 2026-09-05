@@ -8,12 +8,13 @@ import {
 import { 
   Search, Coins, User, TrendingUp, 
   Shield, Award, Activity, Info, History, Plus, ChevronRight, Calendar, Sparkles,
-  ArrowLeft, Cpu, Sliders, BarChart2, BookOpen
+  ArrowLeft, Cpu, Sliders, BarChart2, BookOpen, Target, Flame, Trophy
 } from 'lucide-react';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend
 } from 'recharts';
 import { generateRealisticHistory, getWeeklyChanges } from '../utils/history';
+import { getPlayerStats } from '../utils/playerStats';
 import PlayerSkillProjectionChart from './PlayerSkillProjectionChart';
 
 interface PlayerDetailsProps {
@@ -23,10 +24,8 @@ interface PlayerDetailsProps {
 
 export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) {
   const [player, setPlayer] = useState<BattrickPlayer | null>(null);
-  // Defaults to 'history' (the "Weekly Progress Report" tab) so that
-  // drilling into a player immediately shows their weekly training pop
-  // snapshots, rather than requiring an extra tap to get to it.
-  const [inspectorTab, setInspectorTab] = useState<'skills' | 'history'>('history');
+  const [inspectorTab, setInspectorTab] = useState<'skills' | 'stats' | 'history'>('stats');
+  const [selectedFormat, setSelectedFormat] = useState<'all' | 'FC' | 'OD' | 'BT20'>('all');
   const [isWicketKeeper, setIsWicketKeeper] = useState<boolean>(false);
 
   // Training planner states
@@ -524,10 +523,21 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
         })()}
 
         {/* Tab Selection */}
-        <div className="flex border-b border-slate-200 pb-px gap-2">
+        <div className="flex border-b border-slate-200 pb-px gap-1.5 overflow-x-auto no-scrollbar">
+          <button
+            onClick={() => setInspectorTab('stats')}
+            className={`px-4 py-2.5 text-xs font-bold border-b-2 -mb-px transition duration-150 flex items-center gap-1.5 shrink-0 cursor-pointer ${
+              inspectorTab === 'stats'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <BarChart2 className="w-4 h-4 text-blue-600" />
+            Match & Career Statistics
+          </button>
           <button
             onClick={() => setInspectorTab('skills')}
-            className={`px-5 py-2.5 text-xs font-bold border-b-2 -mb-px transition duration-150 flex items-center gap-1.5 cursor-pointer ${
+            className={`px-4 py-2.5 text-xs font-bold border-b-2 -mb-px transition duration-150 flex items-center gap-1.5 shrink-0 cursor-pointer ${
               inspectorTab === 'skills'
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-slate-400 hover:text-slate-600'
@@ -538,7 +548,7 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
           </button>
           <button
             onClick={() => setInspectorTab('history')}
-            className={`px-5 py-2.5 text-xs font-bold border-b-2 -mb-px transition duration-150 flex items-center gap-1.5 cursor-pointer ${
+            className={`px-4 py-2.5 text-xs font-bold border-b-2 -mb-px transition duration-150 flex items-center gap-1.5 shrink-0 cursor-pointer ${
               inspectorTab === 'history'
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-slate-400 hover:text-slate-600'
@@ -550,7 +560,223 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
         </div>
 
         {/* Content Pane */}
-        {inspectorTab === 'skills' ? (
+        {inspectorTab === 'stats' ? (() => {
+          const stats = getPlayerStats(player);
+          const formatsToDisplay = selectedFormat === 'all' 
+            ? [stats.firstClass, stats.oneDay, stats.bt20]
+            : selectedFormat === 'FC' ? [stats.firstClass]
+            : selectedFormat === 'OD' ? [stats.oneDay]
+            : [stats.bt20];
+
+          const chartData = [
+            { name: 'First Class (FC)', runs: stats.firstClass.runs, wickets: stats.firstClass.wickets },
+            { name: 'One Day (OD)', runs: stats.oneDay.runs, wickets: stats.oneDay.wickets },
+            { name: 'Twenty20 (BT20)', runs: stats.bt20.runs, wickets: stats.bt20.wickets },
+          ];
+
+          return (
+            <div className="flex flex-col gap-6">
+              {/* Career High-Level Summary Card */}
+              <div className="bg-slate-900 text-white rounded-2xl p-5 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-6 border border-slate-800">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-blue-600/30 border border-blue-500/40 flex items-center justify-center text-blue-400 shrink-0">
+                    <Trophy className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold font-mono text-blue-400 uppercase tracking-wider">Career Milestone Portfolio</span>
+                      <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full font-bold border border-blue-400/30">
+                        {stats.summary.bestRoleHighlight}
+                      </span>
+                    </div>
+                    <h4 className="text-lg font-display font-black text-white mt-0.5">{player.name} Career Totals</h4>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Verified match statistics across First Class, One Day, and Twenty20 formats.
+                    </p>
+                  </div>
+                </div>
+
+                {/* KPI Metrics */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border-t md:border-t-0 md:border-l border-slate-800 pt-4 md:pt-0 md:pl-6">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-slate-400 font-mono font-bold uppercase">Total Matches</span>
+                    <span className="text-lg font-black font-mono text-white mt-0.5">{stats.summary.totalMatches}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-slate-400 font-mono font-bold uppercase">Total Runs</span>
+                    <span className="text-lg font-black font-mono text-amber-400 mt-0.5">{stats.summary.totalRuns.toLocaleString()}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-slate-400 font-mono font-bold uppercase">Total Wickets</span>
+                    <span className="text-lg font-black font-mono text-emerald-400 mt-0.5">{stats.summary.totalWickets}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-slate-400 font-mono font-bold uppercase">Catches/Stumpings</span>
+                    <span className="text-lg font-black font-mono text-indigo-300 mt-0.5">{stats.summary.totalCatches}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Format Filter Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                  <span className="text-xs font-bold text-slate-500 mr-1 flex items-center gap-1">
+                    <Target className="w-3.5 h-3.5 text-blue-600" />
+                    Format:
+                  </span>
+                  {[
+                    { id: 'all', label: 'All Formats Overview' },
+                    { id: 'FC', label: 'First Class (FC)' },
+                    { id: 'OD', label: 'One Day (OD)' },
+                    { id: 'BT20', label: 'Twenty20 (BT20)' },
+                  ].map((fmt) => (
+                    <button
+                      key={fmt.id}
+                      onClick={() => setSelectedFormat(fmt.id as any)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                        selectedFormat === fmt.id
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+                      }`}
+                    >
+                      {fmt.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="text-[11px] font-mono text-slate-500 font-medium text-right">
+                  Showing <strong className="text-slate-800">{formatsToDisplay.length}</strong> format breakdown(s)
+                </div>
+              </div>
+
+              {/* Detailed Performance Format Tables */}
+              <div className="grid grid-cols-1 gap-6">
+                {formatsToDisplay.map((fmt) => (
+                  <div key={fmt.formatName} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                    {/* Format Header Bar */}
+                    <div className="bg-slate-100/80 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black font-mono bg-blue-600 text-white px-2 py-0.5 rounded">
+                          {fmt.shortCode}
+                        </span>
+                        <h4 className="font-display font-bold text-sm text-slate-900">{fmt.formatName} Career Performance</h4>
+                      </div>
+                      <span className="text-xs text-slate-500 font-mono font-semibold">
+                        {fmt.matches} Matches Played
+                      </span>
+                    </div>
+
+                    {/* Batting Stats Grid */}
+                    <div className="p-4 border-b border-slate-100">
+                      <span className="text-[10px] text-amber-700 font-bold font-mono uppercase tracking-wider block mb-2.5 flex items-center gap-1">
+                        <Flame className="w-3.5 h-3.5 text-amber-600" />
+                        Batting Record & Milestones
+                      </span>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 text-center">
+                        <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/60">
+                          <span className="text-[9px] text-slate-400 font-mono font-bold block uppercase">Innings</span>
+                          <span className="text-xs font-bold font-mono text-slate-800 mt-0.5 block">{fmt.inningsBatted}</span>
+                        </div>
+                        <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/60">
+                          <span className="text-[9px] text-slate-400 font-mono font-bold block uppercase">Not Outs</span>
+                          <span className="text-xs font-bold font-mono text-slate-800 mt-0.5 block">{fmt.notOuts}</span>
+                        </div>
+                        <div className="bg-amber-50/60 p-2.5 rounded-lg border border-amber-200/60">
+                          <span className="text-[9px] text-amber-700 font-mono font-bold block uppercase">Runs</span>
+                          <span className="text-xs font-black font-mono text-amber-800 mt-0.5 block">{fmt.runs.toLocaleString()}</span>
+                        </div>
+                        <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/60">
+                          <span className="text-[9px] text-slate-400 font-mono font-bold block uppercase">High Score</span>
+                          <span className="text-xs font-bold font-mono text-slate-800 mt-0.5 block">{fmt.highScore}</span>
+                        </div>
+                        <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/60">
+                          <span className="text-[9px] text-slate-400 font-mono font-bold block uppercase">Bat Average</span>
+                          <span className="text-xs font-bold font-mono text-blue-700 mt-0.5 block">{fmt.battingAverage}</span>
+                        </div>
+                        <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/60">
+                          <span className="text-[9px] text-slate-400 font-mono font-bold block uppercase">Strike Rate</span>
+                          <span className="text-xs font-bold font-mono text-slate-800 mt-0.5 block">{fmt.strikeRate}</span>
+                        </div>
+                        <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/60">
+                          <span className="text-[9px] text-slate-400 font-mono font-bold block uppercase">50s / 100s</span>
+                          <span className="text-xs font-bold font-mono text-slate-800 mt-0.5 block">{fmt.fifties} / {fmt.hundreds}</span>
+                        </div>
+                        <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/60">
+                          <span className="text-[9px] text-slate-400 font-mono font-bold block uppercase">Catches / St</span>
+                          <span className="text-xs font-bold font-mono text-slate-800 mt-0.5 block">{fmt.catches} / {fmt.stumpings}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bowling Stats Grid */}
+                    <div className="p-4 bg-slate-50/30">
+                      <span className="text-[10px] text-emerald-700 font-bold font-mono uppercase tracking-wider block mb-2.5 flex items-center gap-1">
+                        <Activity className="w-3.5 h-3.5 text-emerald-600" />
+                        Bowling Record & Economy
+                      </span>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-center">
+                        <div className="bg-white p-2.5 rounded-lg border border-slate-200/60">
+                          <span className="text-[9px] text-slate-400 font-mono font-bold block uppercase">Overs Bowled</span>
+                          <span className="text-xs font-bold font-mono text-slate-800 mt-0.5 block">{fmt.oversBowled}</span>
+                        </div>
+                        <div className="bg-emerald-50/60 p-2.5 rounded-lg border border-emerald-200/60">
+                          <span className="text-[9px] text-emerald-700 font-mono font-bold block uppercase">Wickets</span>
+                          <span className="text-xs font-black font-mono text-emerald-800 mt-0.5 block">{fmt.wickets}</span>
+                        </div>
+                        <div className="bg-white p-2.5 rounded-lg border border-slate-200/60">
+                          <span className="text-[9px] text-slate-400 font-mono font-bold block uppercase">Best Bowling</span>
+                          <span className="text-xs font-bold font-mono text-slate-800 mt-0.5 block">{fmt.bestBowling}</span>
+                        </div>
+                        <div className="bg-white p-2.5 rounded-lg border border-slate-200/60">
+                          <span className="text-[9px] text-slate-400 font-mono font-bold block uppercase">Bowl Average</span>
+                          <span className="text-xs font-bold font-mono text-emerald-700 mt-0.5 block">{fmt.bowlingAverage || 'N/A'}</span>
+                        </div>
+                        <div className="bg-white p-2.5 rounded-lg border border-slate-200/60">
+                          <span className="text-[9px] text-slate-400 font-mono font-bold block uppercase">Economy Rate</span>
+                          <span className="text-xs font-bold font-mono text-slate-800 mt-0.5 block">{fmt.economyRate || 'N/A'}</span>
+                        </div>
+                        <div className="bg-white p-2.5 rounded-lg border border-slate-200/60">
+                          <span className="text-[9px] text-slate-400 font-mono font-bold uppercase">5 Wicket Hauls</span>
+                          <span className="text-xs font-bold font-mono text-slate-800 mt-0.5 block">{fmt.fiveWickets}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Format Comparison Chart */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h5 className="font-display font-bold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <BarChart2 className="w-4 h-4 text-blue-600" />
+                      Format Performance Output Comparison
+                    </h5>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Comparative view of total runs scored vs wickets taken across game formats.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#cbd5e1' }} />
+                      <YAxis yAxisId="left" orientation="left" stroke="#d97706" tick={{ fontSize: 10 }} />
+                      <YAxis yAxisId="right" orientation="right" stroke="#059669" tick={{ fontSize: 10 }} />
+                      <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', color: '#fff', borderRadius: '0.5rem', fontSize: '11px' }} />
+                      <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
+                      <Bar yAxisId="left" dataKey="runs" name="Runs Scored" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                      <Bar yAxisId="right" dataKey="wickets" name="Wickets Taken" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+            </div>
+          );
+        })() : inspectorTab === 'skills' ? (
           <div className="flex flex-col gap-6">
             {/* Career Advisor hold/develop/trade advice */}
             <div className={`p-4 rounded-xl border ${actionColors[trade.action as keyof typeof actionColors]} shadow-sm flex gap-3 text-xs`}>

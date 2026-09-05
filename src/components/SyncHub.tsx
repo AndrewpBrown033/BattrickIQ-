@@ -18,7 +18,7 @@ import {
   Calendar, Landmark as StadiumIcon, ShieldCheck,
   Check, Wifi, Activity, CheckSquare, Square, Clipboard, ArrowRight,
   KeyRound, Play, CheckCircle2, XCircle, Clock, ArrowUpRight, Zap,
-  Loader2, X, LogOut, Lock
+  Loader2, X, LogOut, Lock, ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 
 export interface SequentialStepItem {
@@ -331,6 +331,40 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
   } | null>(null);
 
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
+  const [logsSortField, setLogsSortField] = useState<string>('timestamp');
+  const [logsSortDirection, setLogsSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  const handleLogsSort = (field: string) => {
+    if (logsSortField === field) {
+      setLogsSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setLogsSortField(field);
+      setLogsSortDirection('desc');
+    }
+  };
+
+  const renderLogsHeader = (label: string, field: string, className = "") => {
+    const isSorted = logsSortField === field;
+    const isRight = className.includes('text-right');
+    const isLeft = className.includes('text-left') || className === '';
+    return (
+      <th 
+        onClick={() => handleLogsSort(field)}
+        className={`pb-2.5 cursor-pointer select-none hover:bg-slate-100 transition-colors ${className}`}
+      >
+        <div className={`inline-flex items-center gap-1 ${isRight ? 'justify-end w-full' : isLeft ? 'justify-start' : 'justify-center'}`}>
+          <span>{label}</span>
+          <span className={`shrink-0 transition-opacity ${isSorted ? 'text-indigo-600 opacity-100' : 'opacity-40 hover:opacity-100 text-slate-400'}`}>
+            {isSorted ? (
+              logsSortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+            ) : (
+              <ArrowUpDown className="w-3 h-3" />
+            )}
+          </span>
+        </div>
+      </th>
+    );
+  };
 
   const addSyncLog = (type: string, description: string, status: 'success' | 'failed') => {
     const newLog: SyncLog = {
@@ -1964,29 +1998,38 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
             <table className="w-full text-left text-xs text-slate-600">
               <thead>
                 <tr className="border-b border-slate-100 font-mono font-bold text-slate-400 text-[10px] uppercase">
-                  <th className="pb-2.5">Date & Time</th>
-                  <th className="pb-2.5">Category</th>
-                  <th className="pb-2.5">Sync Details</th>
-                  <th className="pb-2.5 text-right">Status</th>
+                  {renderLogsHeader('Date & Time', 'timestamp', 'pb-2.5')}
+                  {renderLogsHeader('Category', 'type', 'pb-2.5')}
+                  {renderLogsHeader('Sync Details', 'description', 'pb-2.5')}
+                  {renderLogsHeader('Status', 'status', 'pb-2.5 text-right')}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {syncLogs.map((log, index) => (
-                  <tr key={index} className="hover:bg-slate-50/50 transition">
-                    <td className="py-2.5 font-semibold font-mono text-slate-700">
-                      {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                    </td>
-                    <td className="py-2.5 capitalize font-bold text-slate-800">{log.type}</td>
-                    <td className="py-2.5 font-medium text-slate-700">{log.description}</td>
-                    <td className="py-2.5 text-right">
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                        log.status === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'
-                      }`}>
-                        {log.status === 'success' ? 'Synced' : 'Failed'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {[...syncLogs]
+                  .sort((a, b) => {
+                    let valA = a[logsSortField as keyof typeof a] || '';
+                    let valB = b[logsSortField as keyof typeof b] || '';
+
+                    return logsSortDirection === 'asc' 
+                      ? valA.localeCompare(valB) 
+                      : valB.localeCompare(valA);
+                  })
+                  .map((log, index) => (
+                    <tr key={index} className="hover:bg-slate-50/50 transition">
+                      <td className="py-2.5 font-semibold font-mono text-slate-700">
+                        {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      </td>
+                      <td className="py-2.5 capitalize font-bold text-slate-800">{log.type}</td>
+                      <td className="py-2.5 font-medium text-slate-700">{log.description}</td>
+                      <td className="py-2.5 text-right">
+                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                          log.status === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'
+                        }`}>
+                          {log.status === 'success' ? 'Synced' : 'Failed'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>

@@ -2043,13 +2043,30 @@ import { OpponentPlayer, OpponentScoutDossier, OpponentVulnerability, PitchType,
 export function generateRealisticOpponentRoster(
   teamName: string = 'Opposition XI',
   isBot?: boolean,
-  matchFormat: MatchFormat = 'One Day'
+  matchFormat: MatchFormat = 'One Day',
+  forcedTeamId?: string
 ): OpponentPlayer[] {
   const lower = teamName.toLowerCase();
-  
-  if (lower.includes('steve')) {
+  let baseRoster: any[] = [];
+
+  // 1. Bluejays Special Team (ID: 24514)
+  if (lower.includes('bluejays') || forcedTeamId === '24514') {
+    baseRoster = [
+      { id: 'bj_1', name: 'Grady Bailham', age: 30, wage: 81398, btRating: 182740, role: 'Bowler', bowlingType: 'RF', batting: 3, bowling: 16, keeping: 1, stamina: 8, experience: 11, concentration: 5, consistency: 15, fielding: 9, order: 1, battingAverage: 12.4, bowlingAverage: 24.8 },
+      { id: 'bj_2', name: 'Marcus Finch (wk)', age: 28, wage: 62500, btRating: 142000, role: 'Keeper', bowlingType: 'None', batting: 13, bowling: 1, keeping: 14, stamina: 9, experience: 10, concentration: 12, consistency: 11, fielding: 10, order: 2, battingAverage: 52.4, bowlingAverage: 0 },
+      { id: 'bj_3', name: 'Harvey Rutherford (c)', age: 32, wage: 88400, btRating: 195000, role: 'Batter', bowlingType: 'RM', batting: 16, bowling: 2, keeping: 1, stamina: 10, experience: 13, concentration: 15, consistency: 14, fielding: 9, order: 3, battingAverage: 64.8, bowlingAverage: 0 },
+      { id: 'bj_4', name: 'Liam Henderson', age: 25, wage: 45000, btRating: 112000, role: 'Batter', bowlingType: 'RM', batting: 12, bowling: 2, keeping: 1, stamina: 8, experience: 7, concentration: 11, consistency: 10, fielding: 8, order: 4, battingAverage: 48.5, bowlingAverage: 0 },
+      { id: 'bj_5', name: 'Owen Barlow', age: 26, wage: 52000, btRating: 124000, role: 'All-rounder', bowlingType: 'OB', batting: 11, bowling: 11, keeping: 1, stamina: 8, experience: 8, concentration: 10, consistency: 11, fielding: 8, order: 5, battingAverage: 36.2, bowlingAverage: 26.8 },
+      { id: 'bj_6', name: 'Dominic Shaw', age: 29, wage: 59000, btRating: 135000, role: 'Batter', bowlingType: 'None', batting: 13, bowling: 1, keeping: 1, stamina: 9, experience: 10, concentration: 12, consistency: 11, fielding: 8, order: 6, battingAverage: 51.2, bowlingAverage: 0 },
+      { id: 'bj_7', name: 'Jude Sterling', age: 24, wage: 28000, btRating: 85000, role: 'Bowler', bowlingType: 'LF', batting: 4, bowling: 11, keeping: 1, stamina: 7, experience: 6, concentration: 4, consistency: 10, fielding: 7, order: 7, battingAverage: 11.5, bowlingAverage: 24.2 },
+      { id: 'bj_8', name: 'Nathaniel Vance', age: 27, wage: 34000, btRating: 98000, role: 'Bowler', bowlingType: 'RFM', batting: 3, bowling: 12, keeping: 1, stamina: 8, experience: 7, concentration: 3, consistency: 11, fielding: 7, order: 8, battingAverage: 9.8, bowlingAverage: 22.8 },
+      { id: 'bj_9', name: 'Zackary Cox', age: 22, wage: 19500, btRating: 72000, role: 'Bowler', bowlingType: 'OB', batting: 2, bowling: 10, keeping: 1, stamina: 7, experience: 4, concentration: 3, consistency: 9, fielding: 6, order: 9, battingAverage: 6.4, bowlingAverage: 25.1 },
+      { id: 'bj_10', name: 'Finley Ross', age: 31, wage: 48000, btRating: 115000, role: 'Bowler', bowlingType: 'SLA', batting: 2, bowling: 13, keeping: 1, stamina: 8, experience: 11, concentration: 2, consistency: 12, fielding: 8, order: 10, battingAverage: 7.2, bowlingAverage: 19.8 },
+      { id: 'bj_11', name: 'Albie Cross', age: 21, wage: 9200, btRating: 42000, role: 'Bowler', bowlingType: 'LFM', batting: 2, bowling: 8, keeping: 1, stamina: 6, experience: 3, concentration: 2, consistency: 7, fielding: 6, order: 11, battingAverage: 5.5, bowlingAverage: 29.5 }
+    ];
+  } else if (lower.includes('steve')) {
     // Cup Match 32557622 opponent: Steve
-    return [
+    baseRoster = [
       { id: 'steve_1', name: 'Steve Davies (c)', age: 27, wage: 16500, btRating: 48200, role: 'Batter', bowlingType: 'RM', batting: 13, bowling: 2, keeping: 1, stamina: 8, experience: 9, concentration: 12, consistency: 9, fielding: 7, order: 1 },
       { id: 'steve_2', name: 'R. Jenkins', age: 24, wage: 12800, btRating: 39500, role: 'Batter', bowlingType: 'RM', batting: 12, bowling: 2, keeping: 1, stamina: 7, experience: 6, concentration: 11, consistency: 8, fielding: 7, order: 2 },
       { id: 'steve_3', name: 'P. Thorne', age: 29, wage: 19400, btRating: 54000, role: 'Batter', bowlingType: 'RM', batting: 14, bowling: 3, keeping: 1, stamina: 9, experience: 10, concentration: 13, consistency: 10, fielding: 8, order: 3 },
@@ -2062,11 +2079,9 @@ export function generateRealisticOpponentRoster(
       { id: 'steve_10', name: 'D. Prentice', age: 30, wage: 6100, btRating: 17500, role: 'Bowler', bowlingType: 'LM', batting: 2, bowling: 11, keeping: 1, stamina: 6, experience: 8, concentration: 2, consistency: 11, fielding: 6, order: 10 },
       { id: 'steve_11', name: 'K. O\'Shea', age: 21, wage: 2800, btRating: 8500, role: 'Bowler', bowlingType: 'RM', batting: 2, bowling: 6, keeping: 1, stamina: 5, experience: 3, concentration: 2, consistency: 6, fielding: 5, order: 11 },
     ];
-  }
-
-  if (lower.includes('sandshoe')) {
+  } else if (lower.includes('sandshoe')) {
     // First Class Match 32194563 opponent: Sandshoe Crushers
-    return [
+    baseRoster = [
       { id: 'sc_1', name: 'D. Miller', age: 28, wage: 18500, btRating: 52000, role: 'Batter', bowlingType: 'RM', batting: 13, bowling: 2, keeping: 1, stamina: 9, experience: 9, concentration: 13, consistency: 9, fielding: 8, order: 1 },
       { id: 'sc_2', name: 'T. Latham', age: 27, wage: 16200, btRating: 46000, role: 'Batter', bowlingType: 'RM', batting: 12, bowling: 2, keeping: 1, stamina: 9, experience: 8, concentration: 12, consistency: 9, fielding: 7, order: 2 },
       { id: 'sc_3', name: 'K. Williamson (c)', age: 31, wage: 26000, btRating: 78000, role: 'Batter', bowlingType: 'OB', batting: 15, bowling: 5, keeping: 1, stamina: 10, experience: 12, concentration: 15, consistency: 11, fielding: 9, order: 3 },
@@ -2079,11 +2094,9 @@ export function generateRealisticOpponentRoster(
       { id: 'sc_10', name: 'N. Wagner', age: 29, wage: 16000, btRating: 48000, role: 'Bowler', bowlingType: 'LFM', batting: 3, bowling: 13, keeping: 1, stamina: 10, experience: 10, concentration: 3, consistency: 12, fielding: 7, order: 10 },
       { id: 'sc_11', name: 'T. Boult', age: 28, wage: 17500, btRating: 51000, role: 'Bowler', bowlingType: 'LF', batting: 2, bowling: 14, keeping: 1, stamina: 9, experience: 9, concentration: 2, consistency: 13, fielding: 8, order: 11 },
     ];
-  }
-
-  if (lower.includes('bulolo') || isBot) {
+  } else if (lower.includes('bulolo') || isBot) {
     // OD League Match 32161741 opponent: Bulolo Seahawks (Bot)
-    return [
+    baseRoster = [
       { id: 'bs_1', name: 'K. Rawlinson', age: 22, wage: 3200, btRating: 11500, role: 'Batter', bowlingType: 'RM', batting: 7, bowling: 2, keeping: 1, stamina: 6, experience: 3, concentration: 6, consistency: 6, fielding: 5, order: 1 },
       { id: 'bs_2', name: 'B. Hargreaves', age: 21, wage: 2800, btRating: 9800, role: 'Batter', bowlingType: 'RM', batting: 6, bowling: 2, keeping: 1, stamina: 5, experience: 3, concentration: 5, consistency: 6, fielding: 5, order: 2 },
       { id: 'bs_3', name: 'T. Butterworth', age: 24, wage: 3900, btRating: 13200, role: 'Batter', bowlingType: 'RM', batting: 7, bowling: 3, keeping: 1, stamina: 6, experience: 4, concentration: 6, consistency: 6, fielding: 5, order: 3 },
@@ -2096,11 +2109,9 @@ export function generateRealisticOpponentRoster(
       { id: 'bs_10', name: 'E. Bottomley', age: 19, wage: 1800, btRating: 5800, role: 'Bowler', bowlingType: 'OB', batting: 1, bowling: 5, keeping: 1, stamina: 4, experience: 1, concentration: 1, consistency: 4, fielding: 4, order: 10 },
       { id: 'bs_11', name: 'P. Sidebottom', age: 21, wage: 1400, btRating: 4500, role: 'Bowler', bowlingType: 'RF', batting: 1, bowling: 4, keeping: 1, stamina: 4, experience: 2, concentration: 1, consistency: 4, fielding: 4, order: 11 },
     ];
-  }
-
-  if (lower.includes('royal west herts') || lower.includes('herts')) {
+  } else if (lower.includes('royal west herts') || lower.includes('herts')) {
     // Twenty20 Match 32383795 opponent: Royal West Herts GC
-    return [
+    baseRoster = [
       { id: 'rwh_1', name: 'Archie Finch', age: 25, wage: 14500, btRating: 42000, role: 'Batter', bowlingType: 'RM', batting: 13, bowling: 2, keeping: 1, stamina: 7, experience: 7, concentration: 11, consistency: 9, fielding: 8, order: 1 },
       { id: 'rwh_2', name: 'Callum Thorne', age: 24, wage: 12000, btRating: 36000, role: 'Batter', bowlingType: 'RM', batting: 12, bowling: 2, keeping: 1, stamina: 7, experience: 6, concentration: 10, consistency: 8, fielding: 7, order: 2 },
       { id: 'rwh_3', name: 'Bradley Vance', age: 27, wage: 15800, btRating: 46000, role: 'Batter', bowlingType: 'RM', batting: 13, bowling: 3, keeping: 1, stamina: 8, experience: 8, concentration: 12, consistency: 9, fielding: 8, order: 3 },
@@ -2113,11 +2124,9 @@ export function generateRealisticOpponentRoster(
       { id: 'rwh_10', name: 'Finlay Stewart', age: 29, wage: 6800, btRating: 19500, role: 'Bowler', bowlingType: 'LM', batting: 2, bowling: 11, keeping: 1, stamina: 6, experience: 8, concentration: 2, consistency: 11, fielding: 6, order: 10 },
       { id: 'rwh_11', name: 'Nathaniel Cox', age: 21, wage: 3100, btRating: 9200, role: 'Bowler', bowlingType: 'RM', batting: 2, bowling: 6, keeping: 1, stamina: 5, experience: 3, concentration: 2, consistency: 6, fielding: 5, order: 11 },
     ];
-  }
-
-  if (lower.includes('atlanta') || lower.includes('braves')) {
+  } else if (lower.includes('atlanta') || lower.includes('braves')) {
     // Twenty20 Match 32383799 opponent: Atlanta Braves
-    return [
+    baseRoster = [
       { id: 'ab_1', name: 'Chase Freeman', age: 26, wage: 13800, btRating: 41000, role: 'Batter', bowlingType: 'RM', batting: 12, bowling: 2, keeping: 1, stamina: 7, experience: 7, concentration: 11, consistency: 9, fielding: 8, order: 1 },
       { id: 'ab_2', name: 'Tyler Swanson', age: 25, wage: 12400, btRating: 37500, role: 'Batter', bowlingType: 'RM', batting: 12, bowling: 2, keeping: 1, stamina: 7, experience: 6, concentration: 10, consistency: 8, fielding: 7, order: 2 },
       { id: 'ab_3', name: 'Marcus Riley (c)', age: 28, wage: 16500, btRating: 49000, role: 'Batter', bowlingType: 'RM', batting: 13, bowling: 3, keeping: 1, stamina: 8, experience: 9, concentration: 12, consistency: 9, fielding: 8, order: 3 },
@@ -2130,43 +2139,96 @@ export function generateRealisticOpponentRoster(
       { id: 'ab_10', name: 'Mason Brooks', age: 29, wage: 7100, btRating: 21000, role: 'Bowler', bowlingType: 'LM', batting: 2, bowling: 11, keeping: 1, stamina: 6, experience: 8, concentration: 2, consistency: 11, fielding: 6, order: 10 },
       { id: 'ab_11', name: 'Camden Ortiz', age: 21, wage: 3200, btRating: 9800, role: 'Bowler', bowlingType: 'RM', batting: 2, bowling: 6, keeping: 1, stamina: 5, experience: 3, concentration: 2, consistency: 6, fielding: 5, order: 11 },
     ];
+  } else {
+    // Generic dynamic club roster generator for any custom team name
+    const cleanTeamName = teamName.replace(/\s*\(.*?\)/g, '').trim() || 'Opposition XI';
+    const basePower = isBot ? 9000 : 28000;
+    
+    for (let i = 1; i <= 11; i++) {
+      const isBat = i <= 5;
+      const isKeeper = i === 5;
+      const isAllRounder = i === 4 || i === 6;
+      const isBowl = i >= 7;
+
+      const batVal = isBat ? (isBot ? 6 + (i % 3) : 10 + (i % 4)) : (isAllRounder ? (isBot ? 5 : 8) : (isBot ? 2 : 3));
+      const bowlVal = isBowl ? (isBot ? 6 + (i % 3) : 10 + (i % 4)) : (isAllRounder ? (isBot ? 5 : 8) : (isBot ? 2 : 2));
+      const btr = Math.round(basePower * (isBat ? 1.2 : isBowl ? 0.9 : 0.6) + (11 - i) * 800);
+
+      baseRoster.push({
+        id: `opp_gen_${i}`,
+        name: `${cleanTeamName} Player ${i}`,
+        age: 21 + (i % 10),
+        wage: Math.round(btr * 0.35),
+        btRating: btr,
+        role: isKeeper ? 'Keeper' : isAllRounder ? 'All-rounder' : isBowl ? 'Bowler' : 'Batter',
+        bowlingType: isBowl ? (i % 2 === 0 ? 'OB' : 'RFM') : 'RM',
+        batting: batVal,
+        bowling: bowlVal,
+        keeping: isKeeper ? (isBot ? 7 : 11) : 1,
+        stamina: isBot ? 5 : 7,
+        experience: isBot ? 3 : 6,
+        concentration: isBot ? 4 : 8,
+        consistency: isBot ? 4 : 8,
+        fielding: isBot ? 5 : 7,
+        order: i,
+      });
+    }
   }
 
-  // Generic dynamic club roster generator for any custom team name
+  // Enhance the generated roster to have full averages, stable numeric playerIds/teamIds and labels
   const cleanTeamName = teamName.replace(/\s*\(.*?\)/g, '').trim() || 'Opposition XI';
-  const squad: OpponentPlayer[] = [];
-  const basePower = isBot ? 9000 : 28000;
   
-  for (let i = 1; i <= 11; i++) {
-    const isBat = i <= 5;
-    const isKeeper = i === 5;
-    const isAllRounder = i === 4 || i === 6;
-    const isBowl = i >= 7;
-
-    const batVal = isBat ? (isBot ? 6 + (i % 3) : 10 + (i % 4)) : (isAllRounder ? (isBot ? 5 : 8) : (isBot ? 2 : 3));
-    const bowlVal = isBowl ? (isBot ? 6 + (i % 3) : 10 + (i % 4)) : (isAllRounder ? (isBot ? 5 : 8) : (isBot ? 2 : 2));
-    const btr = Math.round(basePower * (isBat ? 1.2 : isBowl ? 0.9 : 0.6) + (11 - i) * 800);
-
-    squad.push({
-      id: `opp_gen_${i}`,
-      name: `${cleanTeamName} Player ${i}`,
-      age: 21 + (i % 10),
-      wage: Math.round(btr * 0.35),
-      btRating: btr,
-      role: isKeeper ? 'Keeper' : isAllRounder ? 'All-rounder' : isBowl ? 'Bowler' : 'Batter',
-      bowlingType: isBowl ? (i % 2 === 0 ? 'OB' : 'RFM') : 'RM',
-      batting: batVal,
-      bowling: bowlVal,
-      keeping: isKeeper ? (isBot ? 7 : 11) : 1,
-      stamina: isBot ? 5 : 7,
-      experience: isBot ? 3 : 6,
-      concentration: isBot ? 4 : 8,
-      consistency: isBot ? 4 : 8,
-      fielding: isBot ? 5 : 7,
-      order: i,
-    });
-  }
-  return squad;
+  const hashString = (str: string) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return Math.abs(hash);
+  };
+  
+  const teamIdNum = forcedTeamId || String(hashString(cleanTeamName) % 90000 + 10000);
+  
+  return baseRoster.map((p, idx) => {
+    const pIdNum = p.playerId 
+      ? String(p.playerId) 
+      : String(hashString(p.name || p.id) % 8000000 + 1000000);
+    
+    let batAvg = p.battingAverage;
+    let bowlAvg = p.bowlingAverage;
+    
+    if (batAvg === undefined) {
+      if (p.role === 'Batter' || p.role === 'Keeper') {
+        batAvg = Math.round((28 + (p.batting || 5) * 2.2 + (idx % 7) * 1.5) * 10) / 10;
+        bowlAvg = 0;
+      } else if (p.role === 'All-rounder') {
+        batAvg = Math.round((22 + (p.batting || 5) * 1.8 + (idx % 5) * 1.2) * 10) / 10;
+        bowlAvg = Math.round((28 + (15 - (p.bowling || 5)) * 1.4 + (idx % 6) * 1.1) * 10) / 10;
+      } else {
+        // Bowler: batting average below 50, bowling average below 30
+        batAvg = Math.round((8 + (p.batting || 2) * 1.2 + (idx % 6) * 0.8) * 10) / 10;
+        bowlAvg = Math.round((18 + (15 - (p.bowling || 5)) * 1.1 + (idx % 4) * 0.9) * 10) / 10;
+      }
+    }
+    
+    const batVal = p.batting || 3;
+    const bowlVal = p.bowling || 3;
+    const isKeeper = p.role === 'Keeper';
+    
+    const skillLabel = p.estimatedSkillLabel || SKILL_LEVELS[Math.min(Math.max(batVal, bowlVal), SKILL_LEVELS.length - 1)] || 'mediocre';
+    const capSkillLabel = skillLabel.charAt(0).toUpperCase() + skillLabel.slice(1);
+    
+    return {
+      ...p,
+      playerId: pIdNum,
+      teamId: teamIdNum,
+      teamName: cleanTeamName,
+      battingAverage: batAvg,
+      bowlingAverage: bowlAvg,
+      estimatedSkillLabel: capSkillLabel,
+      estimatedSkillLevel: Math.max(batVal, bowlVal),
+      primaryRoleClassifier: isKeeper ? 'Wicketkeeper' : p.role === 'Bowler' ? 'Bowler' : p.role === 'All-rounder' ? 'All-Rounder' : 'Batter'
+    };
+  });
 }
 
 export function generateOpponentScoutDossier(
@@ -3674,5 +3736,131 @@ export function getExampleLeagueTable(leagueId: string, leagueName?: string, lea
     lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   };
 }
+
+export function parseBattrickPlayerDetails(content: string): BattrickPlayer | null {
+  if (!content) return null;
+
+  try {
+    let text = content;
+    let title = '';
+    let doc: Document | null = null;
+
+    if (content.includes('<') && content.includes('>')) {
+      const parser = new DOMParser();
+      doc = parser.parseFromString(content, 'text/html');
+      text = doc.body?.textContent || content;
+      title = doc.querySelector('title')?.textContent || doc.querySelector('h1')?.textContent || '';
+    }
+
+    // Attempt to extract name and ID
+    let name = 'Scouted Player';
+    let id = '';
+
+    if (doc) {
+      const h1El = doc.querySelector('h1, h2, h3, .player-name');
+      if (h1El) {
+        const textH1 = h1El.textContent || '';
+        const match = textH1.match(/([^\(\-\d]+)(?:\s+[\(\-]\s*(\d+))?/i);
+        if (match) {
+          name = match[1].trim();
+          if (match[2]) id = match[2].trim();
+        }
+      }
+    }
+
+    if (!id || id === '') {
+      const idMatch = content.match(/(?:playerid|id)(?:_|-|=|%3d|%3D|\s)*(\d+)/i) || content.match(/\((\d{5,8})\)/);
+      if (idMatch) id = idMatch[1];
+      
+      const nameMatch = content.match(/([A-Za-z\s]+)\s+\((\d{5,8})\)/);
+      if (nameMatch) {
+        name = nameMatch[1].trim();
+        id = nameMatch[2].trim();
+      }
+    }
+
+    if (!id) {
+      id = Math.floor(1000000 + Math.random() * 9000000).toString();
+    }
+
+    name = name.replace(/Player Details/i, '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+    const getMatchValue = (regex: RegExp, fallback: number = 0): number => {
+      const m = text.match(regex);
+      if (m && m[1]) {
+        const cleaned = m[1].replace(/,/g, '');
+        return parseInt(cleaned, 10) || fallback;
+      }
+      return fallback;
+    };
+
+    const age = getMatchValue(/Age:\s*(\d+)/i, 20);
+    const btr = getMatchValue(/BTR:\s*([\d,]+)/i, 5000);
+    const wage = getMatchValue(/Wage:\s*£?\s*([\d,]+)/i, 1000);
+
+    const formMatch = text.match(/Form:\s*([A-Za-z\*\s]+)/i);
+    const formText = formMatch ? formMatch[1].trim() : 'respectable';
+
+    const fatigueMatch = text.match(/Fatigue:\s*([A-Za-z\*\s]+)/i);
+    const fatigueText = fatigueMatch ? fatigueMatch[1].trim() : 'fit';
+
+    const getSkillFromText = (skillName: string, isStamina: boolean = false): number => {
+      const r = new RegExp(`${skillName}\\s*:\\s*([A-Za-z\\*\\s]+)`, 'i');
+      const m = text.match(r);
+      if (m && m[1]) {
+        return getSkillValue(m[1].trim(), isStamina);
+      }
+      return 0;
+    };
+
+    const batting = getSkillFromText('Batting');
+    const bowling = getSkillFromText('Bowling');
+    const keeping = getSkillFromText('Keeping');
+    const concentration = getSkillFromText('Concentration');
+    const consistency = getSkillFromText('Consistency');
+    const fielding = getSkillFromText('Fielding');
+    const stamina = getSkillFromText('Stamina', true);
+    const leadership = getSkillFromText('Leadership');
+    const experience = getSkillFromText('Experience');
+
+    const player: BattrickPlayer = {
+      id: id.toString(),
+      name,
+      age: Number(age) || 20,
+      btRating: Number(btr) || 1000,
+      wage: Number(wage) || 500,
+      bowlingType: 'unknown',
+      role: batting > bowling ? 'Batter' : bowling > batting ? 'Bowler' : 'All-rounder',
+      form: 8,
+      fitness: 8,
+      battingFormLabel: formText,
+      fitnessLabel: fatigueText,
+      skills: {
+        batting,
+        bowling,
+        keeping,
+        concentration,
+        consistency,
+        fielding,
+        stamina,
+        leadership,
+        experience
+      },
+      nets: {
+        batting: 0,
+        bowling: 0,
+        keeping: 0,
+        fielding: 0,
+        stamina: 0
+      }
+    };
+
+    return player;
+  } catch (err) {
+    console.error('Error parsing player details:', err);
+    return null;
+  }
+}
+
 
 

@@ -8,12 +8,13 @@ import {
 import { 
   Search, Coins, User, TrendingUp, 
   Shield, Award, Activity, Info, History, Plus, ChevronRight, Calendar, Sparkles,
-  LayoutGrid, List, X, ArrowUpDown
+  LayoutGrid, List, X, ArrowUpDown, ArrowUp, ArrowDown, BarChart2, Trophy, Target, Flame
 } from 'lucide-react';
 import { 
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip 
 } from 'recharts';
 import { generateRealisticHistory, getWeeklyChanges } from '../utils/history';
+import { getPlayerStats } from '../utils/playerStats';
 
 interface SquadDashboardProps {
   setActiveTab?: (tab: 'sync' | 'squad' | 'lineup' | 'wage' | 'stadium' | 'coach' | 'rules' | 'admin' | 'player-details') => void;
@@ -53,7 +54,43 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
     return (localStorage.getItem('bt_squad_view_mode') as 'cards' | 'compact') || 'cards';
   });
   const [selectedPlayer, setSelectedPlayer] = useState<BattrickPlayer | null>(null);
-  const [inspectorTab, setInspectorTab] = useState<'skills' | 'history'>('skills');
+  const [inspectorTab, setInspectorTab] = useState<'skills' | 'stats' | 'history'>('skills');
+
+  // Player History Sorting State
+  const [historySortField, setHistorySortField] = useState<string>('week');
+  const [historySortDirection, setHistorySortDirection] = useState<'asc' | 'desc'>('desc');
+
+  const handleHistorySort = (field: string) => {
+    if (historySortField === field) {
+      setHistorySortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setHistorySortField(field);
+      setHistorySortDirection('desc');
+    }
+  };
+
+  const renderHistoryHeader = (label: string, field: string, className = "") => {
+    const isSorted = historySortField === field;
+    const isRight = className.includes('text-right');
+    const isLeft = className.includes('text-left') || className === '';
+    return (
+      <th 
+        onClick={() => handleHistorySort(field)}
+        className={`py-2.5 px-4 cursor-pointer select-none hover:bg-slate-200 transition-colors uppercase tracking-wider text-[10px] font-bold ${className}`}
+      >
+        <div className={`inline-flex items-center gap-1 ${isRight ? 'justify-end w-full' : isLeft ? 'justify-start' : 'justify-center'}`}>
+          <span>{label}</span>
+          <span className={`shrink-0 transition-opacity ${isSorted ? 'text-indigo-600 opacity-100' : 'opacity-40 hover:opacity-100 text-slate-400'}`}>
+            {isSorted ? (
+              historySortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+            ) : (
+              <ArrowUpDown className="w-3 h-3" />
+            )}
+          </span>
+        </div>
+      </th>
+    );
+  };
 
   const handleSetViewMode = (mode: 'cards' | 'compact') => {
     setViewMode(mode);
@@ -914,6 +951,21 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
               </p>
             </div>
 
+            {/* Direct drill-down button */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  if (onSelectPlayer) {
+                    onSelectPlayer(selectedPlayer.id);
+                  }
+                }}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 transition shadow-xs cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 text-amber-300 fill-amber-300" />
+                View Full Player Card & Match Stats ➔
+              </button>
+            </div>
+
             {/* Weekly changes highlight banner */}
             {(() => {
               const changes = getWeeklyChanges(selectedPlayer);
@@ -1028,6 +1080,18 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                 }`}
               >
                 Skills & Market Advisor
+              </button>
+              <button
+                id="tab-inspector-stats"
+                onClick={() => setInspectorTab('stats')}
+                className={`px-4 py-2 text-xs font-bold border-b-2 -mb-px transition duration-150 flex items-center gap-1.5 cursor-pointer ${
+                  inspectorTab === 'stats'
+                    ? 'border-indigo-600 text-indigo-600'
+                    : 'border-transparent text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                <BarChart2 className="w-3.5 h-3.5 text-blue-600" />
+                Match & Career Stats
               </button>
               <button
                 id="tab-inspector-history"
@@ -1517,6 +1581,104 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
               </>
             )}
 
+            {inspectorTab === 'stats' && (() => {
+              const stats = getPlayerStats(selectedPlayer);
+              return (
+                <div className="flex flex-col gap-4 animate-fadeIn">
+                  {/* Summary row */}
+                  <div className="bg-slate-900 text-white p-4 rounded-xl shadow-xs border border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Trophy className="w-4 h-4 text-amber-400" />
+                        <span className="text-[10px] uppercase font-mono font-bold text-amber-400 tracking-wider">Career Milestone Profile</span>
+                      </div>
+                      <h5 className="text-sm font-bold mt-0.5 truncate">{selectedPlayer.name}</h5>
+                    </div>
+                    <div className="grid grid-cols-2 xs:grid-cols-4 gap-2 text-left sm:text-right shrink-0">
+                      <div>
+                        <span className="text-[8px] text-slate-400 block uppercase">Matches</span>
+                        <span className="text-xs font-mono font-bold text-white block mt-0.5">{stats.summary.totalMatches}</span>
+                      </div>
+                      <div>
+                        <span className="text-[8px] text-slate-400 block uppercase">Runs</span>
+                        <span className="text-xs font-mono font-bold text-amber-400 block mt-0.5">{stats.summary.totalRuns.toLocaleString()}</span>
+                      </div>
+                      <div>
+                        <span className="text-[8px] text-slate-400 block uppercase">Wickets</span>
+                        <span className="text-xs font-mono font-bold text-emerald-400 block mt-0.5">{stats.summary.totalWickets}</span>
+                      </div>
+                      <div>
+                        <span className="text-[8px] text-slate-400 block uppercase">Milestone</span>
+                        <span className="text-[9px] bg-blue-500/20 text-blue-300 px-1.5 py-0.2 rounded font-bold border border-blue-400/30 whitespace-nowrap block mt-0.5">{stats.summary.bestRoleHighlight}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Format Grid Layout (Cards for FC, OD, BT20) */}
+                  <div className="flex flex-col gap-3">
+                    {[
+                      { key: 'firstClass', title: 'First Class (FC)', stats: stats.firstClass },
+                      { key: 'oneDay', title: 'One Day (OD)', stats: stats.oneDay },
+                      { key: 'bt20', title: 'Twenty20 (BT20)', stats: stats.bt20 }
+                    ].map((formatItem) => {
+                      const fStats = formatItem.stats;
+                      return (
+                        <div key={formatItem.key} className="bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-xs">
+                          <div className="flex justify-between items-center border-b border-slate-200/80 pb-2 mb-2">
+                            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                              <Target className="w-3.5 h-3.5 text-blue-600" />
+                              {formatItem.title}
+                            </span>
+                            <span className="text-[10px] font-mono text-slate-500 font-semibold">{fStats.matches} Matches Played</span>
+                          </div>
+
+                          {/* Batting details */}
+                          <div className="grid grid-cols-4 gap-2 mb-2 text-center">
+                            <div className="bg-white p-1.5 rounded border border-slate-150">
+                              <span className="text-[8px] text-slate-400 block font-bold uppercase">Runs</span>
+                              <span className="text-xs font-bold font-mono text-amber-800">{fStats.runs.toLocaleString()}</span>
+                            </div>
+                            <div className="bg-white p-1.5 rounded border border-slate-150">
+                              <span className="text-[8px] text-slate-400 block font-bold uppercase">High Score</span>
+                              <span className="text-xs font-bold font-mono text-slate-700">{fStats.highScore}</span>
+                            </div>
+                            <div className="bg-white p-1.5 rounded border border-slate-150">
+                              <span className="text-[8px] text-slate-400 block font-bold uppercase">Bat Avg</span>
+                              <span className="text-xs font-bold font-mono text-blue-600">{fStats.battingAverage}</span>
+                            </div>
+                            <div className="bg-white p-1.5 rounded border border-slate-150">
+                              <span className="text-[8px] text-slate-400 block font-bold uppercase">50s / 100s</span>
+                              <span className="text-xs font-bold font-mono text-slate-700">{fStats.fifties} / {fStats.hundreds}</span>
+                            </div>
+                          </div>
+
+                          {/* Bowling details */}
+                          <div className="grid grid-cols-4 gap-2 text-center">
+                            <div className="bg-white p-1.5 rounded border border-slate-150">
+                              <span className="text-[8px] text-slate-400 block font-bold uppercase">Wickets</span>
+                              <span className="text-xs font-bold font-mono text-emerald-800">{fStats.wickets}</span>
+                            </div>
+                            <div className="bg-white p-1.5 rounded border border-slate-150">
+                              <span className="text-[8px] text-slate-400 block font-bold uppercase">Best Bowl</span>
+                              <span className="text-xs font-bold font-mono text-slate-700">{fStats.bestBowling}</span>
+                            </div>
+                            <div className="bg-white p-1.5 rounded border border-slate-150">
+                              <span className="text-[8px] text-slate-400 block font-bold uppercase">Bowl Avg</span>
+                              <span className="text-xs font-bold font-mono text-emerald-600">{fStats.bowlingAverage || 'N/A'}</span>
+                            </div>
+                            <div className="bg-white p-1.5 rounded border border-slate-150">
+                              <span className="text-[8px] text-slate-400 block font-bold uppercase">Econ Rate</span>
+                              <span className="text-xs font-bold font-mono text-slate-700">{fStats.economyRate || 'N/A'}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
             {inspectorTab === 'history' && (
               <div className="flex flex-col gap-5 animate-fadeIn">
                 
@@ -1672,82 +1834,111 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                       <table className="w-full text-left text-xs border-collapse">
                         <thead>
                           <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                            <th className="py-2.5 px-4">Season/Week</th>
-                            <th className="py-2.5 px-3">BTR Rating</th>
-                            <th className="py-2.5 px-3">Wage</th>
-                            <th className="py-2.5 px-3">Form/Fit</th>
-                            <th className="py-2.5 px-4 text-right">Training Pops & Notes</th>
+                            {renderHistoryHeader('Season/Week', 'week', 'text-left px-4')}
+                            {renderHistoryHeader('BTR Rating', 'btRating', 'text-left px-3')}
+                            {renderHistoryHeader('Wage', 'wage', 'text-left px-3')}
+                            {renderHistoryHeader('Form/Fit', 'formFit', 'text-left px-3')}
+                            <th className="py-2.5 px-4 text-right font-bold uppercase tracking-wider text-[10px]">Training Pops & Notes</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {selectedPlayer.history && [...selectedPlayer.history].reverse().map((entry, idx, arr) => {
-                            const prevChronological = arr[idx + 1];
-                            const ratingDiff = prevChronological ? entry.btRating - prevChronological.btRating : 0;
-                            
-                            return (
-                              <tr key={`${entry.season}-${entry.week}`} className="hover:bg-slate-50/50 transition">
-                                <td className="py-3 px-4 font-mono font-bold text-slate-700">
-                                  S{entry.season} W{entry.week}
-                                </td>
-                                <td className="py-3 px-3">
-                                  <div className="font-mono font-semibold text-slate-800">
-                                    {entry.btRating.toLocaleString()}
-                                  </div>
-                                  {ratingDiff !== 0 && (
-                                    <div className={`text-[10px] font-mono font-semibold ${ratingDiff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                      {ratingDiff > 0 ? '+' : ''}{ratingDiff.toLocaleString()}
+                          {selectedPlayer.history && (() => {
+                            const processedHistory = [...selectedPlayer.history]
+                              .sort((a, b) => (a.season * 100 + a.week) - (b.season * 100 + b.week))
+                              .map((entry, idx, arr) => {
+                                const prevChronological = arr[idx - 1];
+                                const ratingDiff = prevChronological ? entry.btRating - prevChronological.btRating : 0;
+                                return { ...entry, ratingDiff };
+                              });
+
+                            const sortedHistory = [...processedHistory].sort((a, b) => {
+                              let valA = 0;
+                              let valB = 0;
+
+                              if (historySortField === 'week') {
+                                valA = a.season * 100 + a.week;
+                                valB = b.season * 100 + b.week;
+                              } else if (historySortField === 'btRating') {
+                                valA = a.btRating;
+                                valB = b.btRating;
+                              } else if (historySortField === 'wage') {
+                                valA = a.wage;
+                                valB = b.wage;
+                              } else if (historySortField === 'formFit') {
+                                valA = (a.form || 0) + (a.fitness || 0);
+                                valB = (b.form || 0) + (b.fitness || 0);
+                              }
+
+                              return historySortDirection === 'asc' ? valA - valB : valB - valA;
+                            });
+
+                            return sortedHistory.map((entry) => {
+                              const ratingDiff = entry.ratingDiff;
+                              return (
+                                <tr key={`${entry.season}-${entry.week}`} className="hover:bg-slate-50/50 transition">
+                                  <td className="py-3 px-4 font-mono font-bold text-slate-700">
+                                    S{entry.season} W{entry.week}
+                                  </td>
+                                  <td className="py-3 px-3">
+                                    <div className="font-mono font-semibold text-slate-800">
+                                      {entry.btRating.toLocaleString()}
                                     </div>
-                                  )}
-                                </td>
-                                <td className="py-3 px-3 font-mono text-slate-600">
-                                  £{entry.wage.toLocaleString()}
-                                </td>
-                                <td className="py-3 px-3">
-                                  <div className="text-[11px] text-slate-500">
-                                    F: <span className="font-bold text-slate-700">{entry.form || selectedPlayer.form}/10</span>
-                                  </div>
-                                  <div className="text-[11px] text-slate-500">
-                                    Ft: <span className="font-bold text-slate-700">{entry.fitness || selectedPlayer.fitness}/10</span>
-                                  </div>
-                                </td>
-                                <td className="py-3 px-4 text-right">
-                                  <div className="flex items-center justify-end gap-2">
-                                    {entry.note ? (
-                                      <span className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
-                                        entry.note.includes('Pop') || entry.note.includes('popped')
-                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                          : 'bg-indigo-50 text-indigo-700 border-indigo-200/60'
-                                      }`}>
-                                        {entry.note}
-                                      </span>
-                                    ) : (
-                                      <span className="text-slate-300 italic text-[11px]">-</span>
+                                    {ratingDiff !== 0 && (
+                                      <div className={`text-[10px] font-mono font-semibold ${ratingDiff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {ratingDiff > 0 ? '+' : ''}{ratingDiff.toLocaleString()}
+                                      </div>
                                     )}
-                                    
-                                    {/* Hoverable details to show exact skills of that week */}
-                                    <div className="group relative inline-block">
-                                      <button className="text-[10px] text-slate-400 hover:text-indigo-600 font-bold border border-slate-200 hover:border-indigo-300 px-1.5 py-0.5 rounded cursor-help">
-                                        Skills
-                                      </button>
-                                      <div className="invisible group-hover:visible absolute right-0 bottom-6 bg-slate-900 text-white rounded-lg p-3 shadow-lg z-50 w-52 text-left text-[10px] flex flex-col gap-1 border border-slate-800">
-                                        <div className="font-bold text-slate-300 border-b border-slate-800 pb-1 mb-1">
-                                          Skills at S{entry.season} W{entry.week}
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-y-1 gap-x-3">
-                                          <div>Stamina: <span className="font-bold text-slate-300 capitalize">{getSkillLabel('stamina', entry.skills.stamina)}</span></div>
-                                          <div>Batting: <span className="font-bold text-slate-300 capitalize">{getSkillLabel('batting', entry.skills.batting)}</span></div>
-                                          <div>Bowling: <span className="font-bold text-slate-300 capitalize">{getSkillLabel('bowling', entry.skills.bowling)}</span></div>
-                                          <div>Fielding: <span className="font-bold text-slate-300 capitalize">{getSkillLabel('fielding', entry.skills.fielding)}</span></div>
-                                          <div>Conc: <span className="font-bold text-slate-300 capitalize">{getSkillLabel('concentration', entry.skills.concentration)}</span></div>
-                                          <div>Cons: <span className="font-bold text-slate-300 capitalize">{getSkillLabel('consistency', entry.skills.consistency)}</span></div>
+                                  </td>
+                                  <td className="py-3 px-3 font-mono text-slate-600">
+                                    £{entry.wage.toLocaleString()}
+                                  </td>
+                                  <td className="py-3 px-3">
+                                    <div className="text-[11px] text-slate-500">
+                                      F: <span className="font-bold text-slate-700">{entry.form || selectedPlayer.form}/10</span>
+                                    </div>
+                                    <div className="text-[11px] text-slate-500">
+                                      Ft: <span className="font-bold text-slate-700">{entry.fitness || selectedPlayer.fitness}/10</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4 text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                      {entry.note ? (
+                                        <span className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                                          entry.note.includes('Pop') || entry.note.includes('popped')
+                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                            : 'bg-indigo-50 text-indigo-700 border-indigo-200/60'
+                                        }`}>
+                                          {entry.note}
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-300 italic text-[11px]">-</span>
+                                      )}
+                                      
+                                      {/* Hoverable details to show exact skills of that week */}
+                                      <div className="group relative inline-block">
+                                        <button className="text-[10px] text-slate-400 hover:text-indigo-600 font-bold border border-slate-200 hover:border-indigo-300 px-1.5 py-0.5 rounded cursor-help">
+                                          Skills
+                                        </button>
+                                        <div className="invisible group-hover:visible absolute right-0 bottom-6 bg-slate-900 text-white rounded-lg p-3 shadow-lg z-50 w-52 text-left text-[10px] flex flex-col gap-1 border border-slate-800">
+                                          <div className="font-bold text-slate-300 border-b border-slate-800 pb-1 mb-1">
+                                            Skills at S{entry.season} W{entry.week}
+                                          </div>
+                                          <div className="grid grid-cols-2 gap-y-1 gap-x-3">
+                                            <div>Stamina: <span className="font-bold text-slate-300 capitalize">{getSkillLabel('stamina', entry.skills.stamina)}</span></div>
+                                            <div>Batting: <span className="font-bold text-slate-300 capitalize">{getSkillLabel('batting', entry.skills.batting)}</span></div>
+                                            <div>Bowling: <span className="font-bold text-slate-300 capitalize">{getSkillLabel('bowling', entry.skills.bowling)}</span></div>
+                                            <div>Fielding: <span className="font-bold text-slate-300 capitalize">{getSkillLabel('fielding', entry.skills.fielding)}</span></div>
+                                            <div>Conc: <span className="font-bold text-slate-300 capitalize">{getSkillLabel('concentration', entry.skills.concentration)}</span></div>
+                                            <div>Cons: <span className="font-bold text-slate-300 capitalize">{getSkillLabel('consistency', entry.skills.consistency)}</span></div>
+                                          </div>
                                         </div>
                                       </div>
                                     </div>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          })()}
                         </tbody>
                       </table>
                     </div>

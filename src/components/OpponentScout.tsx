@@ -19,7 +19,8 @@ import {
   getExampleMatchData,
   getExampleMatchDataById,
   parseFixtures,
-  TEST_MATCHES
+  TEST_MATCHES,
+  parseBattrickPlayerDetails
 } from '../parser';
 import { 
   ShieldAlert, 
@@ -34,6 +35,7 @@ import {
   ArrowRight, 
   FileText, 
   Copy, 
+  Clipboard,
   ChevronRight, 
   BarChart3, 
   Search, 
@@ -50,7 +52,10 @@ import {
   RefreshCw,
   Lock,
   ShieldCheck,
-  X
+  X,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown
 } from 'lucide-react';
 
 interface OpponentScoutProps {
@@ -65,8 +70,8 @@ const normalizeMatchFormat = (type?: string): MatchFormat => {
 };
 
 export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
-  // Navigation Sub-tab: match_analyzer | fixtures_scout | dossier
-  const [activeSubTab, setActiveSubTab] = useState<'match_analyzer' | 'fixtures_scout' | 'dossier'>('match_analyzer');
+  // Navigation Sub-tab: match_analyzer | fixtures_scout | dossier | player_scout
+  const [activeSubTab, setActiveSubTab] = useState<'match_analyzer' | 'fixtures_scout' | 'dossier' | 'player_scout'>('match_analyzer');
 
   // 1. My Squad Context
   const [mySquad, setMySquad] = useState<BattrickPlayer[]>(() => {
@@ -90,6 +95,7 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
 
   // 2. Selected Opponent & Match Settings
   const [opponentName, setOpponentName] = useState<string>('Steve');
+  const [opponentTeamId, setOpponentTeamId] = useState<string>('');
   const [matchFormat, setMatchFormat] = useState<MatchFormat>('One Day');
   const [pitch, setPitch] = useState<PitchType>('Green');
   const [weather, setWeather] = useState<WeatherType>('Overcast');
@@ -97,6 +103,79 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
 
   // 3. Opponent Squad Data
   const [opponentPlayers, setOpponentPlayers] = useState<OpponentPlayer[]>(() => generateRealisticOpponentRoster('Steve', false, 'One Day'));
+  
+  // Sorting States for Tables
+  const [lineupSortField, setLineupSortField] = useState<string>('order');
+  const [lineupSortDirection, setLineupSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const [batterSortField, setBatterSortField] = useState<string>('order');
+  const [batterSortDirection, setBatterSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const [bowlerSortField, setBowlerSortField] = useState<string>('index');
+  const [bowlerSortDirection, setBowlerSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const [fixturesSortField, setFixturesSortField] = useState<string>('index');
+  const [fixturesSortDirection, setFixturesSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const handleLineupSort = (field: string) => {
+    if (lineupSortField === field) {
+      setLineupSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setLineupSortField(field);
+      setLineupSortDirection(field === 'name' || field === 'order' ? 'asc' : 'desc');
+    }
+  };
+
+  const handleBatterSort = (field: string) => {
+    if (batterSortField === field) {
+      setBatterSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setBatterSortField(field);
+      setBatterSortDirection(field === 'name' || field === 'order' ? 'asc' : 'desc');
+    }
+  };
+
+  const handleBowlerSort = (field: string) => {
+    if (bowlerSortField === field) {
+      setBowlerSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setBowlerSortField(field);
+      setBowlerSortDirection(field === 'name' || field === 'index' ? 'asc' : 'desc');
+    }
+  };
+
+  const handleFixturesSort = (field: string) => {
+    if (fixturesSortField === field) {
+      setFixturesSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setFixturesSortField(field);
+      setFixturesSortDirection('asc');
+    }
+  };
+
+  const renderSortableTh = (label: string, field: string, currentField: string, direction: 'asc' | 'desc', onSort: (field: string) => void, className = "") => {
+    const isSorted = currentField === field;
+    const isRight = className.includes('text-right');
+    const isLeft = className.includes('text-left') || className === '';
+    return (
+      <th 
+        onClick={() => onSort(field)}
+        className={`py-2.5 px-3 cursor-pointer select-none hover:bg-slate-150 hover:text-slate-900 transition-colors group font-mono font-bold ${className}`}
+      >
+        <div className={`inline-flex items-center gap-1 ${isRight ? 'justify-end w-full' : isLeft ? 'justify-start' : 'justify-center'}`}>
+          <span>{label}</span>
+          <span className={`shrink-0 transition-opacity ${isSorted ? 'text-blue-600 opacity-100' : 'opacity-40 group-hover:opacity-100 text-slate-400'}`}>
+            {isSorted ? (
+              direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+            ) : (
+              <ArrowUpDown className="w-3 h-3" />
+            )}
+          </span>
+        </div>
+      </th>
+    );
+  };
+
   const [pastedText, setPastedText] = useState<string>('');
   const [isInputOpen, setIsInputOpen] = useState<boolean>(false);
   const [copySuccess, setCopySuccess] = useState<boolean>(false);
@@ -130,6 +209,129 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   const [fetchStatusMessage, setFetchStatusMessage] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
+  // Live Squad Sync State
+  const [isSyncingSquad, setIsSyncingSquad] = useState<boolean>(false);
+  const [squadSyncStatus, setSquadSyncStatus] = useState<string | null>(null);
+  const [squadSyncError, setSquadSyncError] = useState<string | null>(null);
+
+  // Live Player Sync State
+  const [scoutedPlayer, setScoutedPlayer] = useState<BattrickPlayer | null>(null);
+  const [scoutPlayerId, setScoutPlayerId] = useState<string>('');
+  const [isSyncingPlayer, setIsSyncingPlayer] = useState<boolean>(false);
+  const [playerSyncStatus, setPlayerSyncStatus] = useState<string | null>(null);
+  const [playerSyncError, setPlayerSyncError] = useState<string | null>(null);
+  const [pastedPlayerText, setPastedPlayerText] = useState<string>('');
+  const [isPlayerPasteOpen, setIsPlayerPasteOpen] = useState<boolean>(false);
+
+  const handleSyncPlayerLive = async () => {
+    if (!scoutPlayerId.trim()) {
+      setPlayerSyncError('Please enter a valid Battrick Player ID.');
+      return;
+    }
+    setIsSyncingPlayer(true);
+    setPlayerSyncError(null);
+    setPlayerSyncStatus(`Syncing Player ID #${scoutPlayerId} from Battrick servers...`);
+
+    try {
+      const username = localStorage.getItem('bt_battrick_username') || localStorage.getItem('bt_direct_user') || '';
+      const password = sessionStorage.getItem('bt_direct_pass') || localStorage.getItem('bt_direct_pass') || '';
+      const sessionToken = localStorage.getItem('bt_sync_session') || '';
+
+      const res = await fetch('/api/sync-battrick-step', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pageName: 'playerdetails.asp',
+          pageUrl: `https://www.battrick.org/nl/playerdetails.asp?playerID=${scoutPlayerId.trim()}`,
+          username,
+          password,
+          sessionToken
+        })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${res.status}: Failed to sync player page.`);
+      }
+
+      const data = await res.json();
+      if (data.sessionToken) {
+        localStorage.setItem('bt_sync_session', data.sessionToken);
+      }
+      if (data.success && data.html) {
+        const parsed = parseBattrickPlayerDetails(data.html);
+        if (parsed) {
+          setScoutedPlayer(parsed);
+          setPlayerSyncStatus(`Successfully scouted player ${parsed.name} live!`);
+        } else {
+          throw new Error('Failed to parse player details from HTML.');
+        }
+      } else {
+        throw new Error(data.error || 'Battrick server returned empty details page.');
+      }
+    } catch (err: any) {
+      console.warn('Live player sync failed, using mock demo player:', err);
+      setPlayerSyncError(`${err.message || 'Error connecting.'} Displaying interactive demo player.`);
+      
+      const fallback: BattrickPlayer = {
+        id: scoutPlayerId,
+        name: 'Gary Sobers',
+        age: 22,
+        btRating: 28450,
+        wage: 3450,
+        bowlingType: 'Fast Medium',
+        role: 'All-rounder',
+        form: 8,
+        fitness: 8,
+        battingFormLabel: 'superb',
+        fitnessLabel: 'fit',
+        skills: {
+          batting: 11, // superb
+          bowling: 3,  // woeful
+          keeping: 2,  // abysmal
+          concentration: 10, // strong
+          consistency: 9, // proficient
+          fielding: 8,  // proficient
+          stamina: 7,   // respectable
+          leadership: 5,
+          experience: 4
+        },
+        nets: {
+          batting: 0,
+          bowling: 0,
+          keeping: 0,
+          fielding: 0,
+          stamina: 0
+        }
+      };
+      setScoutedPlayer(fallback);
+    } finally {
+      setIsSyncingPlayer(false);
+      setTimeout(() => setPlayerSyncStatus(null), 5000);
+    }
+  };
+
+  const handleParsePastedPlayer = () => {
+    if (!pastedPlayerText.trim()) {
+      setPlayerSyncError('Please paste player details HTML content.');
+      return;
+    }
+    try {
+      const parsed = parseBattrickPlayerDetails(pastedPlayerText);
+      if (parsed) {
+        setScoutedPlayer(parsed);
+        setPastedPlayerText('');
+        setIsPlayerPasteOpen(false);
+        setPlayerSyncStatus(`Successfully updated scouted player: ${parsed.name}!`);
+        setTimeout(() => setPlayerSyncStatus(null), 4000);
+      } else {
+        setPlayerSyncError('Could not parse player details. Ensure you copied the entire page source.');
+      }
+    } catch (err: any) {
+      setPlayerSyncError(`Parsing failed: ${err.message || 'Unknown error'}`);
+    }
+  };
+
   // Load user data on mount and listen to storage synchronization events
   const loadLocalData = () => {
     try {
@@ -158,9 +360,42 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
       }
 
       let activeMatchId = '32554717';
-      if (loadedFixtures.length > 0) {
+      const savedScoutTarget = localStorage.getItem('bt_scout_target_team');
+      let targetTeamName = '';
+      let targetTeamId = '';
+      let targetMatchId = '';
+      let targetType = '';
+      
+      if (savedScoutTarget) {
+        try {
+          const target = JSON.parse(savedScoutTarget);
+          if (target.teamName) {
+            targetTeamName = target.teamName;
+            targetTeamId = target.teamId || '';
+            targetMatchId = target.matchId || '';
+            targetType = target.type || '';
+          }
+        } catch (e) {
+          console.error('Error parsing scout target team:', e);
+        }
+      }
+
+      if (targetTeamName) {
+        setOpponentName(targetTeamName);
+        setOpponentTeamId(targetTeamId);
+        if (targetType) {
+          setMatchFormat(normalizeMatchFormat(targetType));
+        }
+        if (targetMatchId) {
+          activeMatchId = targetMatchId;
+          setMatchIdInput(targetMatchId);
+        }
+        setActiveSubTab('dossier');
+        setOpponentPlayers(generateRealisticOpponentRoster(targetTeamName, false, normalizeMatchFormat(targetType || 'One Day'), targetTeamId));
+      } else if (loadedFixtures.length > 0) {
         const firstGame = loadedFixtures[0];
         setOpponentName(firstGame.opponent);
+        setOpponentTeamId('');
         setMatchFormat(normalizeMatchFormat(firstGame.type));
         setVenue(firstGame.venue);
         if (firstGame.matchId) {
@@ -416,6 +651,136 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
     }
   };
 
+  const handleSyncOpponentSquadLive = async () => {
+    const targetTeamId = opponentTeamId.trim() || '24514'; // Default to Bluejays if empty
+    
+    setIsSyncingSquad(true);
+    setSquadSyncStatus(`Connecting to Battrick server and fetching Squad ID ${targetTeamId}...`);
+    setSquadSyncError(null);
+
+    // Notify app-wide sync indicator
+    try {
+      window.dispatchEvent(new Event('bt_datasync_start'));
+    } catch {}
+
+    try {
+      const username = localStorage.getItem('bt_battrick_username') || localStorage.getItem('bt_direct_user') || '';
+      const password = sessionStorage.getItem('bt_direct_pass') || localStorage.getItem('bt_direct_pass') || '';
+      const sessionToken = localStorage.getItem('bt_sync_session') || '';
+
+      // If no credentials and no session, open the credentials modal
+      if (!password && !sessionToken) {
+        setIsSyncingSquad(false);
+        setModalUsername(username);
+        setModalPassword('');
+        setSquadSyncError(`Authentication required to fetch squad live from Battrick.`);
+        setIsAuthModalOpen(true);
+        return;
+      }
+
+      const response = await fetch('/api/sync-battrick-step', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pageName: 'squad',
+          teamId: targetTeamId,
+          username,
+          password,
+          sessionToken
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        const isAuthFailure = response.status === 401 || data.isAuthFailure || data.message?.toLowerCase().includes('credentials') || data.message?.toLowerCase().includes('login') || data.message?.toLowerCase().includes('session') || data.error?.toLowerCase().includes('login') || data.error?.toLowerCase().includes('session');
+        if (isAuthFailure) {
+          sessionStorage.removeItem('bt_direct_pass');
+          localStorage.removeItem('bt_direct_pass');
+          localStorage.removeItem('bt_sync_session');
+          setModalUsername(username);
+          setModalPassword('');
+          setIsAuthModalOpen(true);
+        }
+        throw new Error(data.message || data.error || `HTTP ${response.status}: Failed to fetch squad from Battrick.`);
+      }
+
+      if (data.sessionToken) {
+        localStorage.setItem('bt_sync_session', data.sessionToken);
+      }
+
+      if (!data.html) {
+        throw new Error("Battrick returned empty response for squad list.");
+      }
+
+      // Parse the HTML content using our parseOpponentSquad parser!
+      const parsedPlayers = parseOpponentSquad(data.html, opponentName, targetTeamId);
+      if (parsedPlayers.length === 0) {
+        throw new Error("Failed to extract any player statistics. Please verify the Opponent Team ID is correct.");
+      }
+
+      // Map parsed BattrickPlayer[] to OpponentPlayer[]
+      const mappedPlayers: OpponentPlayer[] = parsedPlayers.map((p, idx) => {
+        const batVal = p.skills.batting;
+        const bowlVal = p.skills.bowling;
+        const isKeeper = p.primaryRoleClassifier === 'Wicketkeeper';
+        
+        // Use realistic averages or fallback averages
+        const batAvg = (p as any).battingAverage !== undefined ? (p as any).battingAverage : (p.role === 'Batter' || p.role === 'Keeper' ? 52.4 : 12.4);
+        const bowlAvg = (p as any).bowlingAverage !== undefined ? (p as any).bowlingAverage : (p.role === 'Bowler' ? 24.8 : 0);
+
+        return {
+          id: p.id,
+          name: p.name,
+          age: p.age,
+          wage: p.wage,
+          btRating: p.btRating,
+          role: p.role as any,
+          bowlingType: p.bowlingType || 'None',
+          batting: batVal,
+          bowling: bowlVal,
+          keeping: p.skills.keeping,
+          stamina: p.skills.stamina,
+          experience: p.skills.experience,
+          concentration: p.skills.concentration,
+          consistency: p.skills.consistency,
+          fielding: p.skills.fielding,
+          order: idx + 1,
+          battingHand: p.battingHand,
+          battingStyle: p.battingStyle,
+          bowlingHand: p.bowlingHand,
+          bowlingStyle: p.bowlingStyle,
+          bowlingAggression: p.bowlingAggression,
+          battingFormLabel: p.battingFormLabel,
+          bowlingFormLabel: p.bowlingFormLabel,
+          fitnessLabel: p.fitnessLabel,
+          estimatedSkillLabel: p.estimatedSkillLabel,
+          estimatedSkillLevel: p.estimatedSkillLevel,
+          primaryRoleClassifier: p.primaryRoleClassifier,
+          battingAverage: batAvg,
+          bowlingAverage: bowlAvg
+        };
+      });
+
+      setOpponentPlayers(mappedPlayers);
+      setSquadSyncStatus(`✓ Successfully fetched & analyzed ${mappedPlayers.length} players for ${opponentName} (ID: ${targetTeamId}) live from Battrick!`);
+    } catch (err: any) {
+      console.warn('Squad live fetch error:', err);
+      setSquadSyncError(
+        err.message?.includes('credentials') || err.message?.includes('Login')
+          ? `${err.message} Setup credentials in Sync Hub for automatic live connection.`
+          : `${err.message}`
+      );
+    } finally {
+      setIsSyncingSquad(false);
+      try {
+        window.dispatchEvent(new Event('bt_datasync_complete'));
+      } catch {}
+      // Clear status after 5s
+      setTimeout(() => setSquadSyncStatus(null), 5000);
+    }
+  };
+
   // Ask AI Coach to analyze this match with OpenRouter
   const handleConsultCoachJarvis = () => {
     const matchSummary = `Please provide a thorough Opponent Scouting Analysis for Battrick Match ID ${activeParsedMatch.matchId} (${activeParsedMatch.homeTeam} vs ${activeParsedMatch.awayTeam}).
@@ -536,7 +901,7 @@ TACTICAL ORDERS:
             }`}
           >
             <BarChart3 className="w-3.5 h-3.5" />
-            <span>Match & Summary Intelligence (Batstat Engine)</span>
+            <span>Summary Intelligence</span>
           </button>
           <button
             type="button"
@@ -548,7 +913,7 @@ TACTICAL ORDERS:
             }`}
           >
             <CalendarDays className="w-3.5 h-3.5" />
-            <span>Upcoming Fixtures & Opponents ({fixtures.length})</span>
+            <span>Fixtures & Opponents ({fixtures.length})</span>
           </button>
           <button
             type="button"
@@ -560,7 +925,19 @@ TACTICAL ORDERS:
             }`}
           >
             <Target className="w-3.5 h-3.5" />
-            <span>Live Tactical Scout Dossier</span>
+            <span>Scout a Team</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('player_scout')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+              activeSubTab === 'player_scout'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-white/10 text-blue-200 hover:bg-white/20'
+            }`}
+          >
+            <UserCheck className="w-3.5 h-3.5" />
+            <span>Scout a Player</span>
           </button>
         </div>
       </div>
@@ -1018,58 +1395,78 @@ TACTICAL ORDERS:
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-mono">
-                    <th className="py-2.5 px-3">#</th>
-                    <th className="py-2.5 px-3">Batter</th>
-                    <th className="py-2.5 px-3">Battrick Grouping</th>
-                    <th className="py-2.5 px-3">Dismissal</th>
-                    <th className="py-2.5 px-3 text-right">Runs</th>
-                    <th className="py-2.5 px-3 text-right">Balls</th>
-                    <th className="py-2.5 px-3 text-right">4s</th>
-                    <th className="py-2.5 px-3 text-right">6s</th>
-                    <th className="py-2.5 px-3 text-right">SR</th>
-                    <th className="py-2.5 px-3">Estimated Grade</th>
+                    {renderSortableTh('#', 'order', batterSortField, batterSortDirection, handleBatterSort, "w-12")}
+                    {renderSortableTh('Batter', 'name', batterSortField, batterSortDirection, handleBatterSort, "text-left font-sans")}
+                    {renderSortableTh('Battrick Grouping', 'group', batterSortField, batterSortDirection, handleBatterSort, "text-left")}
+                    {renderSortableTh('Dismissal', 'dismissal', batterSortField, batterSortDirection, handleBatterSort, "text-left font-sans")}
+                    {renderSortableTh('Runs', 'runs', batterSortField, batterSortDirection, handleBatterSort, "text-right")}
+                    {renderSortableTh('Balls', 'balls', batterSortField, batterSortDirection, handleBatterSort, "text-right")}
+                    {renderSortableTh('4s', 'fours', batterSortField, batterSortDirection, handleBatterSort, "text-right")}
+                    {renderSortableTh('6s', 'sixes', batterSortField, batterSortDirection, handleBatterSort, "text-right")}
+                    {renderSortableTh('SR', 'strikeRate', batterSortField, batterSortDirection, handleBatterSort, "text-right")}
+                    {renderSortableTh('Estimated Grade', 'grade', batterSortField, batterSortDirection, handleBatterSort, "text-left font-sans")}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-mono">
-                  {activeInnings.batters.map((b) => {
-                    const isTop = b.order <= 3;
-                    const isMid = b.order >= 4 && b.order <= 6;
-                    const isTail = b.order >= 7;
+                  {[...activeInnings.batters]
+                    .sort((a, b) => {
+                      let valA: any = a[batterSortField as keyof typeof a];
+                      let valB: any = b[batterSortField as keyof typeof b];
 
-                    return (
-                      <tr 
-                        key={b.order} 
-                        className={`hover:bg-slate-50/80 transition ${
-                          isTop ? 'bg-emerald-50/20' : isTail ? 'bg-rose-50/20' : ''
-                        }`}
-                      >
-                        <td className="py-2 px-3 font-bold text-slate-400">{b.order}</td>
-                        <td className="py-2 px-3 font-bold font-sans text-slate-900">{b.name}</td>
-                        <td className="py-2 px-3">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                            isTop 
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                              : isMid 
-                                ? 'bg-blue-50 text-blue-700 border-blue-200' 
-                                : 'bg-rose-50 text-rose-700 border-rose-200'
-                          }`}>
-                            {b.group}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 font-sans text-slate-500 text-[11px]">{b.dismissal}</td>
-                        <td className="py-2 px-3 font-bold text-right text-slate-900">{b.runs}</td>
-                        <td className="py-2 px-3 text-right text-slate-600">{b.balls}</td>
-                        <td className="py-2 px-3 text-right text-slate-600">{b.fours}</td>
-                        <td className="py-2 px-3 text-right text-slate-600">{b.sixes}</td>
-                        <td className="py-2 px-3 text-right font-bold text-slate-700">{b.strikeRate.toFixed(1)}</td>
-                        <td className="py-2 px-3">
-                          <span className={`font-bold ${isTop ? 'text-emerald-700' : isTail ? 'text-rose-600' : 'text-slate-700'}`}>
-                            {b.estimatedSkillGrade || '—'}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                      if (batterSortField === 'grade') {
+                        valA = a.estimatedSkillGrade || '';
+                        valB = b.estimatedSkillGrade || '';
+                      }
+
+                      if (typeof valA === 'string' && typeof valB === 'string') {
+                        return batterSortDirection === 'asc' 
+                          ? valA.localeCompare(valB) 
+                          : valB.localeCompare(valA);
+                      } else {
+                        const numA = Number(valA) || 0;
+                        const numB = Number(valB) || 0;
+                        return batterSortDirection === 'asc' ? numA - numB : numB - numA;
+                      }
+                    })
+                    .map((b) => {
+                      const isTop = b.order <= 3;
+                      const isMid = b.order >= 4 && b.order <= 6;
+                      const isTail = b.order >= 7;
+
+                      return (
+                        <tr 
+                          key={b.order} 
+                          className={`hover:bg-slate-50/80 transition ${
+                            isTop ? 'bg-emerald-50/20' : isTail ? 'bg-rose-50/20' : ''
+                          }`}
+                        >
+                          <td className="py-2 px-3 font-bold text-slate-400">{b.order}</td>
+                          <td className="py-2 px-3 font-bold font-sans text-slate-900">{b.name}</td>
+                          <td className="py-2 px-3">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              isTop 
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                : isMid 
+                                  ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                                  : 'bg-rose-50 text-rose-700 border-rose-200'
+                            }`}>
+                              {b.group}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 font-sans text-slate-500 text-[11px]">{b.dismissal}</td>
+                          <td className="py-2 px-3 font-bold text-right text-slate-900">{b.runs}</td>
+                          <td className="py-2 px-3 text-right text-slate-600">{b.balls}</td>
+                          <td className="py-2 px-3 text-right text-slate-600">{b.fours}</td>
+                          <td className="py-2 px-3 text-right text-slate-600">{b.sixes}</td>
+                          <td className="py-2 px-3 text-right font-bold text-slate-700">{b.strikeRate.toFixed(1)}</td>
+                          <td className="py-2 px-3">
+                            <span className={`font-bold ${isTop ? 'text-emerald-700' : isTail ? 'text-rose-600' : 'text-slate-700'}`}>
+                              {b.estimatedSkillGrade || '—'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
@@ -1081,54 +1478,75 @@ TACTICAL ORDERS:
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-mono">
-                      <th className="py-2.5 px-3">#</th>
-                      <th className="py-2.5 px-3">Bowler</th>
-                      <th className="py-2.5 px-3">Overs</th>
-                      <th className="py-2.5 px-3">Maidens</th>
-                      <th className="py-2.5 px-3">Runs</th>
-                      <th className="py-2.5 px-3">Wickets</th>
-                      <th className="py-2.5 px-3">Economy</th>
-                      <th className="py-2.5 px-3">Attack Role</th>
+                      {renderSortableTh('#', 'index', bowlerSortField, bowlerSortDirection, handleBowlerSort, "w-12")}
+                      {renderSortableTh('Bowler', 'name', bowlerSortField, bowlerSortDirection, handleBowlerSort, "text-left font-sans")}
+                      {renderSortableTh('Overs', 'overs', bowlerSortField, bowlerSortDirection, handleBowlerSort, "text-left")}
+                      {renderSortableTh('Maidens', 'maidens', bowlerSortField, bowlerSortDirection, handleBowlerSort, "text-left")}
+                      {renderSortableTh('Runs', 'runs', bowlerSortField, bowlerSortDirection, handleBowlerSort, "text-left")}
+                      {renderSortableTh('Wickets', 'wickets', bowlerSortField, bowlerSortDirection, handleBowlerSort, "text-left")}
+                      {renderSortableTh('Economy', 'economy', bowlerSortField, bowlerSortDirection, handleBowlerSort, "text-left")}
+                      <th className="py-2.5 px-3 font-mono font-bold">Attack Role</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-mono">
-                    {activeInnings.bowlers.map((bw, idx) => {
-                      const cleanBowlerName = bw.name
-                        .replace(/\(5th Bowler - /gi, '(')
-                        .replace(/5th Bowler \/ /gi, '')
-                        .replace(/\(5th Bowler\)/gi, '')
-                        .trim();
-                      const isFifthBowler = idx === 4;
-                      const isPartTimer = idx >= 5;
-                      const isHighEcon = bw.economy >= 6.5;
+                    {[...activeInnings.bowlers]
+                      .map((bw, idx) => ({ ...bw, originalIndex: idx }))
+                      .sort((a, b) => {
+                        let valA: any = a[bowlerSortField as keyof typeof a];
+                        let valB: any = b[bowlerSortField as keyof typeof b];
 
-                      return (
-                        <tr key={idx} className={isFifthBowler || isPartTimer || isHighEcon ? 'bg-amber-50/40 font-bold' : ''}>
-                          <td className="py-2 px-3 text-slate-400">{idx + 1}</td>
-                          <td className="py-2 px-3 font-sans text-slate-900">{cleanBowlerName}</td>
-                          <td className="py-2 px-3 text-slate-700">{bw.overs}</td>
-                          <td className="py-2 px-3 text-slate-600">{bw.maidens}</td>
-                          <td className="py-2 px-3 text-slate-900">{bw.runs}</td>
-                          <td className="py-2 px-3 font-bold text-blue-700">{bw.wickets}</td>
-                          <td className="py-2 px-3">{bw.economy.toFixed(2)}</td>
-                          <td className="py-2 px-3">
-                            {isFifthBowler ? (
-                              <span className="text-[10px] text-amber-900 bg-amber-100 font-bold px-2 py-0.5 rounded-full border border-amber-300">
-                                5th Bowler Target
-                              </span>
-                            ) : isPartTimer ? (
-                              <span className="text-[10px] text-purple-800 bg-purple-100 font-bold px-2 py-0.5 rounded-full border border-purple-200">
-                                Part-Timer / 6th+
-                              </span>
-                            ) : idx <= 1 ? (
-                              <span className="text-[10px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded">Frontline Opener</span>
-                            ) : (
-                              <span className="text-[10px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded">Frontline Change</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                        if (bowlerSortField === 'index') {
+                          valA = a.originalIndex;
+                          valB = b.originalIndex;
+                        }
+
+                        if (typeof valA === 'string' && typeof valB === 'string') {
+                          return bowlerSortDirection === 'asc' 
+                            ? valA.localeCompare(valB) 
+                            : valB.localeCompare(valA);
+                        } else {
+                          const numA = Number(valA) || 0;
+                          const numB = Number(valB) || 0;
+                          return bowlerSortDirection === 'asc' ? numA - numB : numB - numA;
+                        }
+                      })
+                      .map((bw) => {
+                        const cleanBowlerName = bw.name
+                          .replace(/\(5th Bowler - /gi, '(')
+                          .replace(/5th Bowler \/ /gi, '')
+                          .replace(/\(5th Bowler\)/gi, '')
+                          .trim();
+                        const isFifthBowler = bw.originalIndex === 4;
+                        const isPartTimer = bw.originalIndex >= 5;
+                        const isHighEcon = bw.economy >= 6.5;
+
+                        return (
+                          <tr key={bw.originalIndex} className={isFifthBowler || isPartTimer || isHighEcon ? 'bg-amber-50/40 font-bold' : ''}>
+                            <td className="py-2 px-3 text-slate-400">{bw.originalIndex + 1}</td>
+                            <td className="py-2 px-3 font-sans text-slate-900">{cleanBowlerName}</td>
+                            <td className="py-2 px-3 text-slate-700">{bw.overs}</td>
+                            <td className="py-2 px-3 text-slate-600">{bw.maidens}</td>
+                            <td className="py-2 px-3 text-slate-900">{bw.runs}</td>
+                            <td className="py-2 px-3 font-bold text-blue-700">{bw.wickets}</td>
+                            <td className="py-2 px-3">{bw.economy.toFixed(2)}</td>
+                            <td className="py-2 px-3">
+                              {isFifthBowler ? (
+                                <span className="text-[10px] text-amber-900 bg-amber-100 font-bold px-2 py-0.5 rounded-full border border-amber-300">
+                                  5th Bowler Target
+                                </span>
+                              ) : isPartTimer ? (
+                                <span className="text-[10px] text-purple-800 bg-purple-100 font-bold px-2 py-0.5 rounded-full border border-purple-200">
+                                  Part-Timer / 6th+
+                                </span>
+                              ) : bw.originalIndex <= 1 ? (
+                                <span className="text-[10px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded">Frontline Opener</span>
+                              ) : (
+                                <span className="text-[10px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded">Frontline Change</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>
@@ -1247,23 +1665,44 @@ TACTICAL ORDERS:
               <table className="w-full text-left text-xs border-collapse font-mono">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
-                    <th className="py-2.5 px-3">Date & Time</th>
-                    <th className="py-2.5 px-3">Format</th>
-                    <th className="py-2.5 px-3">Opponent</th>
-                    <th className="py-2.5 px-3">Venue</th>
-                    <th className="py-2.5 px-3">Match ID</th>
+                    {renderSortableTh('Date & Time', 'date', fixturesSortField, fixturesSortDirection, handleFixturesSort, "text-left")}
+                    {renderSortableTh('Format', 'type', fixturesSortField, fixturesSortDirection, handleFixturesSort, "text-left")}
+                    {renderSortableTh('Opponent', 'opponent', fixturesSortField, fixturesSortDirection, handleFixturesSort, "text-left font-sans")}
+                    {renderSortableTh('Venue', 'venue', fixturesSortField, fixturesSortDirection, handleFixturesSort, "text-left")}
+                    {renderSortableTh('Match ID', 'matchId', fixturesSortField, fixturesSortDirection, handleFixturesSort, "text-left")}
                     <th className="py-2.5 px-3 text-right">Scout & Orders</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {fixtures.map((f, idx) => {
-                    const isCup = f.type === 'Cup';
-                    const isFC = f.type === 'First Class';
-                    const isOD = f.type === 'One Day';
-                    const isBT20 = f.type === 'Twenty20';
+                  {[...fixtures]
+                    .map((f, idx) => ({ ...f, originalIndex: idx }))
+                    .sort((a, b) => {
+                      let valA: any = a[fixturesSortField as keyof typeof a];
+                      let valB: any = b[fixturesSortField as keyof typeof b];
 
-                    return (
-                      <tr key={idx} className="hover:bg-slate-50/80 transition">
+                      if (fixturesSortField === 'index') {
+                        valA = a.originalIndex;
+                        valB = b.originalIndex;
+                      }
+
+                      if (typeof valA === 'string' && typeof valB === 'string') {
+                        return fixturesSortDirection === 'asc' 
+                          ? valA.localeCompare(valB) 
+                          : valB.localeCompare(valA);
+                      } else {
+                        const numA = Number(valA) || 0;
+                        const numB = Number(valB) || 0;
+                        return fixturesSortDirection === 'asc' ? numA - numB : numB - numA;
+                      }
+                    })
+                    .map((f) => {
+                      const isCup = f.type === 'Cup';
+                      const isFC = f.type === 'First Class';
+                      const isOD = f.type === 'One Day';
+                      const isBT20 = f.type === 'Twenty20';
+
+                      return (
+                        <tr key={f.originalIndex} className="hover:bg-slate-50/80 transition">
                         <td className="py-3 px-3 font-bold text-slate-700 whitespace-nowrap">
                           {f.date} {f.time ? <span className="text-[10px] font-normal text-slate-400">({f.time})</span> : ''}
                         </td>
@@ -1374,6 +1813,27 @@ TACTICAL ORDERS:
       {activeSubTab === 'dossier' && (
         <div className="space-y-6 animate-fadeIn">
           
+          {/* Scout any team helpful card */}
+          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-emerald-500" />
+                <span>Scout External Teams & Opponents</span>
+              </h4>
+              <p className="text-xs text-slate-500">
+                You can scout <strong>any Battrick team</strong> (even if they are in different leagues or not on your current fixture ladder). Simply enter their <strong>Battrick Team ID</strong> below to sync their squad, or use the paste button to copy-paste their roster source code.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsInputOpen(!isInputOpen)}
+              className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold font-mono flex items-center gap-1 cursor-pointer shrink-0"
+            >
+              <Clipboard className="w-3.5 h-3.5 text-slate-600" />
+              <span>{isInputOpen ? 'Hide Paste Area' : 'Paste Squad HTML'}</span>
+            </button>
+          </div>
+
           {/* Ingest Box (Collapsible) */}
           {isInputOpen && (
             <div className="bg-white border border-blue-200 rounded-2xl p-5 shadow-sm animate-fadeIn">
@@ -1420,7 +1880,7 @@ TACTICAL ORDERS:
 
           {/* Match Conditions & Opponent Selection Bar */}
           <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
               
               {/* Target Opponent */}
               <div className="lg:col-span-2">
@@ -1450,12 +1910,30 @@ TACTICAL ORDERS:
                       onChange={(e) => {
                         const name = e.target.value;
                         setOpponentName(name);
-                        setOpponentPlayers(generateRealisticOpponentRoster(name, false, matchFormat));
+                        setOpponentPlayers(generateRealisticOpponentRoster(name, false, matchFormat, opponentTeamId));
                       }}
                       className="w-full text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2"
                     />
                   )}
                 </div>
+              </div>
+
+              {/* Battrick Team ID */}
+              <div>
+                <label className="text-[11px] font-mono font-bold uppercase text-slate-500 block mb-1.5">
+                  Battrick Team ID
+                </label>
+                <input
+                  type="text"
+                  value={opponentTeamId}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setOpponentTeamId(val);
+                    setOpponentPlayers(generateRealisticOpponentRoster(opponentName, false, matchFormat, val));
+                  }}
+                  placeholder="e.g. 24514"
+                  className="w-full text-xs font-mono font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
 
               {/* Pitch */}
@@ -1596,68 +2074,213 @@ TACTICAL ORDERS:
 
           {/* Opponent Scouted 11 Players Roster Table */}
           <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-2xs">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="font-serif font-bold text-lg text-slate-900">
-                  Scouted Lineup: {dossier.clubName} ({dossier.players.length} Players)
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
+              <div className="space-y-1">
+                <h3 className="font-serif font-bold text-lg text-slate-900 flex items-center gap-2 flex-wrap">
+                  <span>Scouted Lineup:</span>
+                  <a 
+                    href={`https://www.battrick.org/nl/squad.asp?teamID=${opponentTeamId || '24514'}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 font-sans font-bold bg-blue-50/50 border border-blue-100 px-2.5 py-0.5 rounded-lg transition"
+                  >
+                    {dossier.clubName} {opponentTeamId ? `(ID: ${opponentTeamId})` : ''}
+                    <ExternalLink className="w-3.5 h-3.5 text-blue-500" />
+                  </a>
+                  <span className="text-sm font-sans font-normal text-slate-500">({dossier.players.length} Players)</span>
                 </h3>
                 <p className="text-xs text-slate-500 font-mono">
-                  Ordered by typical batting position with primary skills and bowling styles
+                  Click on the Team link or any Player name to open their live Battrick record.
                 </p>
               </div>
-              <span className="text-xs font-mono font-bold text-slate-400">
-                Avg Wage: £{Math.round(dossier.players.reduce((acc, p) => acc + p.wage, 0) / (dossier.players.length || 1)).toLocaleString()}
-              </span>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleSyncOpponentSquadLive}
+                  disabled={isSyncingSquad}
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-mono font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSquad ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingSquad ? 'Syncing...' : '⚡ Sync Live Squad'}</span>
+                </button>
+                <span className="text-xs font-mono font-bold text-slate-500 bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl">
+                  Avg Wage: £{Math.round(dossier.players.reduce((acc, p) => acc + p.wage, 0) / (dossier.players.length || 1)).toLocaleString()}
+                </span>
+              </div>
             </div>
+
+            {squadSyncStatus && (
+              <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-mono font-bold px-4 py-3 rounded-xl flex items-center gap-2 animate-fadeIn">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{squadSyncStatus}</span>
+              </div>
+            )}
+            {squadSyncError && (
+              <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-mono font-bold px-4 py-3 rounded-xl flex items-center gap-2 animate-fadeIn">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{squadSyncError}</span>
+              </div>
+            )}
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-mono">
-                    <th className="py-2.5 px-3">#</th>
-                    <th className="py-2.5 px-3">Player</th>
-                    <th className="py-2.5 px-3">Role</th>
-                    <th className="py-2.5 px-3">BTR</th>
-                    <th className="py-2.5 px-3">Batting</th>
-                    <th className="py-2.5 px-3">Bowling</th>
-                    <th className="py-2.5 px-3">Type</th>
-                    <th className="py-2.5 px-3">Stamina</th>
-                    <th className="py-2.5 px-3">Vulnerability / Note</th>
+                    {renderSortableTh('#', 'order', lineupSortField, lineupSortDirection, handleLineupSort, "w-12")}
+                    {renderSortableTh('Player Card / Link', 'name', lineupSortField, lineupSortDirection, handleLineupSort, "text-left font-sans")}
+                    {renderSortableTh('Battrick Grouping & Averages', 'grouping', lineupSortField, lineupSortDirection, handleLineupSort, "text-left")}
+                    {renderSortableTh('Estimated Grade', 'grade', lineupSortField, lineupSortDirection, handleLineupSort, "text-left")}
+                    {renderSortableTh('BTR', 'btr', lineupSortField, lineupSortDirection, handleLineupSort, "text-left")}
+                    {renderSortableTh('Wage', 'wage', lineupSortField, lineupSortDirection, handleLineupSort, "text-left")}
+                    {renderSortableTh('Skills (Bat/Bowl)', 'batting', lineupSortField, lineupSortDirection, handleLineupSort, "text-left")}
+                    {renderSortableTh('Stamina', 'stamina', lineupSortField, lineupSortDirection, handleLineupSort, "text-left")}
+                    <th className="py-2.5 px-3">Vulnerability</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {dossier.players.map((p, idx) => {
-                    const isTail = idx >= 6 && p.batting <= 5;
-                    const isPartTimer = idx >= 6 && p.bowling >= 5 && p.bowling <= 7;
-                    return (
-                      <tr key={p.id} className={`hover:bg-slate-50/80 transition ${isTail ? 'bg-rose-50/20' : ''}`}>
-                        <td className="py-2 px-3 font-mono font-bold text-slate-400">{idx + 1}</td>
-                        <td className="py-2 px-3 font-bold text-slate-900">{p.name}</td>
-                        <td className="py-2 px-3">
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                            {p.role}
+                  {[...dossier.players]
+                    .map((p, idx) => ({ ...p, originalIndex: idx }))
+                    .sort((a, b) => {
+                      let valA: any = a[lineupSortField as keyof typeof a];
+                      let valB: any = b[lineupSortField as keyof typeof b];
+
+                      if (lineupSortField === 'order') {
+                        valA = a.originalIndex;
+                        valB = b.originalIndex;
+                      } else if (lineupSortField === 'name') {
+                        valA = a.name;
+                        valB = b.name;
+                      } else if (lineupSortField === 'grouping') {
+                        const getGrp = (p: typeof a) => {
+                          const batAvg = p.battingAverage !== undefined ? p.battingAverage : (p.role === 'Batter' || p.role === 'Keeper' ? 52.4 : 12.4);
+                          const bowlAvg = p.bowlingAverage !== undefined ? p.bowlingAverage : (p.role === 'Bowler' ? 24.8 : 0);
+                          if (batAvg < 50 && bowlAvg < 30 && bowlAvg > 0) return 'Bowler';
+                          if (batAvg >= 50 && (bowlAvg === 0 || bowlAvg >= 30)) return 'Batter';
+                          return p.role;
+                        };
+                        valA = getGrp(a);
+                        valB = getGrp(b);
+                      } else if (lineupSortField === 'grade') {
+                        valA = a.estimatedSkillLabel || '';
+                        valB = b.estimatedSkillLabel || '';
+                      } else if (lineupSortField === 'btr') {
+                        valA = a.btRating;
+                        valB = b.btRating;
+                      } else if (lineupSortField === 'wage') {
+                        valA = a.wage;
+                        valB = b.wage;
+                      } else if (lineupSortField === 'batting') {
+                        valA = a.batting;
+                        valB = b.batting;
+                      } else if (lineupSortField === 'bowling') {
+                        valA = a.bowling;
+                        valB = b.bowling;
+                      } else if (lineupSortField === 'stamina') {
+                        valA = a.stamina;
+                        valB = b.stamina;
+                      }
+
+                      if (typeof valA === 'string' && typeof valB === 'string') {
+                        return lineupSortDirection === 'asc' 
+                          ? valA.localeCompare(valB) 
+                          : valB.localeCompare(valA);
+                      } else {
+                        const numA = Number(valA) || 0;
+                        const numB = Number(valB) || 0;
+                        return lineupSortDirection === 'asc' ? numA - numB : numB - numA;
+                      }
+                    })
+                    .map((p, displayIdx) => {
+                      const isTail = p.originalIndex >= 6 && p.batting <= 5;
+                      const isPartTimer = p.originalIndex >= 6 && p.bowling >= 5 && p.bowling <= 7;
+                      
+                      // Determine Averages & Custom Grouping logic
+                      const batAvg = p.battingAverage !== undefined ? p.battingAverage : (p.role === 'Batter' || p.role === 'Keeper' ? 52.4 : 12.4);
+                      const bowlAvg = p.bowlingAverage !== undefined ? p.bowlingAverage : (p.role === 'Bowler' ? 24.8 : 0);
+                      
+                      // Classification logic based on user's definition: 
+                      // "Grady is a bowler as his batting average is below 50 and his bowling average is below 30"
+                      let computedGrouping = p.role;
+                      if (batAvg < 50 && bowlAvg < 30 && bowlAvg > 0) {
+                        computedGrouping = 'Bowler';
+                      } else if (batAvg >= 50 && (bowlAvg === 0 || bowlAvg >= 30)) {
+                        computedGrouping = 'Batter';
+                      }
+
+                      // Badge Styling
+                      let groupBadgeStyle = 'bg-slate-100 text-slate-700 border-slate-200';
+                      if (computedGrouping === 'Bowler') {
+                        groupBadgeStyle = 'bg-blue-50 text-blue-700 border-blue-200';
+                      } else if (computedGrouping === 'Batter') {
+                        groupBadgeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                      } else if (computedGrouping === 'All-rounder') {
+                        groupBadgeStyle = 'bg-purple-50 text-purple-700 border-purple-200';
+                      } else if (computedGrouping === 'Keeper') {
+                        groupBadgeStyle = 'bg-amber-50 text-amber-700 border-amber-200';
+                      }
+
+                      return (
+                        <tr key={p.id} className={`hover:bg-slate-50/80 transition ${isTail ? 'bg-rose-50/20' : ''}`}>
+                          <td className="py-3 px-3 font-mono font-bold text-slate-400">{p.originalIndex + 1}</td>
+                        <td className="py-3 px-3">
+                          <div className="flex flex-col gap-0.5">
+                            <a 
+                              href={`https://www.battrick.org/nl/playerdetails.asp?playerID=${p.playerId || '5634292'}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-bold text-slate-900 hover:text-blue-600 hover:underline inline-flex items-center gap-1"
+                              title="View player details on Battrick"
+                            >
+                              <span>{p.name}</span>
+                              <ExternalLink className="w-2.5 h-2.5 text-slate-400" />
+                            </a>
+                            <span className="text-[10px] text-slate-500 font-mono font-medium">
+                              {p.age} yo • ID: {p.playerId || '5634292'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${groupBadgeStyle}`}>
+                              {computedGrouping}
+                            </span>
+                            <span className="text-[10px] font-mono text-slate-500">
+                              Bat Avg: {batAvg > 0 ? batAvg : 'N/A'} • Bowl Avg: {bowlAvg > 0 ? bowlAvg : 'N/A'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="font-serif font-semibold text-xs text-slate-800 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
+                            {p.estimatedSkillLabel || 'Strong'}
                           </span>
                         </td>
-                        <td className="py-2 px-3 font-mono font-semibold text-slate-800">
+                        <td className="py-3 px-3 font-mono font-semibold text-slate-800">
                           {p.btRating.toLocaleString()}
                         </td>
-                        <td className="py-2 px-3">
-                          <span className={`font-mono font-bold ${p.batting >= 10 ? 'text-emerald-600' : p.batting <= 4 ? 'text-rose-600' : 'text-slate-800'}`}>
-                            {getSkillLabel('batting', p.batting)} ({p.batting})
-                          </span>
+                        <td className="py-3 px-3 font-mono font-bold text-slate-700">
+                          £{p.wage.toLocaleString()}
                         </td>
-                        <td className="py-2 px-3">
-                          <span className={`font-mono font-bold ${p.bowling >= 10 ? 'text-blue-600' : 'text-slate-500'}`}>
-                            {p.bowling >= 3 ? `${getSkillLabel('bowling', p.bowling)} (${p.bowling})` : '—'}
-                          </span>
+                        <td className="py-3 px-3">
+                          <div className="flex flex-col gap-0.5 font-mono">
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-slate-400">Bat:</span>
+                              <span className={`font-bold ${p.batting >= 10 ? 'text-emerald-600' : p.batting <= 4 ? 'text-rose-600' : 'text-slate-800'}`}>
+                                {getSkillLabel('batting', p.batting)} ({p.batting})
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-slate-400">Bowl:</span>
+                              <span className={`font-bold ${p.bowling >= 10 ? 'text-blue-600' : 'text-slate-500'}`}>
+                                {p.bowling >= 3 ? `${getSkillLabel('bowling', p.bowling)} (${p.bowling})` : '—'}
+                              </span>
+                            </div>
+                          </div>
                         </td>
-                        <td className="py-2 px-3 font-mono font-bold text-slate-700">
-                          {p.bowlingType || '—'}
-                        </td>
-                        <td className="py-2 px-3 font-mono text-slate-600">
+                        <td className="py-3 px-3 font-mono text-slate-600">
                           {getSkillLabel('stamina', p.stamina)}
                         </td>
-                        <td className="py-2 px-3">
+                        <td className="py-3 px-3">
                           {isTail ? (
                             <span className="text-[10px] font-mono font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
                               Fragile Tail Target
@@ -1677,6 +2300,316 @@ TACTICAL ORDERS:
               </table>
             </div>
           </div>
+
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* VIEW 4: SCOUT A PLAYER                                    */}
+      {/* ========================================================= */}
+      {activeSubTab === 'player_scout' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Header Card */}
+          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-emerald-500" />
+                <span>Scout External Player Profiles</span>
+              </h4>
+              <p className="text-xs text-slate-500">
+                Type any Battrick Player ID to fetch their live skills, ratings, and form, or copy-paste their player page source code below.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsPlayerPasteOpen(!isPlayerPasteOpen)}
+              className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold font-mono flex items-center gap-1 cursor-pointer shrink-0"
+            >
+              <Clipboard className="w-3.5 h-3.5 text-slate-600" />
+              <span>{isPlayerPasteOpen ? 'Hide Paste Area' : 'Paste Player HTML'}</span>
+            </button>
+          </div>
+
+          {/* Paste Player Drawer */}
+          {isPlayerPasteOpen && (
+            <div className="p-5 rounded-2xl bg-white border border-blue-200 space-y-3 animate-fadeIn shadow-sm">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-blue-600" />
+                  <span>Paste Player Details Source Code (playerdetails.asp)</span>
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setIsPlayerPasteOpen(false)}
+                  className="text-xs text-slate-400 hover:text-slate-600 font-semibold cursor-pointer"
+                >
+                  Close ✕
+                </button>
+              </div>
+              <textarea
+                rows={5}
+                value={pastedPlayerText}
+                onChange={(e) => setPastedPlayerText(e.target.value)}
+                placeholder="Paste the player details HTML page source code here..."
+                className="w-full p-3 text-xs font-mono border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleParsePastedPlayer}
+                  className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800 transition shadow cursor-pointer font-mono"
+                >
+                  Parse Pasted Player
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Player Search Input Bar */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs">
+            <div className="flex flex-col sm:flex-row items-end gap-4">
+              <div className="flex-1 w-full">
+                <label className="text-[11px] font-mono font-bold uppercase text-slate-500 block mb-1.5">
+                  Battrick Player ID
+                </label>
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={scoutPlayerId}
+                    onChange={(e) => setScoutPlayerId(e.target.value)}
+                    placeholder="Enter Battrick Player ID (e.g. 5634292)"
+                    className="w-full pl-10 pr-3 py-2 text-xs font-mono font-bold border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-mono"
+                  />
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleSyncPlayerLive}
+                disabled={isSyncingPlayer}
+                className="w-full sm:w-auto px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-mono font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingPlayer ? 'animate-spin' : ''}`} />
+                <span>{isSyncingPlayer ? 'Syncing...' : '⚡ Sync Live Player'}</span>
+              </button>
+            </div>
+
+            {playerSyncStatus && (
+              <div className="mt-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-mono font-bold px-4 py-3 rounded-xl flex items-center gap-2 animate-fadeIn">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{playerSyncStatus}</span>
+              </div>
+            )}
+            {playerSyncError && (
+              <div className="mt-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-mono font-bold px-4 py-3 rounded-xl flex items-center gap-2 animate-fadeIn">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{playerSyncError}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Scouted Player Dossier Summary Card */}
+          {scoutedPlayer ? (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
+              
+              {/* Column 1: Core Details Card */}
+              <div className="lg:col-span-1 bg-white border border-slate-200 rounded-2xl p-6 shadow-2xs space-y-4">
+                <div className="border-b border-slate-100 pb-4">
+                  <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                    Scouted External Profile
+                  </span>
+                  <h3 className="font-serif font-bold text-xl text-slate-900 mt-2">
+                    {scoutedPlayer.name}
+                  </h3>
+                  <p className="text-xs text-slate-400 font-mono">
+                    ID: {scoutedPlayer.id} • Age: {scoutedPlayer.age}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+                  <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">BTR (Rating)</span>
+                    <strong className="text-slate-800 text-sm">{scoutedPlayer.btr.toLocaleString()}</strong>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Wage</span>
+                    <strong className="text-slate-800 text-sm">£{scoutedPlayer.wage.toLocaleString()}</strong>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Form</span>
+                    <strong className="text-emerald-600 text-xs font-bold uppercase">{scoutedPlayer.form}</strong>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Fatigue</span>
+                    <strong className="text-slate-700 text-xs font-bold uppercase">{scoutedPlayer.fatigue}</strong>
+                  </div>
+                </div>
+
+                {/* Classification Badge */}
+                <div className="pt-2">
+                  <span className="text-xs font-bold block text-slate-500 mb-1.5 font-mono font-bold">Computed Class:</span>
+                  {(() => {
+                    const isBowler = scoutedPlayer.skills.bowling > scoutedPlayer.skills.batting && scoutedPlayer.skills.bowling >= 6;
+                    const isBatter = scoutedPlayer.skills.batting > scoutedPlayer.skills.bowling && scoutedPlayer.skills.batting >= 6;
+                    const isKeeper = scoutedPlayer.skills.keeping >= 5;
+                    const isAllRounder = !isKeeper && scoutedPlayer.skills.batting >= 6 && scoutedPlayer.skills.bowling >= 6;
+
+                    let label = 'Tail-ender';
+                    let desc = 'Minimal tactical threat; easy bowling target.';
+                    let badgeBg = 'bg-slate-50 text-slate-700 border-slate-200';
+
+                    if (isKeeper) {
+                      label = 'Wicket-Keeper / Batsman';
+                      desc = 'Specialist glover. Focus on testing their concentration.';
+                      badgeBg = 'bg-amber-50 text-amber-700 border-amber-200';
+                    } else if (isAllRounder) {
+                      label = 'All-Rounder';
+                      desc = 'High versatility. Key wicket target in any format.';
+                      badgeBg = 'bg-purple-50 text-purple-700 border-purple-200';
+                    } else if (isBowler) {
+                      label = 'Bowler';
+                      desc = 'Specialist bowler. Advise caution during their spell.';
+                      badgeBg = 'bg-blue-50 text-blue-700 border-blue-200';
+                    } else if (isBatter) {
+                      label = 'Specialist Batsman';
+                      desc = 'Elite run-getter. Deploy strike bowlers & tight fielding.';
+                      badgeBg = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                    }
+
+                    return (
+                      <div className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl space-y-1">
+                        <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded-full border ${badgeBg}`}>
+                          {label}
+                        </span>
+                        <p className="text-[11px] text-slate-500 leading-relaxed pt-1 font-medium">
+                          {desc}
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Column 2: Detailed Skills Grid */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xs flex flex-col justify-between">
+                <div>
+                  <h3 className="font-serif font-bold text-lg text-slate-900 border-b border-slate-100 pb-3 mb-4">
+                    Detailed Skill Matrix
+                  </h3>
+                  <div className="space-y-2.5 font-mono text-xs font-semibold">
+                    {[
+                      { key: 'batting', label: 'Batting', val: scoutedPlayer.skills.batting },
+                      { key: 'bowling', label: 'Bowling', val: scoutedPlayer.skills.bowling },
+                      { key: 'keeping', label: 'Keeping', val: scoutedPlayer.skills.keeping },
+                      { key: 'concentration', label: 'Concentration', val: scoutedPlayer.skills.concentration },
+                      { key: 'consistency', label: 'Consistency', val: scoutedPlayer.skills.consistency },
+                      { key: 'fielding', label: 'Fielding', val: scoutedPlayer.skills.fielding },
+                      { key: 'stamina', label: 'Stamina', val: scoutedPlayer.skills.stamina, isStamina: true },
+                    ].map((s) => {
+                      const levelName = getSkillLabel(s.isStamina ? 'stamina' : 'batting', s.val);
+                      return (
+                        <div key={s.key} className="flex items-center justify-between py-1 border-b border-slate-50">
+                          <span className="font-bold text-slate-600">{s.label}:</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`font-bold ${s.val >= 10 ? 'text-emerald-600' : s.val <= 3 ? 'text-rose-600' : 'text-slate-800'}`}>
+                              {levelName}
+                            </span>
+                            <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded font-semibold font-mono">
+                              ({s.val})
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-100 p-3 rounded-xl mt-4 font-mono text-[10px] text-slate-400 text-center font-bold">
+                  Battrick skill ranges are 0 to 20+.
+                </div>
+              </div>
+
+              {/* Column 3: Tactical Scout Insights */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xs space-y-4">
+                <h3 className="font-serif font-bold text-lg text-slate-900 border-b border-slate-100 pb-3">
+                  Tactical Coach Insights
+                </h3>
+
+                <div className="space-y-4 text-xs font-medium">
+                  {/* Pro Insight */}
+                  <div className="flex gap-2.5 items-start">
+                    <div className="w-5 h-5 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                      ✓
+                    </div>
+                    <div>
+                      <strong className="text-slate-900 block font-bold mb-0.5">Core Threat Vector:</strong>
+                      <span className="text-slate-600 leading-relaxed block">
+                        {(() => {
+                          if (scoutedPlayer.skills.batting >= 10) return `${scoutedPlayer.name} has elite batting skill (${scoutedPlayer.skills.batting}). They can anchor large partnerships and score heavily on flat pitches.`;
+                          if (scoutedPlayer.skills.bowling >= 10) return `Highly dangerous bowling threat with ${scoutedPlayer.skills.bowling} skill level. They will generate high dot ball pressure and pick up top-order wickets easily.`;
+                          const isAllRounder = scoutedPlayer.skills.batting >= 6 && scoutedPlayer.skills.bowling >= 6;
+                          if (isAllRounder) return `Strong all-rounder. Contributes in both departments, representing a dual tactical threat.`;
+                          return `Standard ratings. A useful squad option, but does not present a severe dominant threat vector.`;
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Weakness Insight */}
+                  <div className="flex gap-2.5 items-start">
+                    <div className="w-5 h-5 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                      !
+                    </div>
+                    <div>
+                      <strong className="text-slate-900 block font-bold mb-0.5">Tactical Vulnerability:</strong>
+                      <span className="text-slate-600 leading-relaxed block">
+                        {(() => {
+                          const weaknesses: string[] = [];
+                          if (scoutedPlayer.skills.stamina <= 5) weaknesses.push(`Low Stamina (${scoutedPlayer.skills.stamina}) ensures performance decays rapidly in deep match sessions.`);
+                          if (scoutedPlayer.skills.concentration <= 5 && scoutedPlayer.skills.batting >= 5) weaknesses.push(`Low Concentration (${scoutedPlayer.skills.concentration}) makes them prone to throwing away wickets against patient bowling.`);
+                          if (scoutedPlayer.skills.consistency <= 5 && scoutedPlayer.skills.bowling >= 5) weaknesses.push(`Low Consistency (${scoutedPlayer.skills.consistency}) leads to frequent boundary-conceding bad balls.`);
+                          if (weaknesses.length === 0) {
+                            return `${scoutedPlayer.name} is a balanced, consistent player. No severe skill deficiencies.`;
+                          }
+                          return weaknesses.join(' • ');
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Recommendation */}
+                  <div className="flex gap-2.5 items-start">
+                    <div className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                      ★
+                    </div>
+                    <div>
+                      <strong className="text-slate-900 block font-bold mb-0.5">Matchup Strategy:</strong>
+                      <span className="text-slate-600 leading-relaxed block">
+                        {(() => {
+                          const isBowler = scoutedPlayer.skills.bowling > scoutedPlayer.skills.batting && scoutedPlayer.skills.bowling >= 6;
+                          const isBatter = scoutedPlayer.skills.batting > scoutedPlayer.skills.bowling && scoutedPlayer.skills.batting >= 6;
+                          
+                          if (isBatter) {
+                            return `When bowling to ${scoutedPlayer.name}, prioritize bowler consistency. Set defensive fields on flat decks or select high-spin bowlers if on dusty wickets.`;
+                          }
+                          if (isBowler) {
+                            return `Against ${scoutedPlayer.name}'s bowling spell, advise your batsmen to play defensively or target other bowlers in the line-up.`;
+                          }
+                          return `Standard approach recommended. Exploit stamina decay in secondary spell or play aggressively against their part-time bowlers.`;
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          ) : (
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400 font-serif">
+              <UserCheck className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <span>No player scouted yet. Enter a Battrick Player ID above and click sync, or paste page HTML to generate a live dossier!</span>
+            </div>
+          )}
 
         </div>
       )}
