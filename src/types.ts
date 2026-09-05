@@ -67,6 +67,7 @@ export type MatchFormat = 'First Class' | 'One Day' | 'Twenty20';
 
 export interface BattrickPlayer {
   id: string;
+  playerId?: number | string;
   name: string;
   age: number;
   wage: number;
@@ -83,7 +84,10 @@ export interface BattrickPlayer {
   fitnessLabel?: string;
   estimatedSkillLabel?: string;
   estimatedSkillLevel?: number;
-  primaryRoleClassifier?: 'Batter' | 'Bowler' | 'All-Rounder' | 'Wicketkeeper';
+  primaryRoleClassifier?: 'Batter' | 'Bowler' | 'All-Rounder' | 'Wicketkeeper' | 'Keeper' | 'All-rounder' | string;
+  battingAverage?: number;
+  bowlingAverage?: number;
+  keeping?: number;
   teamId?: string;
   teamName?: string;
   skills: {
@@ -144,6 +148,8 @@ export interface StadiumConfig {
   seats: number;
   boxes: number;
   capacity: number;
+  pitch?: string;
+  groundName?: string;
 }
 
 export interface BattrickGame {
@@ -155,6 +161,9 @@ export interface BattrickGame {
   opponent: string;
   homeTeam?: string;
   awayTeam?: string;
+  opponentTeamId?: string;
+  homeTeamId?: string;
+  awayTeamId?: string;
   type: string;
   league?: string;
   venue: 'Home' | 'Away';
@@ -173,6 +182,7 @@ export interface PavilionInfo {
   groundName: string;
   groundId?: string;
   pitchType?: string;
+  capacity?: number;
   weather: string;
   established: string;
   membershipStatus: string;
@@ -283,7 +293,7 @@ export interface OpponentPlayer {
   fitnessLabel?: string;
   estimatedSkillLabel?: string;
   estimatedSkillLevel?: number;
-  primaryRoleClassifier?: 'Batter' | 'Bowler' | 'All-Rounder' | 'Wicketkeeper';
+  primaryRoleClassifier?: 'Batter' | 'Bowler' | 'All-Rounder' | 'Wicketkeeper' | 'Keeper' | 'All-rounder' | string;
   battingAverage?: number;
   bowlingAverage?: number;
   teamId?: string;
@@ -416,6 +426,8 @@ export interface ParsedBattrickMatch {
   matchType: string;
   homeTeam: string;
   awayTeam: string;
+  homeTeamId?: string;
+  awayTeamId?: string;
   venue: string;
   crowd?: string;
   toss?: string;

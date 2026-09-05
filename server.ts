@@ -592,7 +592,7 @@ async function startServer() {
         matches: 'https://www.battrick.org/nl/fixtures.asp',
         'fixtures.asp': 'https://www.battrick.org/nl/fixtures.asp',
 
-        pavilion: 'https://www.battrick.org/nl/myoffice.asp',
+        pavilion: 'https://www.battrick.org/nl/ground.asp',
         office: 'https://www.battrick.org/nl/myoffice.asp',
         myoffice: 'https://www.battrick.org/nl/myoffice.asp',
         'myoffice.asp': 'https://www.battrick.org/nl/myoffice.asp',

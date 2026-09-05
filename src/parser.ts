@@ -351,11 +351,22 @@ export function parseBattrickPage(content: string, forcedType?: string): {
     return { type, fixtures: parseFixtures(content) };
   }
   if (type === 'pavilion') {
-    return { type, pavilion: parsePavilion(content) };
+    const pavilion = parsePavilion(content);
+    const stadium = parseGround(content);
+    if (stadium && stadium.capacity > 0) {
+      pavilion.capacity = stadium.capacity;
+      return { type: 'pavilion', pavilion, stadium };
+    }
+    return { type, pavilion };
   }
   if (type === 'ground' || type === 'stadium') {
     const finalType = 'ground';
-    return { type: finalType, stadium: parseGround(content), pavilion: parseGroundPavilionInfo(content) };
+    const stadium = parseGround(content);
+    const pavilion = parseGroundPavilionInfo(content);
+    if (stadium.capacity > 0 && !pavilion.capacity) {
+      pavilion.capacity = stadium.capacity;
+    }
+    return { type: finalType, stadium, pavilion };
   }
   if (type === 'league') {
     return { type, league: parseLeagueTable(content) };
@@ -1547,7 +1558,26 @@ export function parseFixtures(content: string): BattrickGame[] {
         let homeTeam = 'Home Team';
         let awayTeam = 'Away Team';
         let opponent = 'Opponent';
+        let homeTeamId = '';
+        let awayTeamId = '';
+        let opponentTeamId = '';
         let venue: 'Home' | 'Away' = 'Home';
+
+        // Extract any club links in this item
+        const teamLinks = Array.from(item.querySelectorAll('a[href*="teamID="], a[href*="teamid="], a[href*="club.asp"], a[href*="squad.asp"]'));
+        for (const tl of teamLinks) {
+          const href = tl.getAttribute('href') || '';
+          const tIdMatch = href.match(/teamID=(\d+)/i) || href.match(/teamid=(\d+)/i);
+          if (tIdMatch) {
+            const linkText = tl.textContent?.trim() || '';
+            const tId = tIdMatch[1];
+            if (detectedUserTeam && linkText.toLowerCase().includes(detectedUserTeam.toLowerCase())) {
+              // This is the user's team
+            } else if (!opponentTeamId) {
+              opponentTeamId = tId;
+            }
+          }
+        }
 
         if (matchTitle.includes(' v ') || matchTitle.includes(' vs ')) {
           const teams = matchTitle.split(/\s+(?:v|vs)\s+/i);
@@ -1571,6 +1601,28 @@ export function parseFixtures(content: string): BattrickGame[] {
           }
         }
 
+        // Match team links to home/away/opponent
+        for (const tl of teamLinks) {
+          const href = tl.getAttribute('href') || '';
+          const tIdMatch = href.match(/teamID=(\d+)/i) || href.match(/teamid=(\d+)/i);
+          if (tIdMatch) {
+            const linkText = tl.textContent?.trim() || '';
+            const tId = tIdMatch[1];
+            if (homeTeam && linkText.toLowerCase().includes(homeTeam.toLowerCase())) {
+              homeTeamId = tId;
+            } else if (awayTeam && linkText.toLowerCase().includes(awayTeam.toLowerCase())) {
+              awayTeamId = tId;
+            }
+            if (opponent && linkText.toLowerCase().includes(opponent.toLowerCase())) {
+              opponentTeamId = tId;
+            }
+          }
+        }
+        if (!opponentTeamId) {
+          if (opponent === homeTeam && homeTeamId) opponentTeamId = homeTeamId;
+          else if (opponent === awayTeam && awayTeamId) opponentTeamId = awayTeamId;
+        }
+
         games.push({
           matchId: matchId || undefined,
           matchUrl: matchUrl || undefined,
@@ -1580,6 +1632,9 @@ export function parseFixtures(content: string): BattrickGame[] {
           opponent,
           homeTeam,
           awayTeam,
+          opponentTeamId: opponentTeamId || undefined,
+          homeTeamId: homeTeamId || undefined,
+          awayTeamId: awayTeamId || undefined,
           type,
           venue,
           result: 'Upcoming',
@@ -1614,11 +1669,20 @@ export function parseFixtures(content: string): BattrickGame[] {
               matchUrl = `https://www.battrick.org/nl/${href}`;
             }
 
+            let opponentTeamId = '';
+            const tLink = row.querySelector('a[href*="teamID="], a[href*="teamid="], a[href*="club.asp"]');
+            if (tLink) {
+              const href = tLink.getAttribute('href') || '';
+              const tm = href.match(/teamID=(\d+)/i) || href.match(/teamid=(\d+)/i);
+              if (tm) opponentTeamId = tm[1];
+            }
+
             games.push({ 
               matchId: matchId || undefined,
               matchUrl: matchUrl || undefined,
               date, 
-              opponent, 
+              opponent,
+              opponentTeamId: opponentTeamId || undefined,
               type, 
               venue, 
               result 
@@ -1733,9 +1797,16 @@ export function parsePavilion(content: string): PavilionInfo {
         const val = extractValueFromCell(/ground(?:\s+name)?:?/i, text, nextText);
         if (val && !groundName) groundName = val;
       }
-      if (/pitch\s+type/i.test(text)) {
-        const val = extractValueFromCell(/pitch\s+type/i, text, nextText);
-        if (val && !pitchType) pitchType = val;
+      if (/pitch/i.test(text) && !/standing|uncovered|covered|members|capacity/i.test(text)) {
+        // Check if pitch type is inside this cell
+        const insideMatch = text.match(/(?:pitch(?:\s+type|\s+state|\s+condition|\s+preparation)?:?\s*)(Flat|Hard|Green|Dusty|Cracked|Uneven|Slow)/i);
+        if (insideMatch) {
+          pitchType = insideMatch[1];
+        } else {
+          const val = extractValueFromCell(/pitch(?:\s+type|\s+state|\s+condition)?:?/i, text, nextText);
+          const pMatch = val.match(/(Flat|Hard|Green|Dusty|Cracked|Uneven|Slow)/i);
+          if (pMatch && !pitchType) pitchType = pMatch[1];
+        }
       }
       if (/weather/i.test(text)) {
         const val = extractValueFromCell(/weather/i, text, nextText);
@@ -1853,8 +1924,18 @@ export function parsePavilion(content: string): PavilionInfo {
   const groundMatch = normalized.match(/Ground(?:\s+Name)?:?\s*([A-Za-z0-9\s',.\-]+?)(?:Pitch|Established|Capacity|Weather|First Class|One Day|BT20|$)/i) || normalized.match(/Stadium(?:\s+Name)?:?\s*([A-Za-z0-9\s',.\-]+?)(?:Pitch|Established|Capacity|Weather|$)/i);
   if (groundMatch && !groundName) groundName = groundMatch[1].trim();
 
-  const pitchMatch = normalized.match(/Pitch(?:\s+Type)?:?\s*(Flat|Hard|Green|Dusty|Cracked|Uneven)/i) || normalized.match(/Pitch:?\s*([A-Za-z]+)/i);
-  if (pitchMatch && !pitchType) pitchType = pitchMatch[1].trim();
+  // Fallback match for pitch type
+  if (!pitchType) {
+    const stripped = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    const pitchMatch = stripped.match(/(?:Pitch(?:\s+Type|\s+state|\s+condition|\s+preparation)?|Pitch\s*[:\-])\s*(Flat|Hard|Green|Dusty|Cracked|Uneven|Slow)/i) ||
+                       stripped.match(/Pitch\s*[:\-]?\s*([A-Za-z]+)/i);
+    if (pitchMatch) {
+      const candidate = pitchMatch[1].trim();
+      if (/^(Flat|Hard|Green|Dusty|Cracked|Uneven|Slow)$/i.test(candidate)) {
+        pitchType = candidate.charAt(0).toUpperCase() + candidate.slice(1).toLowerCase();
+      }
+    }
+  }
 
   const weatherMatch = normalized.match(/Weather:?\s*(Sunny|Cloudy|Windy|Overcast|Humid|Misty|Drizzle|Rain)/i) || normalized.match(/Weather:?\s*([A-Za-z]+)/i);
   if (weatherMatch && !weather) weather = weatherMatch[1].trim();
@@ -1864,6 +1945,12 @@ export function parsePavilion(content: string): PavilionInfo {
 
   const membershipMatch = normalized.match(/Membership Status:?\s*([A-Za-z\s]+)/i) || normalized.match(/Membership:?\s*([A-Za-z\s]+)/i);
   if (membershipMatch && !membershipStatus) membershipStatus = membershipMatch[1].trim();
+
+  let capacity = 0;
+  const capMatch = content.match(/(?:seating\s+capacity|capacity)[:\s]*([\d,]+)/i);
+  if (capMatch) {
+    capacity = parseFormattedNumber(capMatch[1]);
+  }
 
   const result: PavilionInfo = {
     groundName: groundName || 'HairyBeanBags CG',
@@ -1884,6 +1971,10 @@ export function parsePavilion(content: string): PavilionInfo {
     teamRankingWorld: teamRankingWorld || '#1202 in the World'
   };
 
+  if (capacity > 0) {
+    result.capacity = capacity;
+  }
+
   if (pitchType) {
     result.pitchType = pitchType;
   }
@@ -1894,6 +1985,7 @@ export function parsePavilion(content: string): PavilionInfo {
 export function parseGroundPavilionInfo(content: string): Partial<PavilionInfo> {
   let groundName = '';
   let pitchType = '';
+  let capacity = 0;
   const normalized = content.replace(/\s+/g, ' ');
   
   try {
@@ -1909,10 +2001,17 @@ export function parseGroundPavilionInfo(content: string): Partial<PavilionInfo> 
     for (let i = 0; i < cells.length; i++) {
       const text = cells[i].textContent?.trim() || '';
       const nextText = cells[i + 1]?.textContent?.trim() || '';
-      if (/pitch(?:\s+type|\s+state|\s+preparation)?/i.test(text) && !/standing|uncovered|covered|members|capacity/i.test(text)) {
-        const cleanVal = nextText.trim();
-        if (/Flat|Hard|Green|Dusty|Cracked|Uneven/i.test(cleanVal)) {
-          pitchType = cleanVal;
+      
+      if (/pitch/i.test(text) && !/standing|uncovered|covered|members|capacity/i.test(text)) {
+        const insideMatch = text.match(/(?:pitch(?:\s+type|\s+state|\s+condition|\s+preparation)?:?\s*)(Flat|Hard|Green|Dusty|Cracked|Uneven|Slow)/i);
+        if (insideMatch) {
+          pitchType = insideMatch[1].charAt(0).toUpperCase() + insideMatch[1].slice(1).toLowerCase();
+        } else {
+          const cleanVal = nextText.trim();
+          const pMatch = cleanVal.match(/(Flat|Hard|Green|Dusty|Cracked|Uneven|Slow)/i);
+          if (pMatch) {
+            pitchType = pMatch[1].charAt(0).toUpperCase() + pMatch[1].slice(1).toLowerCase();
+          }
         }
       }
     }
@@ -1941,9 +2040,14 @@ export function parseGroundPavilionInfo(content: string): Partial<PavilionInfo> 
 
   // Fallback match for pitch type
   if (!pitchType) {
-    const pitchMatch = normalized.match(/Pitch(?:\s+Type|\s+state|\s+preparation)?:?\s*(Flat|Hard|Green|Dusty|Cracked|Uneven)/i) || normalized.match(/Pitch:?\s*(Flat|Hard|Green|Dusty|Cracked|Uneven)/i);
+    const stripped = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    const pitchMatch = stripped.match(/(?:Pitch(?:\s+Type|\s+state|\s+condition|\s+preparation)?|Pitch\s*[:\-])\s*(Flat|Hard|Green|Dusty|Cracked|Uneven|Slow)/i) ||
+                       stripped.match(/Pitch\s*[:\-]?\s*([A-Za-z]+)/i);
     if (pitchMatch) {
-      pitchType = pitchMatch[1].trim();
+      const candidate = pitchMatch[1].trim();
+      if (/^(Flat|Hard|Green|Dusty|Cracked|Uneven|Slow)$/i.test(candidate)) {
+        pitchType = candidate.charAt(0).toUpperCase() + candidate.slice(1).toLowerCase();
+      }
     }
   }
 
@@ -2024,12 +2128,16 @@ export function parseGround(content: string): StadiumConfig {
     capacity = terracing + grass + seats + boxes;
   }
 
+  const pavInfo = parseGroundPavilionInfo(content);
+
   return {
     terracing: terracing || 8000,
     grass: grass || 4000,
     seats: seats || 1800,
     boxes: boxes || 200,
-    capacity: capacity || (terracing + grass + seats + boxes) || 14000
+    capacity: capacity || (terracing + grass + seats + boxes) || 14000,
+    pitch: pavInfo.pitchType,
+    groundName: pavInfo.groundName
   };
 }
 
@@ -2191,29 +2299,48 @@ export function generateRealisticOpponentRoster(
   return baseRoster.map((p, idx) => {
     const pIdNum = p.playerId 
       ? String(p.playerId) 
-      : String(hashString(p.name || p.id) % 8000000 + 1000000);
+      : String(Number(teamIdNum) * 100 + (idx + 1) * 37 + (hashString(p.name || '') % 97) + 100000);
     
     let batAvg = p.battingAverage;
     let bowlAvg = p.bowlingAverage;
+    const isKeeper = p.role === 'Keeper';
     
     if (batAvg === undefined) {
-      if (p.role === 'Batter' || p.role === 'Keeper') {
-        batAvg = Math.round((28 + (p.batting || 5) * 2.2 + (idx % 7) * 1.5) * 10) / 10;
+      if (p.role === 'Batter') {
+        batAvg = Math.round((41 + (p.batting || 7) * 1.2 + (idx % 5) * 1.6) * 10) / 10;
+        bowlAvg = 0;
+      } else if (isKeeper) {
+        batAvg = Math.round((40.5 + (p.batting || 7) * 1.1 + (idx % 3) * 1.2) * 10) / 10;
         bowlAvg = 0;
       } else if (p.role === 'All-rounder') {
-        batAvg = Math.round((22 + (p.batting || 5) * 1.8 + (idx % 5) * 1.2) * 10) / 10;
-        bowlAvg = Math.round((28 + (15 - (p.bowling || 5)) * 1.4 + (idx % 6) * 1.1) * 10) / 10;
+        // Both high: batting average about/above 40, bowling average below 30
+        batAvg = Math.round((40.2 + (p.batting || 7) * 0.9 + (idx % 4) * 1.1) * 10) / 10;
+        bowlAvg = Math.round((22 + (idx % 5) * 1.3) * 10) / 10;
       } else {
-        // Bowler: batting average below 50, bowling average below 30
-        batAvg = Math.round((8 + (p.batting || 2) * 1.2 + (idx % 6) * 0.8) * 10) / 10;
-        bowlAvg = Math.round((18 + (15 - (p.bowling || 5)) * 1.1 + (idx % 4) * 0.9) * 10) / 10;
+        // Bowler: bowling average below 30, batting average below 30
+        batAvg = Math.round((10 + (p.batting || 2) * 1.2 + (idx % 4) * 1.1) * 10) / 10;
+        bowlAvg = Math.round((19.5 + (idx % 6) * 1.4) * 10) / 10;
       }
     }
     
     const batVal = p.batting || 3;
     const bowlVal = p.bowling || 3;
-    const isKeeper = p.role === 'Keeper';
     
+    const isClassBowler = bowlAvg > 0 && bowlAvg < 30;
+    const isClassBatter = batAvg >= 40;
+    let finalClassifier: string;
+    if (isClassBowler && isClassBatter) {
+      finalClassifier = 'All-Rounder';
+    } else if (isClassBowler) {
+      finalClassifier = 'Bowler';
+    } else if (isClassBatter) {
+      finalClassifier = 'Batter';
+    } else if (isKeeper || (typeof p.keeping === 'number' && p.keeping >= 6)) {
+      finalClassifier = 'Wicketkeeper';
+    } else {
+      finalClassifier = p.role === 'Bowler' ? 'Bowler' : p.role === 'All-rounder' ? 'All-Rounder' : 'Batter';
+    }
+
     const skillLabel = p.estimatedSkillLabel || SKILL_LEVELS[Math.min(Math.max(batVal, bowlVal), SKILL_LEVELS.length - 1)] || 'mediocre';
     const capSkillLabel = skillLabel.charAt(0).toUpperCase() + skillLabel.slice(1);
     
@@ -2224,9 +2351,10 @@ export function generateRealisticOpponentRoster(
       teamName: cleanTeamName,
       battingAverage: batAvg,
       bowlingAverage: bowlAvg,
+      keeping: isKeeper ? (p.keeping || (isBot ? 8 : 11)) : (p.keeping || 1),
       estimatedSkillLabel: capSkillLabel,
       estimatedSkillLevel: Math.max(batVal, bowlVal),
-      primaryRoleClassifier: isKeeper ? 'Wicketkeeper' : p.role === 'Bowler' ? 'Bowler' : p.role === 'All-rounder' ? 'All-Rounder' : 'Batter'
+      primaryRoleClassifier: finalClassifier
     };
   });
 }
@@ -3467,14 +3595,27 @@ export function parseOpponentSquad(content: string, overrideTeamName?: string, o
 
         const { estimatedSkillLabel, estimatedSkillLevel } = estimateSkillFromWageAndBTR(wage, btRating, primaryRoleClassifier);
 
+        const finalId = id || `rival_${Math.random().toString(36).substring(2, 9)}`;
+        const isAR = primaryRoleClassifier === 'All-Rounder';
+        const isBwl = primaryRoleClassifier === 'Bowler';
+        const isKpr = primaryRoleClassifier === 'Wicketkeeper';
+        
+        const calcBatAvg = isBwl ? 12.5 : (41.5 + Math.min(12, estimatedSkillLevel));
+        const calcBowlAvg = isBwl ? (21.0 + Math.max(0, 8 - estimatedSkillLevel)) : (isAR ? 26.5 : 0);
+        const calcKeeping = isKpr ? Math.max(8, estimatedSkillLevel) : 1;
+
         players.push({
-          id: id || `rival_${Math.random().toString(36).substring(2, 9)}`,
+          id: finalId,
+          playerId: finalId,
           name,
           age,
           wage,
           btRating,
           bowlingType,
           role,
+          battingAverage: calcBatAvg,
+          bowlingAverage: calcBowlAvg,
+          keeping: calcKeeping,
           battingHand: batHand,
           battingStyle: batStyle,
           bowlingHand: bowlHand,
@@ -3522,12 +3663,16 @@ export function parseOpponentSquad(content: string, overrideTeamName?: string, o
 
       players.push({
         id,
+        playerId: id,
         name,
         age,
         wage,
         btRating,
         bowlingType: 'RFM',
         role: 'Batter',
+        battingAverage: 42.5,
+        bowlingAverage: 0,
+        keeping: 1,
         estimatedSkillLabel,
         estimatedSkillLevel,
         primaryRoleClassifier: 'Batter',

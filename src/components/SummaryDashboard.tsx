@@ -248,6 +248,7 @@ export default function SummaryDashboard({ setActiveTab }: SummaryDashboardProps
     handleRefresh(false);
 
     const handleStorageUpdate = () => {
+      console.log('[SummaryDashboard] Storage/Sync event received. Reloading data.');
       loadData();
       setHasInitialSyncCompleted(true);
     };
@@ -342,18 +343,19 @@ export default function SummaryDashboard({ setActiveTab }: SummaryDashboardProps
 
   // 3. Calculations for Stadium Adequacy
   const calculateStadium = () => {
-    if (!stadium || !finances) return { current: 0, recommended: 0, status: 'Unknown', rating: 0, desc: 'Sync stadium and finance data to evaluate size.', ratio: 0 };
+    const effectiveCapacity = stadium?.capacity || pavilion?.capacity || 0;
+    if (!effectiveCapacity || !finances) return { current: 0, recommended: 0, status: 'Unknown', rating: 0, desc: 'Sync stadium and finance data to evaluate size.', ratio: 0 };
 
     const members = finances.members || 500;
     // Battrick general guideline: Recommended capacity is roughly members * 17
     const recommendedCapacity = Math.round(members * 17.5);
-    const capacityRatio = stadium.capacity / recommendedCapacity;
+    const capacityRatio = effectiveCapacity / (recommendedCapacity || 1);
 
     let status = 'Well Balanced';
     let rating = 90;
     let desc = 'Your stadium capacity is ideally sized for your member fanbase.';
 
-    if (stadium.capacity === 0) {
+    if (effectiveCapacity === 0) {
       status = 'Unbuilt';
       rating = 10;
       desc = 'Stadium config is blank. Use the Stadium Planner to structure your ground.';
@@ -372,12 +374,12 @@ export default function SummaryDashboard({ setActiveTab }: SummaryDashboardProps
     }
 
     return { 
-      current: stadium.capacity, 
+      current: effectiveCapacity, 
       recommended: recommendedCapacity, 
       status, 
       rating, 
       desc,
-      ratio: Math.min(100, Math.round((stadium.capacity / recommendedCapacity) * 100))
+      ratio: Math.min(100, Math.round((effectiveCapacity / (recommendedCapacity || 1)) * 100))
     };
   };
 
@@ -485,8 +487,8 @@ Please analyze my club details and explain:
   const clubDisplayName = teamName && teamName !== 'My Battrick IQ Club' 
     ? teamName 
     : (pavilion?.groundName ? pavilion.groundName : "Lord's Lane CC");
-  const groundDisplayName = pavilion?.groundName || (teamName && teamName !== 'My Battrick IQ Club' ? teamName : "Lord's Lane");
-  const pitchDisplayName = pavilion?.pitchType || 'Flat';
+  const groundDisplayName = stadium?.groundName || pavilion?.groundName || (teamName && teamName !== 'My Battrick IQ Club' ? teamName : "Lord's Lane");
+  const pitchDisplayName = stadium?.pitch || pavilion?.pitchType || 'Flat';
   const weatherDisplayName = pavilion?.weather || 'Sunny';
   const groundSubtitle = `${groundDisplayName} • ${pitchDisplayName} pitch • ${weatherDisplayName}`;
 
@@ -495,7 +497,8 @@ Please analyze my club details and explain:
   const displaySurplus = finances ? `${finDetails.surplus >= 0 ? '+' : ''}£${finDetails.surplus.toLocaleString()} / wk` : '£0 / wk';
   const displaySquadCount = squad.length > 0 ? squad.length : 0;
   const displayAvgBtr = squad.length > 0 && squadDetails.avgBtr > 0 ? `avg BTR ${squadDetails.avgBtr.toLocaleString()}` : '0 players';
-  const displayCapacity = stadium?.capacity ? stadium.capacity.toLocaleString() : (pavilion ? '14,000' : '0');
+  const effectiveCapacity = stadium?.capacity || pavilion?.capacity || (pavilion ? 14000 : 0);
+  const displayCapacity = effectiveCapacity > 0 ? effectiveCapacity.toLocaleString() : '0';
   const displayMembers = finances?.members ? `${finances.members.toLocaleString()} members` : 'Stadium ground';
 
   const displayFixtures = fixtures.length > 0 ? fixtures.slice(0, 3) : [
@@ -798,6 +801,7 @@ Please analyze my club details and explain:
                 if (game.opponent) {
                   localStorage.setItem('bt_scout_target_team', JSON.stringify({
                     teamName: game.opponent,
+                    teamId: game.opponentTeamId,
                     matchId: game.matchId,
                     type: game.type,
                     venue: game.venue

@@ -527,14 +527,62 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   // Quick scout action directly from fixture list
   const handleScoutFixtureOpponent = (game: BattrickGame) => {
     setOpponentName(game.opponent);
+    setOpponentTeamId(game.opponentTeamId || '');
     setMatchFormat(normalizeMatchFormat(game.type));
     setVenue(game.venue);
 
     if (game.matchId) {
       setMatchIdInput(game.matchId);
     }
-    setOpponentPlayers(generateRealisticOpponentRoster(game.opponent, game.isBot, normalizeMatchFormat(game.type)));
+    setOpponentPlayers(generateRealisticOpponentRoster(game.opponent, game.isBot, normalizeMatchFormat(game.type), game.opponentTeamId));
+    localStorage.setItem('bt_scout_target_team', JSON.stringify({
+      teamName: game.opponent,
+      teamId: game.opponentTeamId || '',
+      matchId: game.matchId,
+      type: game.type,
+      venue: game.venue
+    }));
     setActiveSubTab('dossier');
+  };
+
+  const handleScoutLineupPlayer = (p: OpponentPlayer) => {
+    const batVal = p.batting || 0;
+    const bowlVal = p.bowling || 0;
+    const effectiveId = p.playerId ? String(p.playerId) : (p.id ? String(p.id) : '0');
+    const converted: BattrickPlayer = {
+      id: effectiveId,
+      name: p.name,
+      age: p.age,
+      wage: p.wage,
+      btRating: p.btRating,
+      role: p.role,
+      bowlingType: p.bowlingType,
+      battingFormLabel: p.battingFormLabel || 'respectable',
+      fitnessLabel: p.fitnessLabel || 'fit',
+      form: 6,
+      fitness: 6,
+      skills: {
+        batting: batVal,
+        bowling: bowlVal,
+        keeping: p.keeping || 1,
+        concentration: p.concentration || 6,
+        consistency: p.consistency || 6,
+        fielding: p.fielding || 6,
+        stamina: p.stamina || 6,
+        leadership: 5,
+        experience: p.experience || 5
+      },
+      nets: {
+        batting: 0,
+        bowling: 0,
+        keeping: 0,
+        fielding: 0,
+        stamina: 0
+      }
+    };
+    setScoutedPlayer(converted);
+    setScoutPlayerId(effectiveId);
+    setActiveSubTab('player_scout');
   };
 
   const handleAnalyzeFixtureMatch = (game: BattrickGame) => {
@@ -2206,15 +2254,28 @@ TACTICAL ORDERS:
               <div className="space-y-1">
                 <h3 className="font-serif font-bold text-lg text-slate-900 flex items-center gap-2 flex-wrap">
                   <span>Scouted Lineup:</span>
-                  <a 
-                    href={`https://www.battrick.org/nl/squad.asp?teamID=${opponentTeamId || '24514'}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 font-sans font-bold bg-blue-50/50 border border-blue-100 px-2.5 py-0.5 rounded-lg transition"
-                  >
-                    {dossier.clubName} {opponentTeamId ? `(ID: ${opponentTeamId})` : ''}
-                    <ExternalLink className="w-3.5 h-3.5 text-blue-500" />
-                  </a>
+                  {(() => {
+                    const effectiveTeamId = opponentTeamId || 
+                      fixtures.find(f => f.opponent.toLowerCase().trim() === dossier.clubName.toLowerCase().trim())?.opponentTeamId || 
+                      fixtures.find(f => f.opponent.toLowerCase().includes(dossier.clubName.toLowerCase()) || dossier.clubName.toLowerCase().includes(f.opponent.toLowerCase()))?.opponentTeamId ||
+                      dossier.players.find(p => p.teamId)?.teamId;
+                    const squadUrl = effectiveTeamId 
+                      ? `https://www.battrick.org/nl/squad.asp?teamID=${effectiveTeamId}`
+                      : `https://www.battrick.org/nl/search.asp?searchtype=team&searchtext=${encodeURIComponent(dossier.clubName)}`;
+                    return (
+                      <a 
+                        href={squadUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 font-sans font-bold bg-blue-50/50 border border-blue-100 px-2.5 py-0.5 rounded-lg transition"
+                        title={`View ${dossier.clubName} squad on Battrick`}
+                      >
+                        <span>{dossier.clubName}</span>
+                        {effectiveTeamId && <span className="text-xs font-mono font-normal text-slate-500">(ID: {effectiveTeamId})</span>}
+                        <ExternalLink className="w-3.5 h-3.5 text-blue-500" />
+                      </a>
+                    );
+                  })()}
                   <span className="text-sm font-sans font-normal text-slate-500">({dossier.players.length} Players)</span>
                 </h3>
                 <p className="text-xs text-slate-500 font-mono">
@@ -2333,21 +2394,21 @@ TACTICAL ORDERS:
 
                       // Classification logic based on user's definition: 
                       // If bowlingAverage < 30 (and > 0), they are a 'Bowler'.
-                      // If battingAverage > 40, they are a 'Batter'.
-                      // If both (bowlingAverage < 30 AND battingAverage > 40), they are an 'All-rounder'.
-                      let computedGrouping = hasHiddenSkills ? est!.discipline : p.role;
-                      if (!hasHiddenSkills) {
-                        const isBowler = bowlAvg < 30 && bowlAvg > 0;
-                        const isBatter = batAvg > 40;
-                        if (isBowler && isBatter) {
-                          computedGrouping = 'All-rounder';
-                        } else if (isBowler) {
-                          computedGrouping = 'Bowler';
-                        } else if (isBatter) {
-                          computedGrouping = 'Batter';
-                        } else {
-                          computedGrouping = p.role;
-                        }
+                      // If battingAverage >= 40, they are a 'Batter'.
+                      // If both (bowlingAverage < 30 AND battingAverage >= 40), they are an 'All-rounder'.
+                      const isBowler = bowlAvg < 30 && bowlAvg > 0;
+                      const isBatter = batAvg >= 40;
+                      let computedGrouping: string = p.primaryRoleClassifier || p.role;
+                      if (isBowler && isBatter) {
+                        computedGrouping = 'All-rounder';
+                      } else if (isBowler) {
+                        computedGrouping = 'Bowler';
+                      } else if (isBatter) {
+                        computedGrouping = 'Batter';
+                      } else if (p.keeping >= 5 || (p.role as string) === 'Keeper' || (p.role as string) === 'Wicketkeeper') {
+                        computedGrouping = 'Keeper';
+                      } else if (hasHiddenSkills && est?.discipline) {
+                        computedGrouping = est.discipline;
                       }
 
                       // Badge Styling
@@ -2362,11 +2423,16 @@ TACTICAL ORDERS:
                         groupBadgeStyle = 'bg-amber-50 text-amber-700 border-amber-200';
                       }
 
+                      const effectivePlayerId = p.playerId || (/^\d+$/.test(p.id) ? p.id : undefined);
+                      const playerLink = effectivePlayerId
+                        ? `https://www.battrick.org/nl/playerdetails.asp?playerID=${effectivePlayerId}`
+                        : `https://www.battrick.org/nl/search.asp?searchtype=player&searchtext=${encodeURIComponent(p.name)}`;
+
                       return (
                         <React.Fragment key={p.id}>
                           {displayIdx === 11 && lineupSortField === 'order' && (
                             <tr className="bg-slate-200/50 text-slate-500 uppercase text-[10px] font-bold font-sans">
-                              <td colSpan={9} className="py-1.5 px-3 tracking-widest text-center border-t border-b border-slate-300/50">
+                              <td colSpan={12} className="py-1.5 px-3 tracking-widest text-center border-t border-b border-slate-300/50">
                                 — Bench / Reserves —
                               </td>
                             </tr>
@@ -2374,20 +2440,31 @@ TACTICAL ORDERS:
                           <tr className={`hover:bg-slate-50/80 transition ${isTail ? 'bg-rose-50/20' : ''}`}>
                           <td className="py-3 px-3 font-mono font-bold text-slate-400">{p.originalIndex + 1}</td>
                         <td className="py-3 px-3">
-                          <div className="flex flex-col gap-0.5">
-                            <a 
-                              href={p.playerId ? `https://www.battrick.org/nl/playerdetails.asp?playerID=${p.playerId}` : '#'}
-                              target={p.playerId ? "_blank" : undefined}
-                              rel={p.playerId ? "noopener noreferrer" : undefined}
-                              className={`font-bold text-slate-900 ${p.playerId ? 'hover:text-blue-600 hover:underline cursor-pointer' : 'cursor-default'} inline-flex items-center gap-1`}
-                              title={p.playerId ? "View player details on Battrick" : "No Battrick ID available"}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex flex-col gap-0.5">
+                              <a 
+                                href={playerLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-bold text-slate-900 hover:text-blue-600 hover:underline cursor-pointer inline-flex items-center gap-1"
+                                title={`Open ${p.name} profile on Battrick`}
+                              >
+                                <span>{p.name}</span>
+                                <ExternalLink className="w-2.5 h-2.5 text-slate-400" />
+                              </a>
+                              <span className="text-[10px] text-slate-500 font-mono font-medium">
+                                {p.age} yo • {effectivePlayerId ? `ID: ${effectivePlayerId}` : 'Roster Player'}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleScoutLineupPlayer(p)}
+                              className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-mono font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
+                              title="Open in Skills Estimator & Tactical Coach"
                             >
-                              <span>{p.name}</span>
-                              {p.playerId && <ExternalLink className="w-2.5 h-2.5 text-slate-400" />}
-                            </a>
-                            <span className="text-[10px] text-slate-500 font-mono font-medium">
-                              {p.age} yo • {p.playerId ? `ID: ${p.playerId}` : 'No ID'}
-                            </span>
+                              <Sparkles className="w-3 h-3 text-indigo-500" />
+                              <span>Scout</span>
+                            </button>
                           </div>
                         </td>
                         <td className="py-3 px-3">
@@ -2397,9 +2474,9 @@ TACTICAL ORDERS:
                             </span>
                           </div>
                         </td>
-                        <td className="py-3 px-3 font-mono text-xs">{batAvg > 0 ? batAvg.toFixed(1) : '-'}</td>
-                        <td className="py-3 px-3 font-mono text-xs">{bowlAvg > 0 ? bowlAvg.toFixed(1) : '-'}</td>
-                        <td className="py-3 px-3 font-mono text-xs">{p.keeping || '-'}</td>
+                        <td className="py-3 px-3 font-mono text-xs font-semibold">{batAvg > 0 ? batAvg.toFixed(1) : '-'}</td>
+                        <td className="py-3 px-3 font-mono text-xs font-semibold">{bowlAvg > 0 ? bowlAvg.toFixed(1) : '-'}</td>
+                        <td className="py-3 px-3 font-mono text-xs font-semibold">{p.keeping || '-'}</td>
                         <td className="py-3 px-3">
                           <span className="font-serif font-semibold text-xs text-slate-800 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
                             {hasHiddenSkills ? est!.primarySkill : (p.estimatedSkillLabel || 'Strong')}
@@ -2573,301 +2650,337 @@ TACTICAL ORDERS:
 
           {/* Scouted Player Dossier Summary Card */}
           {scoutedPlayer ? (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fadeIn">
               
-              {/* Column 1: Core Details Card */}
-              <div className="lg:col-span-1 bg-white border border-slate-200 rounded-2xl p-6 shadow-2xs space-y-4">
-                <div className="border-b border-slate-100 pb-4">
-                  <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                    Scouted External Profile
-                  </span>
-                  <h3 className="font-serif font-bold text-xl text-slate-900 mt-2">
-                    {scoutedPlayer.name}
-                  </h3>
-                  <p className="text-xs text-slate-400 font-mono">
-                    ID: {scoutedPlayer.id} • Age: {scoutedPlayer.age}
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-xs font-mono">
-                  <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
-                    <span className="text-slate-400 block text-[9px] uppercase font-bold">BTR (Rating)</span>
-                    <strong className="text-slate-800 text-sm">{(scoutedPlayer.btRating || 0).toLocaleString()}</strong>
+              {/* Column 1: Core Details Card (4 cols) */}
+              <div className="lg:col-span-4 bg-white border border-slate-200/90 rounded-2xl p-6 shadow-2xs space-y-4 flex flex-col justify-between">
+                <div className="space-y-4">
+                  <div className="border-b border-slate-100 pb-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                        Scouted External Profile
+                      </span>
+                      <a
+                        href={`https://www.battrick.org/nl/playerdetails.asp?playerID=${scoutedPlayer.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] font-mono font-bold text-blue-600 hover:underline flex items-center gap-1"
+                      >
+                        <span>Live BT</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    </div>
+                    <h3 className="font-serif font-bold text-xl text-slate-900 mt-2">
+                      {scoutedPlayer.name}
+                    </h3>
+                    <p className="text-xs text-slate-400 font-mono">
+                      ID: {scoutedPlayer.id} • Age: {scoutedPlayer.age}
+                    </p>
                   </div>
-                  <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
-                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Wage</span>
-                    <strong className="text-slate-800 text-sm">£{(scoutedPlayer.wage || 0).toLocaleString()}</strong>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
-                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Form</span>
-                    <strong className="text-emerald-600 text-xs font-bold uppercase">{scoutedPlayer.battingFormLabel || 'respectable'}</strong>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
-                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Fatigue</span>
-                    <strong className="text-slate-700 text-xs font-bold uppercase">{scoutedPlayer.fitnessLabel || 'fit'}</strong>
-                  </div>
-                </div>
 
-                {/* Classification Badge */}
-                <div className="pt-2">
-                  <span className="text-xs font-bold block text-slate-500 mb-1.5 font-mono">Computed Class:</span>
-                  {(() => {
-                    const hasHidden = scoutedPlayer.skills.batting === 0 && scoutedPlayer.skills.bowling === 0;
-                    if (hasHidden) {
-                      const estimation = estimatePlayerSkills(
-                        scoutedPlayer.wage,
-                        scoutedPlayer.btRating,
-                        scoutedPlayer.careerStats?.runs ?? 500,
-                        scoutedPlayer.careerStats?.overs ?? 20,
-                        scoutedPlayer.careerStats?.matches ?? 30
-                      );
-                      return (
-                        <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-1">
-                          <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-200">
-                            {estimation.discipline} (Estimated)
-                          </span>
-                          <p className="text-[11px] text-slate-500 leading-relaxed pt-1 font-medium">
-                            Based on salary (£{scoutedPlayer.wage.toLocaleString()}) adjusted for {estimation.discipline} discipline.
-                          </p>
-                        </div>
-                      );
-                    }
-
-                    const isBowler = scoutedPlayer.skills.bowling > scoutedPlayer.skills.batting && scoutedPlayer.skills.bowling >= 6;
-                    const isBatter = scoutedPlayer.skills.batting > scoutedPlayer.skills.bowling && scoutedPlayer.skills.batting >= 6;
-                    const isKeeper = scoutedPlayer.skills.keeping >= 5;
-                    const isAllRounder = !isKeeper && scoutedPlayer.skills.batting >= 6 && scoutedPlayer.skills.bowling >= 6;
-
-                    let label = 'Tail-ender';
-                    let desc = 'Minimal tactical threat; easy bowling target.';
-                    let badgeBg = 'bg-slate-50 text-slate-700 border-slate-200';
-
-                    if (isKeeper) {
-                      label = 'Wicket-Keeper / Batsman';
-                      desc = 'Specialist glover. Focus on testing their concentration.';
-                      badgeBg = 'bg-amber-50 text-amber-700 border-amber-200';
-                    } else if (isAllRounder) {
-                      label = 'All-Rounder';
-                      desc = 'High versatility. Key wicket target in any format.';
-                      badgeBg = 'bg-purple-50 text-purple-700 border-purple-200';
-                    } else if (isBowler) {
-                      label = 'Bowler';
-                      desc = 'Specialist bowler. Advise caution during their spell.';
-                      badgeBg = 'bg-blue-50 text-blue-700 border-blue-200';
-                    } else if (isBatter) {
-                      label = 'Specialist Batsman';
-                      desc = 'Elite run-getter. Deploy strike bowlers & tight fielding.';
-                      badgeBg = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                    }
-
-                    return (
-                      <div className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl space-y-1">
-                        <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded-full border ${badgeBg}`}>
-                          {label}
-                        </span>
-                        <p className="text-[11px] text-slate-500 leading-relaxed pt-1 font-medium">
-                          {desc}
-                        </p>
-                      </div>
-                    );
-                  })()}
-                </div>
-                
-                {/* Format-Specific Career Stats */}
-                {(scoutedPlayer.careerStats?.fc || scoutedPlayer.careerStats?.od || scoutedPlayer.careerStats?.t20) && (
-                  <div className="pt-2 mt-4 border-t border-slate-100">
-                    <span className="text-xs font-bold block text-slate-500 mb-2 font-mono">Format Stats:</span>
-                    <div className="space-y-2">
-                      {scoutedPlayer.careerStats?.fc && scoutedPlayer.careerStats.fc.matches > 0 && (
-                        <div className="bg-purple-50/50 border border-purple-100 p-2 rounded-xl flex justify-between items-center text-xs font-mono">
-                          <span className="font-bold text-purple-700 w-12 uppercase text-[10px]">FC</span>
-                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.fc.matches}</strong> M</span>
-                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.fc.runs}</strong> R</span>
-                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.fc.overs}</strong> O</span>
-                        </div>
-                      )}
-                      {scoutedPlayer.careerStats?.od && scoutedPlayer.careerStats.od.matches > 0 && (
-                        <div className="bg-blue-50/50 border border-blue-100 p-2 rounded-xl flex justify-between items-center text-xs font-mono">
-                          <span className="font-bold text-blue-700 w-12 uppercase text-[10px]">OD</span>
-                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.od.matches}</strong> M</span>
-                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.od.runs}</strong> R</span>
-                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.od.overs}</strong> O</span>
-                        </div>
-                      )}
-                      {scoutedPlayer.careerStats?.t20 && scoutedPlayer.careerStats.t20.matches > 0 && (
-                        <div className="bg-rose-50/50 border border-rose-100 p-2 rounded-xl flex justify-between items-center text-xs font-mono">
-                          <span className="font-bold text-rose-700 w-12 uppercase text-[10px]">BT20</span>
-                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.t20.matches}</strong> M</span>
-                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.t20.runs}</strong> R</span>
-                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.t20.overs}</strong> O</span>
-                        </div>
-                      )}
+                  <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+                    <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
+                      <span className="text-slate-400 block text-[9px] uppercase font-bold">BTR (Rating)</span>
+                      <strong className="text-slate-800 text-sm">{(scoutedPlayer.btRating || 0).toLocaleString()}</strong>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
+                      <span className="text-slate-400 block text-[9px] uppercase font-bold">Wage</span>
+                      <strong className="text-slate-800 text-sm">£{(scoutedPlayer.wage || 0).toLocaleString()}</strong>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
+                      <span className="text-slate-400 block text-[9px] uppercase font-bold">Form</span>
+                      <strong className="text-emerald-600 text-xs font-bold uppercase">{scoutedPlayer.battingFormLabel || 'respectable'}</strong>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
+                      <span className="text-slate-400 block text-[9px] uppercase font-bold">Fatigue</span>
+                      <strong className="text-slate-700 text-xs font-bold uppercase">{scoutedPlayer.fitnessLabel || 'fit'}</strong>
                     </div>
                   </div>
-                )}
-              </div>
 
-              {/* Column 2: Detailed Skills Grid OR Interactive Hidden Skills Estimator */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xs flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-                    <h3 className="font-serif font-bold text-lg text-slate-900">
-                      {scoutedPlayer.skills.batting === 0 && scoutedPlayer.skills.bowling === 0 ? 'Skills Estimator' : 'Detailed Skill Matrix'}
-                    </h3>
-                    <span className="text-[10px] font-mono font-bold bg-indigo-50 border border-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full uppercase">
-                      {scoutedPlayer.skills.batting === 0 && scoutedPlayer.skills.bowling === 0 ? 'Hidden Skills' : 'Visible Skills'}
-                    </span>
-                  </div>
-
-                  {scoutedPlayer.skills.batting === 0 && scoutedPlayer.skills.bowling === 0 ? (
-                    <div className="space-y-4">
-                      <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-1">
-                        <p className="text-[11px] text-indigo-900 leading-relaxed font-semibold">
-                          🔍 Hidden Player Skills Detected — Use career stats sliders below to tune estimate.
-                        </p>
-                      </div>
-
-
-                      {/* Live Estimator Output Details */}
-                      {(() => {
+                  {/* Classification Badge */}
+                  <div className="pt-2">
+                    <span className="text-xs font-bold block text-slate-500 mb-1.5 font-mono">Computed Class:</span>
+                    {(() => {
+                      const hasHidden = scoutedPlayer.skills.batting === 0 && scoutedPlayer.skills.bowling === 0;
+                      if (hasHidden) {
                         const estimation = estimatePlayerSkills(
                           scoutedPlayer.wage,
                           scoutedPlayer.btRating,
-                          scoutedPlayer.careerStats?.runs ?? 500,
-                          scoutedPlayer.careerStats?.overs ?? 20,
-                          scoutedPlayer.careerStats?.matches ?? 30
+                          500,
+                          20,
+                          30
                         );
                         return (
-                          <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-4 space-y-3 font-mono text-sm">
-                            <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
-                              <span className="text-slate-500 font-bold">Estimated Class:</span>
-                              <span className="font-extrabold text-indigo-800 bg-indigo-100 px-3 py-1 rounded">
-                                {estimation.discipline}
-                              </span>
-                            </div>
-                            <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
-                              <span className="text-slate-500 font-bold">Estimated Primary:</span>
-                              <span className="font-extrabold text-emerald-800 bg-emerald-100 px-3 py-1 rounded text-right">
-                                {estimation.primarySkill}
-                              </span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-slate-500 font-bold">Secondaries:</span>
-                              <span className="font-extrabold text-amber-800 bg-amber-100 px-3 py-1 rounded text-xs text-right">
-                                {estimation.secondaries}
-                              </span>
-                            </div>
+                          <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-1">
+                            <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-200">
+                              {estimation.discipline} (Estimated)
+                            </span>
+                            <p className="text-[11px] text-slate-500 leading-relaxed pt-1 font-medium">
+                              Based on salary (£{scoutedPlayer.wage.toLocaleString()}) calibrated for {estimation.discipline} discipline.
+                            </p>
                           </div>
                         );
-                      })()}
-                    </div>
-                  ) : (
-                    <div className="space-y-2.5 font-mono text-xs font-semibold">
-                      {[
-                        { key: 'batting', label: 'Batting', val: scoutedPlayer.skills.batting },
-                        { key: 'bowling', label: 'Bowling', val: scoutedPlayer.skills.bowling },
-                        { key: 'keeping', label: 'Keeping', val: scoutedPlayer.skills.keeping },
-                        { key: 'concentration', label: 'Concentration', val: scoutedPlayer.skills.concentration },
-                        { key: 'consistency', label: 'Consistency', val: scoutedPlayer.skills.consistency },
-                        { key: 'fielding', label: 'Fielding', val: scoutedPlayer.skills.fielding },
-                        { key: 'stamina', label: 'Stamina', val: scoutedPlayer.skills.stamina, isStamina: true },
-                      ].map((s) => {
-                        const levelName = getSkillLabel(s.isStamina ? 'stamina' : 'batting', s.val);
-                        return (
-                          <div key={s.key} className="flex items-center justify-between py-1 border-b border-slate-50">
-                            <span className="font-bold text-slate-600">{s.label}:</span>
-                            <div className="flex items-center gap-1.5">
-                              <span className={`font-bold ${s.val >= 10 ? 'text-emerald-600' : s.val <= 3 ? 'text-rose-600' : 'text-slate-800'}`}>
-                                {levelName}
-                              </span>
-                              <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded font-semibold font-mono">
-                                ({s.val})
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                      }
+
+                      const isBowler = scoutedPlayer.skills.bowling > scoutedPlayer.skills.batting && scoutedPlayer.skills.bowling >= 6;
+                      const isBatter = scoutedPlayer.skills.batting > scoutedPlayer.skills.bowling && scoutedPlayer.skills.batting >= 6;
+                      const isKeeper = scoutedPlayer.skills.keeping >= 5;
+                      const isAllRounder = !isKeeper && scoutedPlayer.skills.batting >= 6 && scoutedPlayer.skills.bowling >= 6;
+
+                      let label = 'Tail-ender';
+                      let desc = 'Minimal tactical threat; easy bowling target.';
+                      let badgeBg = 'bg-slate-50 text-slate-700 border-slate-200';
+
+                      if (isKeeper) {
+                        label = 'Wicket-Keeper / Batsman';
+                        desc = 'Specialist glover. Focus on testing their concentration.';
+                        badgeBg = 'bg-amber-50 text-amber-700 border-amber-200';
+                      } else if (isAllRounder) {
+                        label = 'All-Rounder';
+                        desc = 'High versatility. Key wicket target in any format.';
+                        badgeBg = 'bg-purple-50 text-purple-700 border-purple-200';
+                      } else if (isBowler) {
+                        label = 'Bowler';
+                        desc = 'Specialist bowler. Advise caution during their spell.';
+                        badgeBg = 'bg-blue-50 text-blue-700 border-blue-200';
+                      } else if (isBatter) {
+                        label = 'Specialist Batsman';
+                        desc = 'Elite run-getter. Deploy strike bowlers & tight fielding.';
+                        badgeBg = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                      }
+
+                      return (
+                        <div className="p-3 bg-slate-50/50 border border-slate-100 rounded-xl space-y-1">
+                          <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded-full border ${badgeBg}`}>
+                            {label}
+                          </span>
+                          <p className="text-[11px] text-slate-500 leading-relaxed pt-1 font-medium">
+                            {desc}
+                          </p>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
 
-                <div className="bg-slate-50 border border-slate-100 p-3 rounded-xl mt-4 font-mono text-[10px] text-slate-400 text-center font-bold">
+                <div className="bg-slate-50 border border-slate-200/80 p-3 rounded-xl font-mono text-[10px] text-slate-400 text-center font-bold">
                   Battrick skill ranges are 0 to 20+.
                 </div>
               </div>
 
-              {/* Column 3: Tactical Scout Insights */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xs space-y-4">
-                <h3 className="font-serif font-bold text-lg text-slate-900 border-b border-slate-100 pb-3">
-                  Tactical Coach Insights
-                </h3>
+              {/* Unified Panel: Skills Estimator & Tactical Coach Intelligence (8 cols) */}
+              <div className="lg:col-span-8 bg-white border border-slate-200/90 rounded-2xl p-6 shadow-2xs space-y-6">
+                
+                {/* Panel Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-slate-100 gap-2">
+                  <div>
+                    <h3 className="font-serif font-bold text-xl text-slate-900 flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-indigo-600" />
+                      <span>Skills Estimator & Tactical Coach Intelligence</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 font-mono mt-0.5">
+                      Unified capability model & tactical scouting report for {scoutedPlayer.name}
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-mono font-bold bg-indigo-50 border border-indigo-200/80 text-indigo-700 px-3 py-1 rounded-full uppercase tracking-wider self-start sm:self-auto">
+                    {scoutedPlayer.skills.batting === 0 && scoutedPlayer.skills.bowling === 0 ? 'Skills Estimator Active' : 'Confirmed Skills Active'}
+                  </span>
+                </div>
 
-                <div className="space-y-4 text-xs font-medium">
-                  {/* Pro Insight */}
-                  <div className="flex gap-2.5 items-start">
-                    <div className="w-5 h-5 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
-                      ✓
+                {/* Section A: Skills Estimator prominent metrics */}
+                {(() => {
+                  const estimation = estimatePlayerSkills(
+                    scoutedPlayer.wage,
+                    scoutedPlayer.btRating,
+                    500,
+                    20,
+                    30
+                  );
+
+                  return (
+                    <div className="space-y-4">
+                      {/* Prominent High-Impact Blocks */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Estimated Class */}
+                        <div className="bg-gradient-to-br from-indigo-50/70 via-indigo-50/30 to-slate-50 border border-indigo-200/80 rounded-2xl p-5 shadow-2xs flex flex-col justify-between">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-mono font-extrabold uppercase text-indigo-900/70 tracking-wider">
+                              Estimated Class:
+                            </span>
+                            <span className="text-[10px] font-mono font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-md border border-indigo-200">
+                              Discipline
+                            </span>
+                          </div>
+                          <div>
+                            <div className="text-2xl sm:text-3xl font-black text-indigo-950 tracking-tight">
+                              {estimation.discipline}
+                            </div>
+                            <p className="text-[11px] font-sans text-indigo-800/80 mt-1 font-medium">
+                              Derived from salary (£{scoutedPlayer.wage.toLocaleString()}) & BTR ({scoutedPlayer.btRating.toLocaleString()})
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Estimated Primary */}
+                        <div className="bg-gradient-to-br from-emerald-50/70 via-emerald-50/30 to-slate-50 border border-emerald-200/80 rounded-2xl p-5 shadow-2xs flex flex-col justify-between">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-mono font-extrabold uppercase text-emerald-900/70 tracking-wider">
+                              Estimated Primary:
+                            </span>
+                            <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-200">
+                              Benchmark
+                            </span>
+                          </div>
+                          <div>
+                            <div className="text-2xl sm:text-3xl font-black text-emerald-950 tracking-tight">
+                              {estimation.primarySkill}
+                            </div>
+                            <p className="text-[11px] font-sans text-emerald-800/80 mt-1 font-medium">
+                              Skill bracket calibrated to Battrick economy curve
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Secondaries */}
+                      <div className="bg-gradient-to-r from-amber-50/80 via-amber-50/40 to-slate-50 border border-amber-200/90 rounded-2xl p-5 shadow-2xs">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="space-y-1">
+                            <span className="text-xs font-mono font-extrabold uppercase text-amber-900/80 tracking-wider block">
+                              Secondaries:
+                            </span>
+                            <p className="text-xs font-sans text-slate-600 font-medium">
+                              Support attributes including stamina, consistency, and fielding capabilities
+                            </p>
+                          </div>
+                          <span className="text-base sm:text-xl font-black text-amber-950 bg-amber-100/90 border border-amber-300/80 px-4 py-2.5 rounded-xl font-mono text-left sm:text-right shadow-2xs shrink-0">
+                            {estimation.secondaries}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Detailed Skill Matrix if visible */}
+                      {(scoutedPlayer.skills.batting > 0 || scoutedPlayer.skills.bowling > 0) && (
+                        <div className="pt-2">
+                          <span className="text-xs font-mono font-bold uppercase text-slate-500 tracking-wider block mb-2.5">
+                            Confirmed Skill Ratings:
+                          </span>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                            {[
+                              { key: 'batting', label: 'Batting', val: scoutedPlayer.skills.batting },
+                              { key: 'bowling', label: 'Bowling', val: scoutedPlayer.skills.bowling },
+                              { key: 'keeping', label: 'Keeping', val: scoutedPlayer.skills.keeping },
+                              { key: 'concentration', label: 'Concentration', val: scoutedPlayer.skills.concentration },
+                              { key: 'consistency', label: 'Consistency', val: scoutedPlayer.skills.consistency },
+                              { key: 'fielding', label: 'Fielding', val: scoutedPlayer.skills.fielding },
+                              { key: 'stamina', label: 'Stamina', val: scoutedPlayer.skills.stamina, isStamina: true },
+                              { key: 'experience', label: 'Experience', val: scoutedPlayer.skills.experience || 4 },
+                            ].map((s) => {
+                              const levelName = getSkillLabel(s.isStamina ? 'stamina' : 'batting', s.val);
+                              return (
+                                <div key={s.key} className="bg-slate-50 border border-slate-200/80 p-2.5 rounded-xl flex flex-col justify-between">
+                                  <span className="text-[10px] font-mono font-bold text-slate-500 uppercase">{s.label}</span>
+                                  <div className="mt-1 flex items-baseline justify-between">
+                                    <span className={`text-xs font-bold font-mono ${s.val >= 10 ? 'text-emerald-700' : s.val <= 3 ? 'text-rose-600' : 'text-slate-800'}`}>
+                                      {levelName}
+                                    </span>
+                                    <span className="text-[10px] font-mono font-bold text-slate-400">
+                                      ({s.val})
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <strong className="text-slate-900 block font-bold mb-0.5">Core Threat Vector:</strong>
-                      <span className="text-slate-600 leading-relaxed block">
-                        {(() => {
-                          if (scoutedPlayer.skills.batting >= 10) return `${scoutedPlayer.name} has elite batting skill (${scoutedPlayer.skills.batting}). They can anchor large partnerships and score heavily on flat pitches.`;
-                          if (scoutedPlayer.skills.bowling >= 10) return `Highly dangerous bowling threat with ${scoutedPlayer.skills.bowling} skill level. They will generate high dot ball pressure and pick up top-order wickets easily.`;
-                          const isAllRounder = scoutedPlayer.skills.batting >= 6 && scoutedPlayer.skills.bowling >= 6;
-                          if (isAllRounder) return `Strong all-rounder. Contributes in both departments, representing a dual tactical threat.`;
-                          return `Standard ratings. A useful squad option, but does not present a severe dominant threat vector.`;
-                        })()}
-                      </span>
-                    </div>
+                  );
+                })()}
+
+                {/* Section B: Tactical Coach Insights */}
+                <div className="pt-4 border-t border-slate-100 space-y-3.5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
+                    <h4 className="font-serif font-bold text-base text-slate-900">
+                      Tactical Coach Insights & Matchup Playbook
+                    </h4>
                   </div>
 
-                  {/* Weakness Insight */}
-                  <div className="flex gap-2.5 items-start">
-                    <div className="w-5 h-5 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
-                      !
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 text-xs font-medium">
+                    {/* Core Threat Vector */}
+                    <div className="bg-emerald-50/40 border border-emerald-200/80 p-4 rounded-xl space-y-2 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs shrink-0">
+                            ✓
+                          </div>
+                          <strong className="text-emerald-950 font-bold uppercase tracking-wider text-[11px]">Core Threat Vector</strong>
+                        </div>
+                        <p className="text-slate-700 leading-relaxed font-sans text-xs">
+                          {(() => {
+                            if (scoutedPlayer.skills.batting >= 10) return `${scoutedPlayer.name} has elite batting skill (${scoutedPlayer.skills.batting}). They can anchor large partnerships and score heavily on flat pitches.`;
+                            if (scoutedPlayer.skills.bowling >= 10) return `Highly dangerous bowling threat with ${scoutedPlayer.skills.bowling} skill level. They will generate high dot ball pressure and pick up top-order wickets easily.`;
+                            const isAllRounder = scoutedPlayer.skills.batting >= 6 && scoutedPlayer.skills.bowling >= 6;
+                            if (isAllRounder) return `Strong all-rounder. Contributes in both departments, representing a dual tactical threat.`;
+                            return `Standard ratings. A useful squad option, but does not present a severe dominant threat vector.`;
+                          })()}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <strong className="text-slate-900 block font-bold mb-0.5">Tactical Vulnerability:</strong>
-                      <span className="text-slate-600 leading-relaxed block">
-                        {(() => {
-                          const weaknesses: string[] = [];
-                          if (scoutedPlayer.skills.stamina <= 5) weaknesses.push(`Low Stamina (${scoutedPlayer.skills.stamina}) ensures performance decays rapidly in deep match sessions.`);
-                          if (scoutedPlayer.skills.concentration <= 5 && scoutedPlayer.skills.batting >= 5) weaknesses.push(`Low Concentration (${scoutedPlayer.skills.concentration}) makes them prone to throwing away wickets against patient bowling.`);
-                          if (scoutedPlayer.skills.consistency <= 5 && scoutedPlayer.skills.bowling >= 5) weaknesses.push(`Low Consistency (${scoutedPlayer.skills.consistency}) leads to frequent boundary-conceding bad balls.`);
-                          if (weaknesses.length === 0) {
-                            return `${scoutedPlayer.name} is a balanced, consistent player. No severe skill deficiencies.`;
-                          }
-                          return weaknesses.join(' • ');
-                        })()}
-                      </span>
-                    </div>
-                  </div>
 
-                  {/* Recommendation */}
-                  <div className="flex gap-2.5 items-start">
-                    <div className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
-                      ★
+                    {/* Tactical Vulnerability */}
+                    <div className="bg-rose-50/40 border border-rose-200/80 p-4 rounded-xl space-y-2 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <div className="w-5 h-5 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs shrink-0">
+                            !
+                          </div>
+                          <strong className="text-rose-950 font-bold uppercase tracking-wider text-[11px]">Tactical Vulnerability</strong>
+                        </div>
+                        <p className="text-slate-700 leading-relaxed font-sans text-xs">
+                          {(() => {
+                            const weaknesses: string[] = [];
+                            if (scoutedPlayer.skills.stamina <= 5) weaknesses.push(`Low Stamina (${scoutedPlayer.skills.stamina}) ensures performance decays rapidly in deep match sessions.`);
+                            if (scoutedPlayer.skills.concentration <= 5 && scoutedPlayer.skills.batting >= 5) weaknesses.push(`Low Concentration (${scoutedPlayer.skills.concentration}) makes them prone to throwing away wickets against patient bowling.`);
+                            if (scoutedPlayer.skills.consistency <= 5 && scoutedPlayer.skills.bowling >= 5) weaknesses.push(`Low Consistency (${scoutedPlayer.skills.consistency}) leads to frequent boundary-conceding bad balls.`);
+                            if (weaknesses.length === 0) {
+                              return `${scoutedPlayer.name} is a balanced, consistent player. No severe skill deficiencies detected.`;
+                            }
+                            return weaknesses.join(' • ');
+                          })()}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <strong className="text-slate-900 block font-bold mb-0.5">Matchup Strategy:</strong>
-                      <span className="text-slate-600 leading-relaxed block">
-                        {(() => {
-                          const isBowler = scoutedPlayer.skills.bowling > scoutedPlayer.skills.batting && scoutedPlayer.skills.bowling >= 6;
-                          const isBatter = scoutedPlayer.skills.batting > scoutedPlayer.skills.bowling && scoutedPlayer.skills.batting >= 6;
-                          
-                          if (isBatter) {
-                            return `When bowling to ${scoutedPlayer.name}, prioritize bowler consistency. Set defensive fields on flat decks or select high-spin bowlers if on dusty wickets.`;
-                          }
-                          if (isBowler) {
-                            return `Against ${scoutedPlayer.name}'s bowling spell, advise your batsmen to play defensively or target other bowlers in the line-up.`;
-                          }
-                          return `Standard approach recommended. Exploit stamina decay in secondary spell or play aggressively against their part-time bowlers.`;
-                        })()}
-                      </span>
+
+                    {/* Matchup Strategy */}
+                    <div className="bg-indigo-50/40 border border-indigo-200/80 p-4 rounded-xl space-y-2 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
+                            ★
+                          </div>
+                          <strong className="text-indigo-950 font-bold uppercase tracking-wider text-[11px]">Matchup Strategy</strong>
+                        </div>
+                        <p className="text-slate-700 leading-relaxed font-sans text-xs">
+                          {(() => {
+                            const isBowler = scoutedPlayer.skills.bowling > scoutedPlayer.skills.batting && scoutedPlayer.skills.bowling >= 6;
+                            const isBatter = scoutedPlayer.skills.batting > scoutedPlayer.skills.bowling && scoutedPlayer.skills.batting >= 6;
+                            
+                            if (isBatter) {
+                              return `When bowling to ${scoutedPlayer.name}, prioritize bowler consistency. Set defensive fields on flat decks or select high-spin bowlers if on dusty wickets.`;
+                            }
+                            if (isBowler) {
+                              return `Against ${scoutedPlayer.name}'s bowling spell, advise your batsmen to play defensively or target other bowlers in the line-up.`;
+                            }
+                            return `Standard approach recommended. Exploit stamina decay in secondary spell or play aggressively against their part-time bowlers.`;
+                          })()}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
+
               </div>
 
             </div>

@@ -721,18 +721,41 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       };
       pavilionRef.current = mergedPavilion;
       setPavilion(mergedPavilion);
+
+      // Persist stadium data if returned with pavilion or if capacity was parsed
+      if (result.stadium && result.stadium.capacity > 0) {
+        localStorage.setItem('bt_stadium', JSON.stringify(result.stadium));
+        localStorage.setItem('bt_stadium_synced', 'true');
+      } else if (result.pavilion?.capacity) {
+        const existingStadiumStr = localStorage.getItem('bt_stadium');
+        const existingStadium = existingStadiumStr ? JSON.parse(existingStadiumStr) : {};
+        const synStadium = {
+          ...existingStadium,
+          capacity: result.pavilion.capacity,
+          groundName: result.pavilion.groundName || existingStadium.groundName || mergedPavilion.groundName,
+          pitch: result.pavilion.pitchType || existingStadium.pitch || mergedPavilion.pitchType || 'Flat'
+        };
+        localStorage.setItem('bt_stadium', JSON.stringify(synStadium));
+        localStorage.setItem('bt_stadium_synced', 'true');
+      }
+
       saveToLocalStorage(activeSquad, activeFinances, activeFixtures.length > 0 ? activeFixtures : undefined, mergedPavilion);
       setImportMessage({ text: `Successfully parsed and synced pavilion details: ${mergedPavilion.groundName}!`, success: true });
       addSyncLog('pavilion', `Synchronized pavilion ground detail (${mergedPavilion.groundName})`, 'success');
       
+      // Dispatch storage events so dashboard chips & datasets update immediately across tabs
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new Event('bt_cloud_backup_request'));
+
       if (!silent) setSuccessModal({
         isOpen: true,
         type: 'pavilion',
         title: 'Pavilion Ground Synced!',
-        message: `Club details, active weather, and ground name loaded from pavilion page!`,
+        message: `Club details, active weather, capacity and ground name loaded from pavilion page!`,
         stats: [
           { label: 'Ground Name', value: mergedPavilion.groundName },
-          { label: 'Active Weather', value: mergedPavilion.weather }
+          { label: 'Active Weather', value: mergedPavilion.weather },
+          ...(mergedPavilion.capacity ? [{ label: 'Capacity', value: `${mergedPavilion.capacity.toLocaleString()} seats` }] : [])
         ]
       });
     } else if (result.type === 'ground' && result.stadium) {
@@ -748,7 +771,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       localStorage.setItem('bt_stadium_synced', 'true');
       
       let updatedPavilion = activePavilion;
-      if (result.pavilion?.groundName || result.pavilion?.pitchType) {
+      if (result.pavilion?.groundName || result.pavilion?.pitchType || result.pavilion?.capacity) {
         updatedPavilion = {
           ...(updatedPavilion || {
             groundName: 'HairyBeanBags CG',
@@ -758,7 +781,8 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
             membershipStatus: 'Elite Manager'
           }),
           ...(result.pavilion?.groundName ? { groundName: result.pavilion.groundName } : {}),
-          ...(result.pavilion?.pitchType ? { pitchType: result.pavilion.pitchType } : {})
+          ...(result.pavilion?.pitchType ? { pitchType: result.pavilion.pitchType } : {}),
+          ...(stadium.capacity ? { capacity: stadium.capacity } : {})
         };
         pavilionRef.current = updatedPavilion;
         setPavilion(updatedPavilion);
@@ -767,6 +791,10 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       saveToLocalStorage(activeSquad, activeFinances, activeFixtures.length > 0 ? activeFixtures : undefined, updatedPavilion || undefined);
       setImportMessage({ text: `Successfully parsed and synced stadium ground specs!`, success: true });
       addSyncLog('ground', `Updated stadium capacity to ${(stadium.capacity || 0).toLocaleString()} seats`, 'success');
+
+      // Dispatch storage events so dashboard chips & datasets update immediately across tabs
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new Event('bt_cloud_backup_request'));
 
       if (!silent) setSuccessModal({
         isOpen: true,
