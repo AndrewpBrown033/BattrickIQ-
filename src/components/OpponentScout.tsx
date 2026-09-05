@@ -13,6 +13,7 @@ import {
 } from '../types';
 import { 
   parseOpponentSquad, 
+  extractOpponentTeamNameFromSquadHtml,
   generateOpponentScoutDossier, 
   generateRealisticOpponentRoster,
   parseBattrickFullMatch, 
@@ -771,8 +772,17 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
         throw new Error("Battrick returned empty response for squad list.");
       }
 
+      // Try to read the real club name off the synced page. If Battrick's squad
+      // page structure doesn't match any known pattern, fall back to whatever
+      // name is already in the Opponent Team field so behavior doesn't regress.
+      const detectedTeamName = extractOpponentTeamNameFromSquadHtml(data.html);
+      const effectiveOpponentName = detectedTeamName || opponentName;
+      if (detectedTeamName && detectedTeamName !== opponentName) {
+        setOpponentName(detectedTeamName);
+      }
+
       // Parse the HTML content using our parseOpponentSquad parser!
-      const parsedPlayers = parseOpponentSquad(data.html, opponentName, targetTeamId);
+      const parsedPlayers = parseOpponentSquad(data.html, effectiveOpponentName, targetTeamId);
       if (parsedPlayers.length === 0) {
         throw new Error("Failed to extract any player statistics. Please verify the Opponent Team ID is correct.");
       }
@@ -821,7 +831,7 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
       });
 
       setOpponentPlayers(mappedPlayers);
-      setSquadSyncStatus(`✓ Successfully fetched & analyzed ${mappedPlayers.length} players for ${opponentName} (ID: ${targetTeamId}) live from Battrick!`);
+      setSquadSyncStatus(`✓ Successfully fetched & analyzed ${mappedPlayers.length} players for ${effectiveOpponentName} (ID: ${targetTeamId}) live from Battrick!`);
     } catch (err: any) {
       console.warn('Squad live fetch error:', err);
       setSquadSyncError(

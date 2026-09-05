@@ -3497,6 +3497,53 @@ export function estimateSkillFromWageAndBTR(wage: number, btr: number, role?: 'B
   };
 }
 
+// Attempt to read the actual club name off a synced squad.asp page, so a
+// live "Sync Live Squad" (by Team ID) can correct the displayed opponent
+// name instead of silently keeping whatever was last typed/selected.
+// Battrick squad pages vary slightly, so we try several known locations,
+// in order of reliability, before giving up.
+export function extractOpponentTeamNameFromSquadHtml(content: string): string | null {
+  if (!content) return null;
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(content, 'text/html');
+
+    const clean = (raw: string | null | undefined): string | null => {
+      const text = (raw || '').replace(/\s+/g, ' ').trim();
+      if (!text || text.length < 2 || text.length > 60) return null;
+      return text.replace(/\s*\(.*?\)/g, '').trim() || null;
+    };
+
+    // 1. Common explicit club-name containers.
+    const directSelectors = ['.clubname', '.club_name', '#clubname', '.teamname', '.team_name', 'h1'];
+    for (const sel of directSelectors) {
+      const found = clean(doc.querySelector(sel)?.textContent);
+      if (found) return found;
+    }
+
+    // 2. A link back to the team's own club/squad page usually carries the name as its text.
+    const selfLink = doc.querySelector('a[href*="club.asp?teamID="], a[href*="squad.asp?teamID="]');
+    const linkName = clean(selfLink?.textContent);
+    if (linkName) return linkName;
+
+    // 3. Fall back to the <title> tag, e.g. "Battrick - Squad - HairyBeanBags".
+    const title = doc.querySelector('title')?.textContent || '';
+    const segments = title.split(/[-|]/).map(s => s.trim()).filter(Boolean);
+    for (const seg of segments.reverse()) {
+      const lower = seg.toLowerCase();
+      if (lower !== 'squad' && lower !== 'battrick' && lower !== 'nl') {
+        const found = clean(seg);
+        if (found) return found;
+      }
+    }
+  } catch {
+    // ignore - just fall back to whatever name the caller already has
+  }
+
+  return null;
+}
+
 export function parseOpponentSquad(content: string, overrideTeamName?: string, overrideTeamId?: string): BattrickPlayer[] {
   const players: BattrickPlayer[] = [];
 
