@@ -18,7 +18,7 @@ import {
   Calendar, Landmark as StadiumIcon, ShieldCheck,
   Check, Wifi, Activity, CheckSquare, Square, Clipboard, ArrowRight,
   KeyRound, Play, CheckCircle2, XCircle, Clock, ArrowUpRight, Zap,
-  Loader2, X
+  Loader2, X, LogOut, Lock
 } from 'lucide-react';
 
 export interface SequentialStepItem {
@@ -181,11 +181,46 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
 
   // --- Direct Sync State ---
   const [directUsername, setDirectUsername] = useState<string>(() => localStorage.getItem('bt_battrick_username') || '');
-  const [directPassword, setDirectPassword] = useState<string>('');
+  const [directPassword, setDirectPassword] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem('bt_direct_pass') || localStorage.getItem('bt_direct_pass') || '';
+    } catch {
+      return '';
+    }
+  });
   const [rememberDirectUsername, setRememberDirectUsername] = useState<boolean>(() => !!localStorage.getItem('bt_battrick_username'));
   const [directSyncing, setDirectSyncing] = useState<boolean>(false);
   const [directSyncError, setDirectSyncError] = useState<string | null>(null);
   const [directPageStatuses, setDirectPageStatuses] = useState<{ name: string; success: boolean; error: string | null }[] | null>(null);
+
+  // Sync password input to sessionStorage for active browser tab session
+  const handlePasswordChange = (val: string) => {
+    setDirectPassword(val);
+    try {
+      if (val) {
+        sessionStorage.setItem('bt_direct_pass', val);
+      } else {
+        sessionStorage.removeItem('bt_direct_pass');
+        localStorage.removeItem('bt_direct_pass');
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  // Explicit log out action to purge session token & password
+  const handleLogoutDirectSession = () => {
+    try {
+      sessionStorage.removeItem('bt_direct_pass');
+      localStorage.removeItem('bt_direct_pass');
+      localStorage.removeItem('bt_sync_session');
+    } catch {
+      // ignore
+    }
+    setDirectPassword('');
+    setDirectSyncError(null);
+    addSyncLog('auth', 'Logged out of Direct Sync session. Stored password and session credentials removed.', 'success');
+  };
 
   // --- Real-time Diagnostic Tool State ---
   const [diagnosticRunning, setDiagnosticRunning] = useState<boolean>(false);
@@ -741,9 +776,15 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
           };
         }
         if (raw.includes('login.asp') || raw.includes('Log In to Battrick')) {
+          try {
+            sessionStorage.removeItem('bt_direct_pass');
+            localStorage.removeItem('bt_direct_pass');
+            localStorage.removeItem('bt_sync_session');
+          } catch {}
+          setDirectPassword('');
           return {
             success: false,
-            error: `Invalid credentials or session expired during ${context}. Please verify your username and password or use the Cut & Paste tab.`
+            error: `Invalid credentials or session expired during ${context}. Session password has been cleared.`
           };
         }
         return {
@@ -925,6 +966,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       const authData = await safeParseJsonResponse(authRes, 'the login step');
 
       if (!authRes.ok || !authData.success) {
+        handleLogoutDirectSession();
         const errMsg = authData.error || 'Authentication failed. Please verify your credentials or use the Cut & Paste tab.';
         updateStep(0, {
           status: 'failed',
@@ -1530,9 +1572,33 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
                 }}
                 className="bg-slate-50 border border-slate-200 rounded-xl p-4"
               >
-                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 block mb-2.5">
-                  1. Battrick Account Credentials
-                </span>
+                <div className="flex items-center justify-between mb-2.5 flex-wrap gap-2">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 block">
+                    1. Battrick Account Credentials
+                  </span>
+                  {directPassword ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100/90 px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        Active Login Session
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleLogoutDirectSession}
+                        className="text-[11px] font-mono font-bold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2 py-1 rounded-md border border-rose-200 transition cursor-pointer flex items-center gap-1.5"
+                        title="Log out and remove stored password from this session"
+                      >
+                        <LogOut className="w-3 h-3" />
+                        <span>Log Out / Clear Session</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] font-mono text-slate-400">
+                      Not Logged In
+                    </span>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1">
                     <label className="text-[11px] font-bold text-slate-700 font-sans">Battrick Username</label>
@@ -1550,7 +1616,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
                     <input
                       type="password"
                       value={directPassword}
-                      onChange={(e) => setDirectPassword(e.target.value)}
+                      onChange={(e) => handlePasswordChange(e.target.value)}
                       placeholder="Your Battrick password"
                       autoComplete="current-password"
                       className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
@@ -1558,16 +1624,20 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
                   </div>
                 </div>
 
-                <div className="mt-2.5 flex items-center justify-between flex-wrap gap-2">
-                  <label className="flex items-center gap-2 text-[11px] text-slate-600 font-sans cursor-pointer select-none">
+                <div className="mt-2.5 flex items-center justify-between flex-wrap gap-2 text-[11px] text-slate-600 font-sans">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input
                       type="checkbox"
                       checked={rememberDirectUsername}
                       onChange={(e) => setRememberDirectUsername(e.target.checked)}
                       className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                     />
-                    Remember my username on this device (password is never saved)
+                    Remember username on this device
                   </label>
+                  <span className="text-[10px] font-mono text-slate-500 flex items-center gap-1">
+                    <Lock className="w-3 h-3 text-slate-400" />
+                    Password is stored in session memory and automatically removed on logout or session timeout.
+                  </span>
                 </div>
               </form>
 

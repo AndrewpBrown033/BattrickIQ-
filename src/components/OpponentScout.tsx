@@ -47,7 +47,10 @@ import {
   ListOrdered,
   Calculator,
   UserCheck,
-  RefreshCw
+  RefreshCw,
+  Lock,
+  ShieldCheck,
+  X
 } from 'lucide-react';
 
 interface OpponentScoutProps {
@@ -66,9 +69,24 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   const [activeSubTab, setActiveSubTab] = useState<'match_analyzer' | 'fixtures_scout' | 'dossier'>('match_analyzer');
 
   // 1. My Squad Context
-  const [mySquad, setMySquad] = useState<BattrickPlayer[]>([]);
+  const [mySquad, setMySquad] = useState<BattrickPlayer[]>(() => {
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('bt_squad') : null;
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [fixtures, setFixtures] = useState<BattrickGame[]>([]);
-  const [myTeamName, setMyTeamName] = useState<string>('My Club');
+  const [myTeamName, setMyTeamName] = useState<string>(() => {
+    try {
+      const savedName = typeof localStorage !== 'undefined' ? localStorage.getItem('bt_team_name') : null;
+      if (savedName && savedName.trim() && savedName !== 'My Battrick IQ Club' && savedName !== 'My Club') {
+        return savedName.trim();
+      }
+    } catch {}
+    return 'HairyBeanBags';
+  });
 
   // 2. Selected Opponent & Match Settings
   const [opponentName, setOpponentName] = useState<string>('Steve');
@@ -90,7 +108,22 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   // 5. Match & Summary Intelligence State
   const [matchIdInput, setMatchIdInput] = useState<string>('32554717');
   const [pastedMatchText, setPastedMatchText] = useState<string>('');
-  const [activeParsedMatch, setActiveParsedMatch] = useState<ParsedBattrickMatch>(() => getExampleMatchData());
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [modalUsername, setModalUsername] = useState<string>(() => {
+    try {
+      return localStorage.getItem('bt_battrick_username') || localStorage.getItem('bt_direct_user') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [modalPassword, setModalPassword] = useState<string>('');
+  const [activeParsedMatch, setActiveParsedMatch] = useState<ParsedBattrickMatch>(() => {
+    const savedName = typeof localStorage !== 'undefined' ? localStorage.getItem('bt_team_name') : null;
+    const name = savedName && savedName.trim() ? savedName.trim() : 'HairyBeanBags';
+    const savedSquadStr = typeof localStorage !== 'undefined' ? localStorage.getItem('bt_squad') : null;
+    const squad = savedSquadStr ? JSON.parse(savedSquadStr) : [];
+    return getExampleMatchDataById('32554717', name, squad);
+  });
   const [selectedTeamTab, setSelectedTeamTab] = useState<'home' | 'away'>('away');
   const [isFetchingMatch, setIsFetchingMatch] = useState<boolean>(false);
   const [fetchingMatchId, setFetchingMatchId] = useState<string | null>(null);
@@ -100,8 +133,13 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   // Load user data on mount
   useEffect(() => {
     try {
-      const savedSquad = localStorage.getItem('bt_squad');
-      if (savedSquad) setMySquad(JSON.parse(savedSquad));
+      const savedSquadStr = localStorage.getItem('bt_squad');
+      const loadedSquad = savedSquadStr ? JSON.parse(savedSquadStr) : [];
+      if (loadedSquad.length > 0) setMySquad(loadedSquad);
+
+      const savedName = localStorage.getItem('bt_team_name');
+      const loadedTeamName = savedName && savedName.trim() ? savedName.trim() : myTeamName;
+      if (savedName) setMyTeamName(loadedTeamName);
 
       const savedFixtures = localStorage.getItem('bt_fixtures');
       let loadedFixtures: BattrickGame[] = [];
@@ -114,17 +152,21 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
         setFixtures(loadedFixtures);
       }
 
+      let activeMatchId = '32554717';
       if (loadedFixtures.length > 0) {
         const firstGame = loadedFixtures[0];
         setOpponentName(firstGame.opponent);
         setMatchFormat(normalizeMatchFormat(firstGame.type));
         setVenue(firstGame.venue);
-        if (firstGame.matchId) setMatchIdInput(firstGame.matchId);
+        if (firstGame.matchId) {
+          activeMatchId = firstGame.matchId;
+          setMatchIdInput(firstGame.matchId);
+        }
         setOpponentPlayers(generateRealisticOpponentRoster(firstGame.opponent, firstGame.isBot, normalizeMatchFormat(firstGame.type)));
       }
 
-      const savedName = localStorage.getItem('bt_team_name');
-      if (savedName) setMyTeamName(savedName);
+      // Ensure activeParsedMatch is loaded with the user's team name and squad
+      setActiveParsedMatch(getExampleMatchDataById(activeMatchId, loadedTeamName, loadedSquad));
 
       const savedPavilion = localStorage.getItem('bt_pavilion');
       if (savedPavilion) {
@@ -200,7 +242,7 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   // Handle parsing match scorecard and summary text
   const handleParseMatchData = () => {
     if (!pastedMatchText.trim()) {
-      const example = getExampleMatchDataById(matchIdInput || '32554717');
+      const example = getExampleMatchDataById(matchIdInput || '32554717', myTeamName, mySquad);
       setActiveParsedMatch(example);
       return;
     }
@@ -212,7 +254,7 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   // 1-Click test match selector
   const handleSelectMatchExample = (mId: string) => {
     setMatchIdInput(mId);
-    const matchData = getExampleMatchDataById(mId);
+    const matchData = getExampleMatchDataById(mId, myTeamName, mySquad);
     setActiveParsedMatch(matchData);
     if (matchData.matchType.toLowerCase().includes('first class')) {
       setMatchFormat('First Class');
@@ -245,7 +287,7 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   const handleAnalyzeFixtureMatch = (game: BattrickGame) => {
     if (game.matchId) {
       setMatchIdInput(game.matchId);
-      const matchData = getExampleMatchDataById(game.matchId);
+      const matchData = getExampleMatchDataById(game.matchId, myTeamName, mySquad);
       setActiveParsedMatch(matchData);
     }
     setActiveSubTab('match_analyzer');
@@ -272,9 +314,19 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
     }
 
     try {
-      const username = localStorage.getItem('bt_direct_user') || '';
-      const password = localStorage.getItem('bt_direct_pass') || '';
+      const username = localStorage.getItem('bt_battrick_username') || localStorage.getItem('bt_direct_user') || '';
+      const password = sessionStorage.getItem('bt_direct_pass') || localStorage.getItem('bt_direct_pass') || '';
       const sessionToken = localStorage.getItem('bt_sync_session') || '';
+
+      // If no session token or password stored, prompt immediately for quick authentication
+      if (!password && !sessionToken) {
+        setIsFetchingMatch(false);
+        setModalUsername(username);
+        setModalPassword('');
+        setFetchError(`Authentication required to fetch Match #${targetMatchId} live from Battrick.`);
+        setIsAuthModalOpen(true);
+        return;
+      }
 
       const response = await fetch('/api/sync-battrick-match', {
         method: 'POST',
@@ -290,6 +342,15 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
       const data = await response.json();
 
       if (!response.ok || !data.success) {
+        const isAuthFailure = response.status === 401 || data.isAuthFailure || data.message?.toLowerCase().includes('credentials') || data.message?.toLowerCase().includes('login') || data.message?.toLowerCase().includes('session') || data.error?.toLowerCase().includes('login') || data.error?.toLowerCase().includes('session');
+        if (isAuthFailure) {
+          sessionStorage.removeItem('bt_direct_pass');
+          localStorage.removeItem('bt_direct_pass');
+          localStorage.removeItem('bt_sync_session');
+          setModalUsername(username);
+          setModalPassword('');
+          setIsAuthModalOpen(true);
+        }
         throw new Error(data.message || data.error || `HTTP ${response.status}: Failed to fetch match from Battrick.`);
       }
 
@@ -321,7 +382,7 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
     } catch (err: any) {
       console.warn('Match direct fetch error, falling back to cached knowledge formula:', err);
       // If direct fetch couldn't connect, fall back to built-in formula generator
-      const fallbackData = getExampleMatchDataById(targetMatchId);
+      const fallbackData = getExampleMatchDataById(targetMatchId, myTeamName, mySquad);
       setActiveParsedMatch(fallbackData);
       setMatchIdInput(targetMatchId);
       setActiveSubTab('match_analyzer');
@@ -655,18 +716,32 @@ TACTICAL ORDERS:
             )}
 
             {fetchError && (
-              <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3 text-xs font-mono flex items-center justify-between gap-2">
+              <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3 text-xs font-mono flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                   <span>{fetchError}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('sync')}
-                  className="underline font-bold hover:text-rose-900 cursor-pointer shrink-0"
-                >
-                  Configure Sync Credentials →
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalUsername(localStorage.getItem('bt_battrick_username') || localStorage.getItem('bt_direct_user') || '');
+                      setModalPassword('');
+                      setIsAuthModalOpen(true);
+                    }}
+                    className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Enter Password & Fetch Match #{matchIdInput}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('sync')}
+                    className="underline font-bold text-rose-700 hover:text-rose-900 cursor-pointer text-[11px]"
+                  >
+                    Sync Hub Settings →
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1576,6 +1651,98 @@ TACTICAL ORDERS:
             </div>
           </div>
 
+        </div>
+      )}
+
+      {/* Inline Quick Authentication Modal for Live Match Fetching */}
+      {isAuthModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-base text-slate-900">Authenticate Battrick Session</h3>
+                  <p className="text-[11px] font-mono text-slate-500">Live fetch for Match #{matchIdInput}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAuthModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed mb-4">
+              Your Battrick session has expired or requires a password. Enter your credentials below to authenticate directly with Battrick and fetch Match #{matchIdInput}.
+            </p>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!modalUsername.trim() || !modalPassword) return;
+                localStorage.setItem('bt_battrick_username', modalUsername.trim());
+                sessionStorage.setItem('bt_direct_pass', modalPassword);
+                setIsAuthModalOpen(false);
+                await handleDirectFetchMatch(matchIdInput);
+              }}
+              className="space-y-3"
+            >
+              <div>
+                <label className="text-[11px] font-mono font-bold uppercase text-slate-600 block mb-1">
+                  Battrick Username
+                </label>
+                <input
+                  type="text"
+                  value={modalUsername}
+                  onChange={(e) => setModalUsername(e.target.value)}
+                  placeholder="Your Battrick username"
+                  required
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-mono font-bold uppercase text-slate-600 block mb-1">
+                  Battrick Password
+                </label>
+                <input
+                  type="password"
+                  value={modalPassword}
+                  onChange={(e) => setModalPassword(e.target.value)}
+                  placeholder="Your Battrick password"
+                  required
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-[10px] font-mono text-slate-500 flex items-start gap-1.5 mt-2">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                <span>Password is held securely in tab session memory (`sessionStorage`) for your current use and automatically removed on log out or timeout.</span>
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAuthModalOpen(false)}
+                  className="px-3.5 py-2 text-xs font-mono font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                >
+                  Use Simulated Model
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-mono font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Authenticate & Fetch Match</span>
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

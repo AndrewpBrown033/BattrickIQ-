@@ -2779,16 +2779,37 @@ export function analyzeBatstatAndLineup(match: ParsedBattrickMatch): BatstatDeco
   return decompositions;
 }
 
-// Built-in realistic dataset for Match 32554717 (the user's match example)
-export function getExampleMatchData(): ParsedBattrickMatch {
-  return getExampleMatchDataById('32554717');
+// Helper to get current user team name and squad
+export function getUserTeamAndSquad(): { teamName: string; squad: BattrickPlayer[] } {
+  let teamName = 'HairyBeanBags';
+  let squad: BattrickPlayer[] = [];
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const savedName = localStorage.getItem('bt_team_name');
+      if (savedName && savedName.trim() && savedName !== 'My Battrick IQ Club' && savedName !== 'My Club') {
+        teamName = savedName.trim();
+      }
+      const savedSquad = localStorage.getItem('bt_squad');
+      if (savedSquad) {
+        squad = JSON.parse(savedSquad);
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return { teamName, squad };
+}
+
+// Built-in realistic dataset for the user's upcoming Cup/League fixtures
+export function getExampleMatchData(userTeamName?: string, userSquad?: BattrickPlayer[]): ParsedBattrickMatch {
+  return getExampleMatchDataById('32554717', userTeamName, userSquad);
 }
 
 export const TEST_MATCHES: Record<string, { name: string; type: string; description: string }> = {
   '32554717': {
-    name: 'Redback CC v Southern Vipers (User Match 32554717)',
-    type: 'One Day',
-    description: 'Cup / OD match testing top-order dominance vs severe lower-order tail dropoff (85.7% drop).'
+    name: 'Steve v HairyBeanBags (Cup Match 32554717)',
+    type: 'Cup / OD',
+    description: 'Cup knockout match testing top-order dominance vs severe lower-order tail dropoff (85.7% drop).'
   },
   '32550500': {
     name: 'Sandshoe Crushers v HairyBeanBags (Match 32550500)',
@@ -2802,22 +2823,112 @@ export const TEST_MATCHES: Record<string, { name: string; type: string; descript
   }
 };
 
-export function getExampleMatchDataById(id: string = '32554717'): ParsedBattrickMatch {
-  if (id === '32550500') {
+export function getExampleMatchDataById(
+  id: string = '32554717',
+  customUserTeam?: string,
+  customSquad?: BattrickPlayer[]
+): ParsedBattrickMatch {
+  const { teamName: defaultUserTeam, squad: defaultSquad } = getUserTeamAndSquad();
+  const userTeam = customUserTeam || defaultUserTeam;
+  const mySquad = (customSquad && customSquad.length > 0) ? customSquad : defaultSquad;
+
+  // Build realistic batting scorecard for the user's squad
+  const sortedBatters = [...mySquad].sort((a, b) => {
+    const aScore = a.skills.batting * 2 + a.skills.concentration;
+    const bScore = b.skills.batting * 2 + b.skills.concentration;
+    return bScore - aScore;
+  });
+
+  const buildUserBatters = (targetTotal: number = 288): MatchBatterStat[] => {
+    if (sortedBatters.length >= 7) {
+      return sortedBatters.slice(0, 11).map((p, idx) => {
+        const order = idx + 1;
+        const group: 'Top Order' | 'Middle Order' | 'Lower Order' = order <= 3 ? 'Top Order' : (order <= 6 ? 'Middle Order' : 'Lower Order');
+        const runs = order === 1 ? 84 : order === 2 ? 62 : order === 3 ? 48 : order === 4 ? 38 : order === 5 ? 24 : order === 6 ? 16 : order === 7 ? 8 : order === 8 ? 4 : 1;
+        const balls = Math.max(1, Math.round(runs * (order <= 3 ? 1.05 : order <= 6 ? 1.15 : 1.3)));
+        const fours = Math.floor(runs / 8);
+        const sixes = order <= 4 ? Math.floor(runs / 25) : 0;
+        const dismissal = order === 1 ? 'not out' : order === 2 ? 'c Keeper b Bowler' : order === 3 ? 'lbw b Spinner' : order <= 6 ? 'b Seamer' : order === 11 ? 'not out' : 'c Slip b Seamer';
+        return {
+          order,
+          name: p.name,
+          dismissal,
+          runs,
+          balls,
+          fours,
+          sixes,
+          strikeRate: parseFloat(((runs / balls) * 100).toFixed(1)),
+          group,
+          estimatedSkillGrade: SKILL_LEVELS[p.skills.batting] || 'respectable'
+        };
+      });
+    }
+
+    // Default player names if squad is not yet loaded
+    const defaultNames = ['A. Brown', 'J. Hobbs', 'D. Bradman', 'S. Tendulkar', 'B. Lara', 'I. Botham', 'A. Gilchrist (wk)', 'W. Akram', 'M. Muralitharan', 'C. Ambrose', 'M. Holding'];
+    return defaultNames.map((name, idx) => {
+      const order = idx + 1;
+      const group: 'Top Order' | 'Middle Order' | 'Lower Order' = order <= 3 ? 'Top Order' : (order <= 6 ? 'Middle Order' : 'Lower Order');
+      const runs = order === 1 ? 84 : order === 2 ? 62 : order === 3 ? 48 : order === 4 ? 38 : order === 5 ? 24 : order === 6 ? 16 : 4;
+      const balls = Math.max(1, Math.round(runs * 1.1));
+      return {
+        order,
+        name,
+        dismissal: order === 1 ? 'not out' : 'out',
+        runs,
+        balls,
+        fours: Math.floor(runs / 8),
+        sixes: order <= 3 ? 1 : 0,
+        strikeRate: parseFloat(((runs / balls) * 100).toFixed(1)),
+        group,
+        estimatedSkillGrade: order <= 3 ? 'Masterful' : order <= 6 ? 'Strong' : 'Feeble'
+      };
+    });
+  };
+
+  const buildUserBowlers = (): MatchBowlerStat[] => {
+    const sortedBowlers = [...mySquad].sort((a, b) => b.skills.bowling - a.skills.bowling);
+    if (sortedBowlers.length >= 5) {
+      return sortedBowlers.slice(0, 5).map((p, idx) => {
+        const isSpin = p.bowlingType?.includes('SLA') || p.bowlingType?.includes('LBG') || p.bowlingType?.includes('OB') || p.bowlingType?.includes('Spin');
+        return {
+          order: idx + 1,
+          name: `${p.name} (${p.bowlingType || (isSpin ? 'SLA' : 'RFM')})`,
+          overs: 10,
+          maidens: idx === 0 ? 2 : 1,
+          runs: 38 + idx * 6,
+          wickets: idx === 0 ? 3 : idx === 1 ? 2 : idx === 2 ? 2 : 1,
+          economy: parseFloat(((38 + idx * 6) / 10).toFixed(2)),
+          isSpin: Boolean(isSpin),
+          isSeam: !isSpin
+        };
+      });
+    }
+
+    return [
+      { order: 1, name: 'Lead Strike Bowler (RFM)', overs: 10, maidens: 2, runs: 38, wickets: 3, economy: 3.8, isSeam: true },
+      { order: 2, name: 'Frontline Seamer (RF)', overs: 10, maidens: 1, runs: 44, wickets: 2, economy: 4.4, isSeam: true },
+      { order: 3, name: 'Strike Spinner (LBG)', overs: 10, maidens: 1, runs: 42, wickets: 2, economy: 4.2, isSpin: true },
+      { order: 4, name: 'Second Spinner (SLA)', overs: 10, maidens: 0, runs: 48, wickets: 1, economy: 4.8, isSpin: true },
+      { order: 5, name: '5th Bowler / All-rounder (RM)', overs: 10, maidens: 0, runs: 58, wickets: 1, economy: 5.8, isSeam: true }
+    ];
+  };
+
+  if (id === '32550500' || id === '32194563') {
     return {
-      matchId: '32550500',
-      matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32550500',
-      summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32550500&action=summary',
+      matchId: id,
+      matchUrl: `https://www.battrick.org/nl/matchinfo.asp?matchID=${id}`,
+      summaryUrl: `https://www.battrick.org/nl/matchinfo.asp?matchID=${id}&action=summary`,
       matchDate: '08 Sep 2026',
       matchType: 'First Class',
       homeTeam: 'Sandshoe Crushers',
-      awayTeam: 'HairyBeanBags',
-      venue: 'Crushers Stadium',
+      awayTeam: userTeam,
+      venue: 'Crushers Stadium Arena',
       crowd: '18,400',
-      toss: 'HairyBeanBags won the toss and elected to field',
+      toss: `${userTeam} won the toss and elected to field`,
       pitch: 'Hard',
       weather: 'Sunny',
-      result: 'HairyBeanBags won by 7 wickets',
+      result: `${userTeam} won by 7 wickets`,
       homeRatings: {
         topOrder: 'exceptional (low)',
         topOrderScore: 14.7,
@@ -2856,25 +2967,19 @@ export function getExampleMatchDataById(id: string = '32554717'): ParsedBattrick
           wickets: 10,
           overs: '94.2',
           batters: [
-            { order: 1, name: 'D. Miller', dismissal: 'c Keeper b McGrath', runs: 74, balls: 142, fours: 9, sixes: 0, strikeRate: 52.1, group: 'Top Order', estimatedSkillGrade: 'Exceptional' },
-            { order: 2, name: 'T. Latham', dismissal: 'lbw b Lee', runs: 65, balls: 128, fours: 7, sixes: 0, strikeRate: 50.8, group: 'Top Order', estimatedSkillGrade: 'Exceptional' },
-            { order: 3, name: 'K. Williamson', dismissal: 'c Slip b Warne', runs: 88, balls: 164, fours: 11, sixes: 1, strikeRate: 53.7, group: 'Top Order', estimatedSkillGrade: 'Masterful' },
-            { order: 4, name: 'R. Taylor', dismissal: 'c Midwicket b Johnson', runs: 34, balls: 68, fours: 4, sixes: 0, strikeRate: 50.0, group: 'Middle Order', estimatedSkillGrade: 'Superb' },
-            { order: 5, name: 'H. Nicholls', dismissal: 'b Warne', runs: 22, balls: 45, fours: 2, sixes: 0, strikeRate: 48.9, group: 'Middle Order', estimatedSkillGrade: 'Superb' },
-            { order: 6, name: 'B. Watling (wk)', dismissal: 'c Keeper b McGrath', runs: 14, balls: 31, fours: 1, sixes: 0, strikeRate: 45.2, group: 'Middle Order', estimatedSkillGrade: 'Quality' },
-            { order: 7, name: 'C. de Grandhomme', dismissal: 'c Cover b Lee', runs: 8, balls: 14, fours: 1, sixes: 0, strikeRate: 57.1, group: 'Lower Order', estimatedSkillGrade: 'Competent' },
-            { order: 8, name: 'M. Santner', dismissal: 'b Warne', runs: 4, balls: 12, fours: 0, sixes: 0, strikeRate: 33.3, group: 'Lower Order', estimatedSkillGrade: 'Mediocre' },
-            { order: 9, name: 'T. Southee', dismissal: 'b McGrath', runs: 2, balls: 6, fours: 0, sixes: 0, strikeRate: 33.3, group: 'Lower Order', estimatedSkillGrade: 'Feeble' },
-            { order: 10, name: 'N. Wagner', dismissal: 'lbw b Johnson', runs: 1, balls: 8, fours: 0, sixes: 0, strikeRate: 12.5, group: 'Lower Order', estimatedSkillGrade: 'Woeful' },
+            { order: 1, name: 'D. Miller', dismissal: 'c Keeper b Strike Bowler', runs: 74, balls: 142, fours: 9, sixes: 0, strikeRate: 52.1, group: 'Top Order', estimatedSkillGrade: 'Exceptional' },
+            { order: 2, name: 'T. Latham', dismissal: 'lbw b Seamer', runs: 65, balls: 128, fours: 7, sixes: 0, strikeRate: 50.8, group: 'Top Order', estimatedSkillGrade: 'Exceptional' },
+            { order: 3, name: 'K. Williamson', dismissal: 'c Slip b Spinner', runs: 88, balls: 164, fours: 11, sixes: 1, strikeRate: 53.7, group: 'Top Order', estimatedSkillGrade: 'Masterful' },
+            { order: 4, name: 'R. Taylor', dismissal: 'c Midwicket b Seamer', runs: 34, balls: 68, fours: 4, sixes: 0, strikeRate: 50.0, group: 'Middle Order', estimatedSkillGrade: 'Superb' },
+            { order: 5, name: 'H. Nicholls', dismissal: 'b Spinner', runs: 22, balls: 45, fours: 2, sixes: 0, strikeRate: 48.9, group: 'Middle Order', estimatedSkillGrade: 'Superb' },
+            { order: 6, name: 'B. Watling (wk)', dismissal: 'c Keeper b Strike Bowler', runs: 14, balls: 31, fours: 1, sixes: 0, strikeRate: 45.2, group: 'Middle Order', estimatedSkillGrade: 'Quality' },
+            { order: 7, name: 'C. de Grandhomme', dismissal: 'c Cover b Seamer', runs: 8, balls: 14, fours: 1, sixes: 0, strikeRate: 57.1, group: 'Lower Order', estimatedSkillGrade: 'Competent' },
+            { order: 8, name: 'M. Santner', dismissal: 'b Spinner', runs: 4, balls: 12, fours: 0, sixes: 0, strikeRate: 33.3, group: 'Lower Order', estimatedSkillGrade: 'Mediocre' },
+            { order: 9, name: 'T. Southee', dismissal: 'b Strike Bowler', runs: 2, balls: 6, fours: 0, sixes: 0, strikeRate: 33.3, group: 'Lower Order', estimatedSkillGrade: 'Feeble' },
+            { order: 10, name: 'N. Wagner', dismissal: 'lbw b Seamer', runs: 1, balls: 8, fours: 0, sixes: 0, strikeRate: 12.5, group: 'Lower Order', estimatedSkillGrade: 'Woeful' },
             { order: 11, name: 'T. Boult', dismissal: 'not out', runs: 0, balls: 4, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Abysmal' }
           ],
-          bowlers: [
-            { order: 1, name: 'G. McGrath (RFM)', overs: 22, maidens: 6, runs: 62, wickets: 3, economy: 2.82, isSeam: true },
-            { order: 2, name: 'B. Lee (RF)', overs: 20, maidens: 4, runs: 71, wickets: 2, economy: 3.55, isSeam: true },
-            { order: 3, name: 'M. Johnson (LF)', overs: 18, maidens: 3, runs: 68, wickets: 2, economy: 3.78, isSeam: true },
-            { order: 4, name: 'S. Warne (LBG)', overs: 24.2, maidens: 7, runs: 74, wickets: 3, economy: 3.04, isSpin: true },
-            { order: 5, name: 'M. Clarke (5th Bowler - SLA)', overs: 10, maidens: 1, runs: 37, wickets: 0, economy: 3.70, isSpin: true }
-          ],
+          bowlers: buildUserBowlers(),
           fallOfWickets: [
             { wicket: 1, score: 128, player: 'Miller', over: '40.2' },
             { wicket: 2, score: 172, player: 'Latham', over: '52.1' },
@@ -2884,24 +2989,12 @@ export function getExampleMatchDataById(id: string = '32554717'): ParsedBattrick
           ]
         },
         {
-          teamName: 'HairyBeanBags',
+          teamName: userTeam,
           inningsNumber: 2,
           totalRuns: 388,
           wickets: 10,
           overs: '106.1',
-          batters: [
-            { order: 1, name: 'A. Brown', dismissal: 'c Watling b Southee', runs: 112, balls: 198, fours: 15, sixes: 2, strikeRate: 56.6, group: 'Top Order', estimatedSkillGrade: 'Masterful' },
-            { order: 2, name: 'J. Hobbs', dismissal: 'b Boult', runs: 94, balls: 172, fours: 12, sixes: 1, strikeRate: 54.7, group: 'Top Order', estimatedSkillGrade: 'Masterful' },
-            { order: 3, name: 'D. Bradman', dismissal: 'c Slip b Santner', runs: 82, balls: 130, fours: 10, sixes: 1, strikeRate: 63.1, group: 'Top Order', estimatedSkillGrade: 'Elite' },
-            { order: 4, name: 'S. Tendulkar', dismissal: 'b Wagner', runs: 45, balls: 78, fours: 6, sixes: 0, strikeRate: 57.7, group: 'Middle Order', estimatedSkillGrade: 'Sensational' },
-            { order: 5, name: 'B. Lara', dismissal: 'c Cover b Southee', runs: 28, balls: 44, fours: 4, sixes: 0, strikeRate: 63.6, group: 'Middle Order', estimatedSkillGrade: 'Sensational' },
-            { order: 6, name: 'I. Botham', dismissal: 'lbw b Boult', runs: 16, balls: 24, fours: 2, sixes: 0, strikeRate: 66.7, group: 'Middle Order', estimatedSkillGrade: 'Superb' },
-            { order: 7, name: 'A. Gilchrist (wk)', dismissal: 'c Slip b Wagner', runs: 6, balls: 10, fours: 1, sixes: 0, strikeRate: 60.0, group: 'Lower Order', estimatedSkillGrade: 'Strong' },
-            { order: 8, name: 'W. Akram', dismissal: 'b Boult', runs: 3, balls: 8, fours: 0, sixes: 0, strikeRate: 37.5, group: 'Lower Order', estimatedSkillGrade: 'Proficient' },
-            { order: 9, name: 'M. Muralitharan', dismissal: 'b Southee', runs: 1, balls: 6, fours: 0, sixes: 0, strikeRate: 16.7, group: 'Lower Order', estimatedSkillGrade: 'Feeble' },
-            { order: 10, name: 'C. Ambrose', dismissal: 'lbw b Wagner', runs: 0, balls: 2, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Woeful' },
-            { order: 11, name: 'M. Holding', dismissal: 'not out', runs: 0, balls: 1, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Abysmal' }
-          ],
+          batters: buildUserBatters(388),
           bowlers: [
             { order: 1, name: 'T. Boult (LF)', overs: 26, maidens: 5, runs: 88, wickets: 3, economy: 3.38, isSeam: true },
             { order: 2, name: 'T. Southee (RFM)', overs: 24, maidens: 4, runs: 82, wickets: 3, economy: 3.42, isSeam: true },
@@ -2910,31 +3003,30 @@ export function getExampleMatchDataById(id: string = '32554717'): ParsedBattrick
             { order: 5, name: 'C. de Grandhomme (5th Bowler - RM)', overs: 14, maidens: 1, runs: 71, wickets: 0, economy: 5.07, isSeam: true }
           ],
           fallOfWickets: [
-            { wicket: 1, score: 184, player: 'Hobbs', over: '48.2' },
-            { wicket: 2, score: 232, player: 'Brown', over: '61.4' },
-            { wicket: 3, score: 320, player: 'Bradman', over: '82.1' },
-            { wicket: 4, score: 358, player: 'Tendulkar', over: '94.3' }
+            { wicket: 1, score: 144, player: 'Opener 1', over: '38.2' },
+            { wicket: 2, score: 212, player: 'Opener 2', over: '54.4' },
+            { wicket: 3, score: 310, player: 'Top Batter', over: '82.1' }
           ]
         }
       ]
     };
   }
 
-  if (id === '32161738') {
+  if (id === '32161738' || id === '32161741') {
     return {
-      matchId: '32161738',
-      matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32161738',
-      summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32161738&action=summary',
+      matchId: id,
+      matchUrl: `https://www.battrick.org/nl/matchinfo.asp?matchID=${id}`,
+      summaryUrl: `https://www.battrick.org/nl/matchinfo.asp?matchID=${id}&action=summary`,
       matchDate: '11 Sep 2026',
       matchType: 'One Day League',
       homeTeam: 'Bulolo Seahawks (Bot)',
-      awayTeam: 'HairyBeanBags',
+      awayTeam: userTeam,
       venue: 'Bulolo Oval',
       crowd: '8,250',
-      toss: 'HairyBeanBags won the toss and elected to bat',
+      toss: `${userTeam} won the toss and elected to bat`,
       pitch: 'Dusty',
-      weather: 'Partially Cloudy',
-      result: 'HairyBeanBags won by 168 runs',
+      weather: 'Overcast',
+      result: `${userTeam} won by 168 runs`,
       homeRatings: {
         topOrder: 'proficient (low)',
         topOrderScore: 7.7,
@@ -2967,24 +3059,12 @@ export function getExampleMatchDataById(id: string = '32554717'): ParsedBattrick
       },
       innings: [
         {
-          teamName: 'HairyBeanBags',
+          teamName: userTeam,
           inningsNumber: 1,
           totalRuns: 342,
           wickets: 3,
           overs: '50.0',
-          batters: [
-            { order: 1, name: 'A. Brown', dismissal: 'not out', runs: 148, balls: 136, fours: 16, sixes: 3, strikeRate: 108.8, group: 'Top Order', estimatedSkillGrade: 'Masterful' },
-            { order: 2, name: 'S. Smith', dismissal: 'c Keeper b BotBowler1', runs: 64, balls: 68, fours: 7, sixes: 0, strikeRate: 94.1, group: 'Top Order', estimatedSkillGrade: 'Sensational' },
-            { order: 3, name: 'V. Kohli', dismissal: 'c Midwicket b BotBowler2', runs: 82, balls: 74, fours: 9, sixes: 1, strikeRate: 110.8, group: 'Top Order', estimatedSkillGrade: 'Masterful' },
-            { order: 4, name: 'A. de Villiers', dismissal: 'not out', runs: 42, balls: 22, fours: 4, sixes: 2, strikeRate: 190.9, group: 'Middle Order', estimatedSkillGrade: 'Sensational' },
-            { order: 5, name: 'B. Stokes', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Middle Order', estimatedSkillGrade: 'Wonderful' },
-            { order: 6, name: 'R. Jadeja', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Middle Order', estimatedSkillGrade: 'Superb' },
-            { order: 7, name: 'MS Dhoni (wk)', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Quality' },
-            { order: 8, name: 'P. Cummins', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Strong' },
-            { order: 9, name: 'R. Ashwin', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Competent' },
-            { order: 10, name: 'J. Bumrah', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Feeble' },
-            { order: 11, name: 'M. Starc', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Abysmal' }
-          ],
+          batters: buildUserBatters(342),
           bowlers: [
             { order: 1, name: 'Bot Seamer 1 (RM)', overs: 10, maidens: 0, runs: 62, wickets: 1, economy: 6.2, isSeam: true },
             { order: 2, name: 'Bot Seamer 2 (LM)', overs: 10, maidens: 0, runs: 68, wickets: 1, economy: 6.8, isSeam: true },
@@ -2993,8 +3073,8 @@ export function getExampleMatchDataById(id: string = '32554717'): ParsedBattrick
             { order: 5, name: 'Bot 5th Bowler (RM)', overs: 10, maidens: 0, runs: 73, wickets: 0, economy: 7.3, isSeam: true }
           ],
           fallOfWickets: [
-            { wicket: 1, score: 112, player: 'Smith', over: '18.4' },
-            { wicket: 2, score: 268, player: 'Kohli', over: '41.2' }
+            { wicket: 1, score: 112, player: 'Opener 1', over: '18.4' },
+            { wicket: 2, score: 268, player: 'Opener 2', over: '41.2' }
           ]
         },
         {
@@ -3004,58 +3084,46 @@ export function getExampleMatchDataById(id: string = '32554717'): ParsedBattrick
           wickets: 10,
           overs: '38.2',
           batters: [
-            { order: 1, name: 'Bot Batter 1', dismissal: 'b Bumrah', runs: 24, balls: 32, fours: 3, sixes: 0, strikeRate: 75.0, group: 'Top Order', estimatedSkillGrade: 'Proficient' },
-            { order: 2, name: 'Bot Batter 2', dismissal: 'c Dhoni b Starc', runs: 38, balls: 46, fours: 5, sixes: 0, strikeRate: 82.6, group: 'Top Order', estimatedSkillGrade: 'Proficient' },
-            { order: 3, name: 'Bot Batter 3', dismissal: 'lbw b Ashwin', runs: 41, balls: 54, fours: 4, sixes: 0, strikeRate: 75.9, group: 'Top Order', estimatedSkillGrade: 'Competent' },
-            { order: 4, name: 'Bot Batter 4', dismissal: 'c Smith b Ashwin', runs: 22, balls: 30, fours: 2, sixes: 0, strikeRate: 73.3, group: 'Middle Order', estimatedSkillGrade: 'Competent' },
-            { order: 5, name: 'Bot Batter 5', dismissal: 'b Jadeja', runs: 16, balls: 24, fours: 1, sixes: 0, strikeRate: 66.7, group: 'Middle Order', estimatedSkillGrade: 'Competent' },
-            { order: 6, name: 'Bot Batter 6', dismissal: 'c Slip b Ashwin', runs: 9, balls: 16, fours: 0, sixes: 0, strikeRate: 56.3, group: 'Middle Order', estimatedSkillGrade: 'Mediocre' },
-            { order: 7, name: 'Bot Keeper', dismissal: 'b Jadeja', runs: 8, balls: 11, fours: 1, sixes: 0, strikeRate: 72.7, group: 'Lower Order', estimatedSkillGrade: 'Feeble' },
-            { order: 8, name: 'Bot Bowler 1', dismissal: 'lbw b Bumrah', runs: 5, balls: 7, fours: 0, sixes: 0, strikeRate: 71.4, group: 'Lower Order', estimatedSkillGrade: 'Woeful' },
-            { order: 9, name: 'Bot Bowler 2', dismissal: 'b Starc', runs: 4, balls: 5, fours: 0, sixes: 0, strikeRate: 80.0, group: 'Lower Order', estimatedSkillGrade: 'Abysmal' },
-            { order: 10, name: 'Bot Bowler 3', dismissal: 'c Dhoni b Ashwin', runs: 2, balls: 4, fours: 0, sixes: 0, strikeRate: 50.0, group: 'Lower Order', estimatedSkillGrade: 'Abysmal' },
+            { order: 1, name: 'Bot Batter 1', dismissal: 'b Strike Bowler', runs: 24, balls: 32, fours: 3, sixes: 0, strikeRate: 75.0, group: 'Top Order', estimatedSkillGrade: 'Proficient' },
+            { order: 2, name: 'Bot Batter 2', dismissal: 'c Keeper b Seamer', runs: 38, balls: 46, fours: 5, sixes: 0, strikeRate: 82.6, group: 'Top Order', estimatedSkillGrade: 'Proficient' },
+            { order: 3, name: 'Bot Batter 3', dismissal: 'lbw b Spinner', runs: 41, balls: 54, fours: 4, sixes: 0, strikeRate: 75.9, group: 'Top Order', estimatedSkillGrade: 'Competent' },
+            { order: 4, name: 'Bot Batter 4', dismissal: 'c Slip b Spinner', runs: 22, balls: 30, fours: 2, sixes: 0, strikeRate: 73.3, group: 'Middle Order', estimatedSkillGrade: 'Competent' },
+            { order: 5, name: 'Bot Batter 5', dismissal: 'b Spinner', runs: 16, balls: 24, fours: 1, sixes: 0, strikeRate: 66.7, group: 'Middle Order', estimatedSkillGrade: 'Competent' },
+            { order: 6, name: 'Bot Batter 6', dismissal: 'c Slip b Seamer', runs: 9, balls: 16, fours: 0, sixes: 0, strikeRate: 56.3, group: 'Middle Order', estimatedSkillGrade: 'Mediocre' },
+            { order: 7, name: 'Bot Keeper', dismissal: 'b Seamer', runs: 8, balls: 11, fours: 1, sixes: 0, strikeRate: 72.7, group: 'Lower Order', estimatedSkillGrade: 'Feeble' },
+            { order: 8, name: 'Bot Bowler 1', dismissal: 'lbw b Strike Bowler', runs: 5, balls: 7, fours: 0, sixes: 0, strikeRate: 71.4, group: 'Lower Order', estimatedSkillGrade: 'Woeful' },
+            { order: 9, name: 'Bot Bowler 2', dismissal: 'b Seamer', runs: 4, balls: 5, fours: 0, sixes: 0, strikeRate: 80.0, group: 'Lower Order', estimatedSkillGrade: 'Abysmal' },
+            { order: 10, name: 'Bot Bowler 3', dismissal: 'c Keeper b Spinner', runs: 2, balls: 4, fours: 0, sixes: 0, strikeRate: 50.0, group: 'Lower Order', estimatedSkillGrade: 'Abysmal' },
             { order: 11, name: 'Bot Bowler 4', dismissal: 'not out', runs: 0, balls: 1, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Worthless' }
           ],
-          bowlers: [
-            { order: 1, name: 'J. Bumrah (RF)', overs: 7, maidens: 1, runs: 28, wickets: 2, economy: 4.0, isSeam: true },
-            { order: 2, name: 'M. Starc (LF)', overs: 7.2, maidens: 0, runs: 36, wickets: 2, economy: 4.9, isSeam: true },
-            { order: 3, name: 'R. Ashwin (OB)', overs: 10, maidens: 2, runs: 39, wickets: 4, economy: 3.9, isSpin: true },
-            { order: 4, name: 'R. Jadeja (SLA)', overs: 10, maidens: 1, runs: 44, wickets: 2, economy: 4.4, isSpin: true },
-            { order: 5, name: 'P. Cummins (RFM)', overs: 4, maidens: 0, runs: 27, wickets: 0, economy: 6.75, isSeam: true }
-          ],
+          bowlers: buildUserBowlers(),
           fallOfWickets: [
             { wicket: 1, score: 54, player: 'Bot Batter 1', over: '9.2' },
             { wicket: 2, score: 86, player: 'Bot Batter 2', over: '16.4' },
-            { wicket: 3, score: 128, player: 'Bot Batter 3', over: '25.1' },
-            { wicket: 4, score: 142, player: 'Bot Batter 4', over: '28.3' },
-            { wicket: 5, score: 154, player: 'Bot Batter 5', over: '31.5' },
-            { wicket: 6, score: 162, player: 'Bot Batter 6', over: '34.2' },
-            { wicket: 7, score: 168, player: 'Bot Keeper', over: '35.4' },
-            { wicket: 8, score: 172, player: 'Bot Bowler 1', over: '36.5' },
-            { wicket: 9, score: 174, player: 'Bot Bowler 2', over: '37.3' },
-            { wicket: 10, score: 174, player: 'Bot Bowler 3', over: '38.2' }
+            { wicket: 3, score: 128, player: 'Bot Batter 3', over: '25.1' }
           ]
         }
       ]
     };
   }
 
-  // Default Match 32554717
-  const matchId = '32554717';
+  // Default / Cup Match (e.g. 32554717 or 32557622 vs Steve)
+  const matchId = id || '32554717';
+  const opponent = 'Steve';
   return {
     matchId,
     matchUrl: `https://www.battrick.org/nl/matchinfo.asp?matchID=${matchId}`,
     summaryUrl: `https://www.battrick.org/nl/matchinfo.asp?matchID=${matchId}&action=summary`,
-    matchDate: '15 Aug 2026',
-    matchType: 'One Day League',
-    homeTeam: 'Redback Cricket Club',
-    awayTeam: 'Southern Vipers CC',
-    venue: 'Adelaide Oval Arena',
-    crowd: '24,890',
-    toss: 'Redback Cricket Club won the toss and elected to bat',
+    matchDate: '06 Sep 2026',
+    matchType: 'Cup Knockout',
+    homeTeam: opponent,
+    awayTeam: userTeam,
+    venue: `${opponent} Arena`,
+    crowd: '22,450',
+    toss: `${opponent} won the toss and elected to bat`,
     pitch: 'Green',
     weather: 'Overcast',
-    result: 'Redback Cricket Club won by 42 runs',
+    result: `${userTeam} won by 42 runs`,
     homeRatings: {
       topOrder: 'sensational (high)',
       topOrderScore: 16.3,
@@ -3072,40 +3140,61 @@ export function getExampleMatchDataById(id: string = '32554717'): ParsedBattrick
       batstat: 168450
     },
     awayRatings: {
-      topOrder: 'wonderful',
-      topOrderScore: 14.0,
-      middleOrder: 'proficient',
-      middleOrderScore: 8.0,
-      lowerOrder: 'abysmal',
-      lowerOrderScore: 2.0,
-      seamBowling: 'strong',
-      seamBowlingScore: 9.0,
-      spinBowling: 'mediocre',
-      spinBowlingScore: 5.0,
-      fielding: 'competent',
-      fieldingScore: 6.0,
-      batstat: 131200
+      topOrder: 'masterful',
+      topOrderScore: 17.5,
+      middleOrder: 'sensational',
+      middleOrderScore: 15.0,
+      lowerOrder: 'proficient',
+      lowerOrderScore: 8.0,
+      seamBowling: 'sensational',
+      seamBowlingScore: 15.5,
+      spinBowling: 'quality',
+      spinBowlingScore: 12.0,
+      fielding: 'quality',
+      fieldingScore: 12.0,
+      batstat: 184500
     },
     innings: [
       {
-        teamName: 'Redback Cricket Club',
+        teamName: opponent,
         inningsNumber: 1,
+        totalRuns: 242,
+        wickets: 10,
+        overs: '48.2',
+        batters: [
+          { order: 1, name: 'S. Cook', dismissal: 'c Keeper b Strike Bowler', runs: 78, balls: 84, fours: 8, sixes: 0, strikeRate: 92.8, group: 'Top Order', estimatedSkillGrade: 'Wonderful' },
+          { order: 2, name: 'T. Strauss', dismissal: 'b Seamer', runs: 52, balls: 60, fours: 5, sixes: 1, strikeRate: 86.7, group: 'Top Order', estimatedSkillGrade: 'Wonderful' },
+          { order: 3, name: 'J. Root', dismissal: 'lbw b Spinner', runs: 41, balls: 45, fours: 3, sixes: 0, strikeRate: 91.1, group: 'Top Order', estimatedSkillGrade: 'Wonderful' },
+          { order: 4, name: 'K. Pietersen', dismissal: 'c Cover b Seamer', runs: 28, balls: 24, fours: 3, sixes: 1, strikeRate: 116.7, group: 'Middle Order', estimatedSkillGrade: 'Proficient' },
+          { order: 5, name: 'I. Bell', dismissal: 'c Slip b Spinner', runs: 19, balls: 26, fours: 1, sixes: 0, strikeRate: 73.1, group: 'Middle Order', estimatedSkillGrade: 'Proficient' },
+          { order: 6, name: 'P. Collingwood', dismissal: 'b Seamer', runs: 8, balls: 14, fours: 0, sixes: 0, strikeRate: 57.1, group: 'Middle Order', estimatedSkillGrade: 'Competent' },
+          { order: 7, name: 'M. Prior (wk)', dismissal: 'c Keeper b Strike Bowler', runs: 5, balls: 9, fours: 0, sixes: 0, strikeRate: 55.6, group: 'Lower Order', estimatedSkillGrade: 'Feeble' },
+          { order: 8, name: 'C. Woakes', dismissal: 'b Seamer', runs: 4, balls: 8, fours: 0, sixes: 0, strikeRate: 50.0, group: 'Lower Order', estimatedSkillGrade: 'Woeful' },
+          { order: 9, name: 'S. Broad', dismissal: 'lbw b Seamer', runs: 2, balls: 5, fours: 0, sixes: 0, strikeRate: 40.0, group: 'Lower Order', estimatedSkillGrade: 'Abysmal' },
+          { order: 10, name: 'A. Rashid', dismissal: 'b Seamer', runs: 1, balls: 3, fours: 0, sixes: 0, strikeRate: 33.3, group: 'Lower Order', estimatedSkillGrade: 'Abysmal' },
+          { order: 11, name: 'J. Anderson', dismissal: 'not out', runs: 0, balls: 2, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Worthless' }
+        ],
+        bowlers: buildUserBowlers(),
+        fallOfWickets: [
+          { wicket: 1, score: 118, player: 'T. Strauss', over: '19.2' },
+          { wicket: 2, score: 154, player: 'S. Cook', over: '26.4' },
+          { wicket: 3, score: 185, player: 'J. Root', over: '32.1' },
+          { wicket: 4, score: 215, player: 'K. Pietersen', over: '37.3' },
+          { wicket: 5, score: 226, player: 'I. Bell', over: '40.2' },
+          { wicket: 6, score: 231, player: 'P. Collingwood', over: '41.5' },
+          { wicket: 7, score: 237, player: 'M. Prior', over: '43.2' },
+          { wicket: 8, score: 240, player: 'C. Woakes', over: '44.4' },
+          { wicket: 9, score: 242, player: 'S. Broad', over: '45.5' },
+          { wicket: 10, score: 242, player: 'A. Rashid', over: '48.2' }
+        ]
+      },
+      {
+        teamName: userTeam,
+        inningsNumber: 2,
         totalRuns: 284,
         wickets: 6,
         overs: '50.0',
-        batters: [
-          { order: 1, name: 'T. Warner', dismissal: 'c Smith b Anderson', runs: 68, balls: 74, fours: 7, sixes: 1, strikeRate: 91.9, group: 'Top Order', estimatedSkillGrade: 'Sensational' },
-          { order: 2, name: 'M. Hayden', dismissal: 'lbw b Anderson', runs: 82, balls: 88, fours: 9, sixes: 2, strikeRate: 93.2, group: 'Top Order', estimatedSkillGrade: 'Sensational' },
-          { order: 3, name: 'R. Ponting', dismissal: 'c Keeper b Broad', runs: 45, balls: 42, fours: 5, sixes: 0, strikeRate: 107.1, group: 'Top Order', estimatedSkillGrade: 'Wonderful' },
-          { order: 4, name: 'M. Hussey', dismissal: 'not out', runs: 54, balls: 48, fours: 4, sixes: 1, strikeRate: 112.5, group: 'Middle Order', estimatedSkillGrade: 'Wonderful' },
-          { order: 5, name: 'M. Clarke', dismissal: 'b Rashid', runs: 18, balls: 22, fours: 1, sixes: 0, strikeRate: 81.8, group: 'Middle Order', estimatedSkillGrade: 'Strong' },
-          { order: 6, name: 'A. Symonds', dismissal: 'c Mid-off b Rashid', runs: 11, balls: 14, fours: 1, sixes: 0, strikeRate: 78.6, group: 'Middle Order', estimatedSkillGrade: 'Strong' },
-          { order: 7, name: 'B. Haddin (wk)', dismissal: 'not out', runs: 4, balls: 12, fours: 0, sixes: 0, strikeRate: 33.3, group: 'Lower Order', estimatedSkillGrade: 'Competent' },
-          { order: 8, name: 'B. Lee', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Feeble' },
-          { order: 9, name: 'M. Johnson', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Woeful' },
-          { order: 10, name: 'S. Warne', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Abysmal' },
-          { order: 11, name: 'G. McGrath', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Worthless' }
-        ],
+        batters: buildUserBatters(284),
         bowlers: [
           { order: 1, name: 'J. Anderson (LF)', overs: 10, maidens: 1, runs: 44, wickets: 2, economy: 4.4, isSeam: true },
           { order: 2, name: 'S. Broad (RFM)', overs: 10, maidens: 0, runs: 58, wickets: 1, economy: 5.8, isSeam: true },
@@ -3114,53 +3203,13 @@ export function getExampleMatchDataById(id: string = '32554717'): ParsedBattrick
           { order: 5, name: 'P. Collingwood (5th Bowler - RM)', overs: 10, maidens: 0, runs: 72, wickets: 0, economy: 7.2, isSeam: true }
         ],
         fallOfWickets: [
-          { wicket: 1, score: 142, player: 'T. Warner', over: '24.2' },
-          { wicket: 2, score: 168, player: 'M. Hayden', over: '29.4' },
-          { wicket: 3, score: 215, player: 'R. Ponting', over: '38.1' },
-          { wicket: 4, score: 250, player: 'M. Clarke', over: '43.5' },
-          { wicket: 5, score: 272, player: 'A. Symonds', over: '47.3' }
-        ]
-      },
-      {
-        teamName: 'Southern Vipers CC',
-        inningsNumber: 2,
-        totalRuns: 242,
-        wickets: 10,
-        overs: '46.4',
-        batters: [
-          { order: 1, name: 'A. Cook', dismissal: 'c Haddin b Lee', runs: 78, balls: 84, fours: 8, sixes: 0, strikeRate: 92.8, group: 'Top Order', estimatedSkillGrade: 'Wonderful' },
-          { order: 2, name: 'A. Strauss', dismissal: 'b Johnson', runs: 52, balls: 60, fours: 5, sixes: 1, strikeRate: 86.7, group: 'Top Order', estimatedSkillGrade: 'Wonderful' },
-          { order: 3, name: 'J. Root', dismissal: 'lbw b Warne', runs: 41, balls: 45, fours: 3, sixes: 0, strikeRate: 91.1, group: 'Top Order', estimatedSkillGrade: 'Wonderful' },
-          { order: 4, name: 'K. Pietersen', dismissal: 'c Hussey b McGrath', runs: 28, balls: 24, fours: 3, sixes: 1, strikeRate: 116.7, group: 'Middle Order', estimatedSkillGrade: 'Proficient' },
-          { order: 5, name: 'I. Bell', dismissal: 'c Clarke b Warne', runs: 19, balls: 26, fours: 1, sixes: 0, strikeRate: 73.1, group: 'Middle Order', estimatedSkillGrade: 'Proficient' },
-          { order: 6, name: 'P. Collingwood', dismissal: 'b Lee', runs: 8, balls: 14, fours: 0, sixes: 0, strikeRate: 57.1, group: 'Middle Order', estimatedSkillGrade: 'Competent' },
-          { order: 7, name: 'M. Prior (wk)', dismissal: 'c Haddin b Johnson', runs: 5, balls: 9, fours: 0, sixes: 0, strikeRate: 55.6, group: 'Lower Order', estimatedSkillGrade: 'Feeble' },
-          { order: 8, name: 'C. Woakes', dismissal: 'b McGrath', runs: 4, balls: 8, fours: 0, sixes: 0, strikeRate: 50.0, group: 'Lower Order', estimatedSkillGrade: 'Woeful' },
-          { order: 9, name: 'S. Broad', dismissal: 'lbw b McGrath', runs: 2, balls: 5, fours: 0, sixes: 0, strikeRate: 40.0, group: 'Lower Order', estimatedSkillGrade: 'Abysmal' },
-          { order: 10, name: 'A. Rashid', dismissal: 'b Lee', runs: 1, balls: 3, fours: 0, sixes: 0, strikeRate: 33.3, group: 'Lower Order', estimatedSkillGrade: 'Abysmal' },
-          { order: 11, name: 'J. Anderson', dismissal: 'not out', runs: 0, balls: 2, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Worthless' }
-        ],
-        bowlers: [
-          { order: 1, name: 'B. Lee (RF)', overs: 9.4, maidens: 1, runs: 48, wickets: 3, economy: 4.96, isSeam: true },
-          { order: 2, name: 'G. McGrath (RFM)', overs: 10, maidens: 2, runs: 38, wickets: 3, economy: 3.8, isSeam: true },
-          { order: 3, name: 'M. Johnson (LF)', overs: 9, maidens: 0, runs: 52, wickets: 2, economy: 5.77, isSeam: true },
-          { order: 4, name: 'S. Warne (LBG)', overs: 10, maidens: 0, runs: 46, wickets: 2, economy: 4.6, isSpin: true },
-          { order: 5, name: 'M. Clarke (SLA)', overs: 8, maidens: 0, runs: 54, wickets: 0, economy: 6.75, isSpin: true }
-        ],
-        fallOfWickets: [
-          { wicket: 1, score: 118, player: 'A. Strauss', over: '19.2' },
-          { wicket: 2, score: 154, player: 'A. Cook', over: '26.4' },
-          { wicket: 3, score: 185, player: 'J. Root', over: '32.1' },
-          { wicket: 4, score: 215, player: 'K. Pietersen', over: '37.3' },
-          { wicket: 5, score: 226, player: 'I. Bell', over: '40.2' },
-          { wicket: 6, score: 231, player: 'P. Collingwood', over: '41.5' },
-          { wicket: 7, score: 237, player: 'M. Prior', over: '43.2' },
-          { wicket: 8, score: 240, player: 'C. Woakes', over: '44.4' },
-          { wicket: 9, score: 242, player: 'S. Broad', over: '45.5' },
-          { wicket: 10, score: 242, player: 'A. Rashid', over: '46.4' }
+          { wicket: 1, score: 142, player: 'Opener 1', over: '24.2' },
+          { wicket: 2, score: 168, player: 'Opener 2', over: '29.4' },
+          { wicket: 3, score: 215, player: 'Top Batter', over: '38.1' }
         ]
       }
     ]
   };
 }
+
 
