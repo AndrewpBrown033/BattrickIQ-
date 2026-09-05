@@ -14,6 +14,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend
 } from 'recharts';
 import { generateRealisticHistory, getWeeklyChanges } from '../utils/history';
+import PlayerSkillProjectionChart from './PlayerSkillProjectionChart';
 
 interface PlayerDetailsProps {
   playerId: string | null;
@@ -890,6 +891,15 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
               </div>
 
             </div>
+
+            {/* Normalized Skill Progression & Training Projection Graph */}
+            <PlayerSkillProjectionChart
+              player={player}
+              plannerNets={plannerNets}
+              coachLevel={coachLevel}
+              squadTrainingStamina={squadTrainingStamina}
+              squadTrainingFielding={squadTrainingFielding}
+            />
           </div>
         ) : (
           <div className="flex flex-col gap-6 animate-fadeIn">
@@ -940,84 +950,14 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
               </button>
             </div>
 
-            {/* Bar chart of historical stats, plus a projected bar based on
-                the training nets currently allocated in the simulator above */}
-            <div className="bg-white p-4.5 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-4">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <span className="text-[10px] text-slate-400 font-bold font-mono uppercase tracking-wider flex items-center gap-1.5">
-                  <BarChart2 className="w-4 h-4 text-blue-600" />
-                  Battrick Rating & Salary Growth
-                </span>
-                {trainingForecast.forecasts.length > 0 && (
-                  <span className="text-[9px] font-mono font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
-                    Projected bar reflects {trainingForecast.forecasts.length} active net{trainingForecast.forecasts.length > 1 ? 's' : ''}
-                  </span>
-                )}
-              </div>
-              
-              <div className="h-64 w-full">
-                {player.history && player.history.length > 0 ? (
-                  (() => {
-                    const historyBars = player.history.map(h => ({
-                      label: `S${h.season} W${h.week}`,
-                      rating: h.btRating,
-                      wage: h.wage,
-                      ratingProjected: null as number | null,
-                      wageProjected: null as number | null,
-                    }));
-
-                    // Append one projected bar based on current net allocation,
-                    // labeled with its expected arrival week, so the "actual"
-                    // bars and the "projected" bar sit side by side on the
-                    // same chart.
-                    const chartData = [...historyBars];
-                    if (trainingForecast.forecasts.length > 0) {
-                      const arrival = trainingForecast.projectedArrival;
-                      chartData.push({
-                        label: arrival ? `S${arrival.season} W${arrival.week}*` : 'Projected*',
-                        rating: null as unknown as number,
-                        wage: null as unknown as number,
-                        ratingProjected: trainingForecast.projectedBtr,
-                        wageProjected: trainingForecast.projectedWage,
-                      });
-                    }
-
-                    return (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          data={chartData}
-                          margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                          <XAxis dataKey="label" stroke="#94a3b8" fontSize={9} fontClassName="font-mono" tickLine={false} />
-                          <YAxis yAxisId="rating" stroke="#2563eb" fontSize={9} fontClassName="font-mono" tickLine={false} />
-                          <YAxis yAxisId="wage" orientation="right" stroke="#059669" fontSize={9} fontClassName="font-mono" tickLine={false} />
-                          <Tooltip 
-                            contentStyle={{ backgroundColor: '#0f172a', borderRadius: '8px', border: 'none', color: '#fff' }}
-                            labelStyle={{ color: '#94a3b8', fontFamily: 'monospace', fontSize: '11px' }}
-                            itemStyle={{ fontSize: '11px', fontFamily: 'monospace' }}
-                          />
-                          <Legend wrapperStyle={{ fontSize: '10px', fontFamily: 'monospace' }} />
-                          <Bar yAxisId="rating" dataKey="rating" name="BT Rating" fill="#2563eb" radius={[3, 3, 0, 0]} maxBarSize={28} />
-                          <Bar yAxisId="rating" dataKey="ratingProjected" name="BT Rating (Projected)" fill="#93c5fd" radius={[3, 3, 0, 0]} maxBarSize={28} />
-                          <Bar yAxisId="wage" dataKey="wage" name="Wage" fill="#059669" radius={[3, 3, 0, 0]} maxBarSize={28} />
-                          <Bar yAxisId="wage" dataKey="wageProjected" name="Wage (Projected)" fill="#6ee7b7" radius={[3, 3, 0, 0]} maxBarSize={28} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    );
-                  })()
-                ) : (
-                  <div className="h-full flex items-center justify-center text-slate-400 italic text-xs">
-                    Insufficient historical snapshots to render growth models.
-                  </div>
-                )}
-              </div>
-              {trainingForecast.forecasts.length > 0 && (
-                <p className="text-[9px] text-slate-400 italic -mt-1">
-                  *Projected bar assumes the training nets currently allocated in the simulator above stay constant until the next pop.
-                </p>
-              )}
-            </div>
+            {/* Normalized Skill Progression & Training Projection Graph (Matching user reference) */}
+            <PlayerSkillProjectionChart
+              player={player}
+              plannerNets={plannerNets}
+              coachLevel={coachLevel}
+              squadTrainingStamina={squadTrainingStamina}
+              squadTrainingFielding={squadTrainingFielding}
+            />
 
             {/* Table of historic logs */}
             <div className="flex flex-col gap-2">

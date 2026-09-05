@@ -12,7 +12,7 @@ import LoginPage from './components/LoginPage';
 import AdminDashboard from './components/AdminDashboard';
 import PlayerDetails from './components/PlayerDetails';
 import { onCustomAuthStateChanged, customSignOut, CustomUser } from './lib/customAuth';
-import { Award, Calculator, Users, FolderOpen, Heart, RefreshCw, Landmark, Bot, BookOpen, Trophy, Clock, ShieldAlert, LogOut, Eye, Activity, History } from 'lucide-react';
+import { Award, Calculator, Users, FolderOpen, Heart, RefreshCw, Landmark, Bot, BookOpen, Trophy, Clock, ShieldAlert, LogOut, Eye, Activity, History, LayoutGrid, Wallet, MoreHorizontal, X, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 type TabType = 'summary' | 'sync' | 'squad' | 'lineup' | 'wage' | 'stadium' | 'coach' | 'coach-history' | 'rules' | 'admin' | 'player-details';
@@ -21,6 +21,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('summary');
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [teamName, setTeamName] = useState<string>('My Battrick IQ Club');
+  const [showMobileMore, setShowMobileMore] = useState<boolean>(false);
   
   // Mobile bottom navigation scrolling
   const mobileNavRef = useRef<HTMLDivElement>(null);
@@ -258,27 +259,11 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Theme Toggle Button */}
-            <button
-              type="button"
-              onClick={() => setHighContrast(prev => !prev)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition border cursor-pointer ${
-                highContrast
-                  ? 'bg-slate-900 text-white border-slate-900 hover:bg-black'
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-              }`}
-              title={highContrast ? 'Switch to Pro Blue' : 'Switch to High Contrast'}
-            >
-              <Eye className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden sm:inline">{highContrast ? 'Pro Look' : 'High Contrast'}</span>
-              <span className="sm:hidden">{highContrast ? 'Pro' : 'Contrast'}</span>
-            </button>
-
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {/* Interactive Session Timeout Countdown */}
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-2 py-1 rounded-lg text-[11px] font-mono text-slate-700">
-              <Clock className="w-3 h-3 text-blue-600 animate-pulse shrink-0" />
-              <span className="hidden sm:inline text-[10px] text-slate-400 font-semibold uppercase">Session:</span>
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2 py-1 rounded-lg text-[11px] font-mono text-slate-700">
+              <Clock className="w-3 h-3 text-blue-600 shrink-0" />
+              <span className="hidden md:inline text-[10px] text-slate-400 font-semibold uppercase">Session:</span>
               <span className="font-bold text-slate-800">{formatTime(secondsLeft)}</span>
               <button
                 type="button"
@@ -290,22 +275,47 @@ export default function App() {
               </button>
             </div>
 
-            {/* Team Association Badge */}
-            <div className="hidden sm:flex items-center gap-1.5 bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-lg text-xs font-mono text-blue-700">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
-              <span className="font-bold truncate max-w-[120px]">{teamName}</span>
-            </div>
+            {/* Theme Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setHighContrast(prev => !prev)}
+              className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition border cursor-pointer ${
+                highContrast
+                  ? 'bg-slate-900 text-white border-slate-900 hover:bg-black'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+              }`}
+              title={highContrast ? 'Switch to Pro Blue' : 'Switch to High Contrast'}
+            >
+              <Eye className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">{highContrast ? 'Pro Look' : 'High Contrast'}</span>
+              <span className="sm:hidden">{highContrast ? 'Pro' : 'Contrast'}</span>
+            </button>
+
+            {/* Quick Sync Button */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('sync')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition border cursor-pointer ${
+                activeTab === 'sync'
+                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+              }`}
+              title="Roster & Data Sync Hub"
+            >
+              <RefreshCw className="w-3.5 h-3.5 shrink-0 text-blue-600" />
+              <span>Sync</span>
+            </button>
 
             {/* Log Out Button */}
             <button
               id="btn-header-logout"
               type="button"
               onClick={handleHeaderSignOut}
-              className="flex items-center gap-1.5 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-rose-600 px-2.5 py-1 rounded-lg text-xs font-bold font-mono transition duration-150 cursor-pointer shadow-sm"
+              className="flex items-center gap-1.5 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-rose-600 px-2 sm:px-2.5 py-1 rounded-lg text-xs font-bold font-mono transition duration-150 cursor-pointer shadow-sm"
               title="Sign Out of BattrickIQ Cloud"
             >
               <LogOut className="w-3.5 h-3.5 shrink-0 text-rose-500" />
-              <span>Log Out</span>
+              <span className="hidden sm:inline">Log Out</span>
             </button>
           </div>
         </div>
@@ -404,7 +414,7 @@ export default function App() {
           <main className="lg:col-span-9 flex flex-col gap-6 min-h-[600px]">
             
             {/* Elegant Dynamic Page Title Header */}
-            {activeTab !== 'player-details' && (
+            {activeTab !== 'player-details' && activeTab !== 'summary' && (
               <div className="bg-white border border-slate-200/80 rounded-xl px-6 py-4.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-display font-black text-slate-900 tracking-tight flex items-center gap-2">
@@ -500,39 +510,224 @@ export default function App() {
       {/* Mobile Friendly Sticky Bottom Navigation Bar */}
       <div 
         ref={mobileNavRef}
-        className={`fixed bottom-0 left-0 right-0 border-t z-50 lg:hidden px-2.5 py-2 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] transition-colors duration-150 ${
+        className={`fixed bottom-0 left-0 right-0 border-t z-50 lg:hidden px-2 py-1.5 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] transition-colors duration-150 ${
           highContrast 
             ? 'bg-white border-black text-black' 
-            : 'bg-white/95 backdrop-blur-md border-slate-200/85'
+            : 'bg-white/98 backdrop-blur-md border-slate-200'
         }`}
       >
-        <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-none snap-x justify-start sm:justify-center">
-          {tabs.map((tab) => {
-            const isActive = activeTab === tab.id || (tab.id === 'squad' && activeTab === 'player-details');
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                data-active={isActive ? "true" : "false"}
-                className={`flex flex-col items-center justify-center min-w-[76px] py-1 px-2 rounded-xl transition-all duration-150 snap-start cursor-pointer border ${
-                  isActive
-                    ? highContrast
-                      ? 'text-black bg-slate-100 border-black font-black'
-                      : 'text-blue-600 bg-blue-50/60 border-blue-100 font-bold'
-                    : highContrast
-                      ? 'text-slate-750 border-transparent font-semibold'
-                      : 'text-slate-500 hover:text-slate-900 border-transparent font-medium'
-                }`}
-              >
-                <div className="mb-0.5">
-                  {tab.icon}
-                </div>
-                <span className="text-[10px] whitespace-nowrap tracking-tight">{tab.label}</span>
-              </button>
-            );
-          })}
+        <div className="grid grid-cols-6 gap-1 max-w-md mx-auto items-center">
+          {/* 1. Overview */}
+          <button
+            type="button"
+            onClick={() => { setActiveTab('summary'); setShowMobileMore(false); }}
+            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
+              activeTab === 'summary' && !showMobileMore
+                ? 'bg-[#e8edf2] text-slate-900 font-semibold shadow-2xs'
+                : 'text-slate-500 hover:text-slate-900 font-medium'
+            }`}
+          >
+            <LayoutGrid className="w-5 h-5 mb-0.5" />
+            <span className="text-[11px] leading-tight">Overview</span>
+          </button>
+
+          {/* 2. Squad */}
+          <button
+            type="button"
+            onClick={() => { setActiveTab('squad'); setShowMobileMore(false); }}
+            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
+              (activeTab === 'squad' || activeTab === 'player-details') && !showMobileMore
+                ? 'bg-[#e8edf2] text-slate-900 font-semibold shadow-2xs'
+                : 'text-slate-500 hover:text-slate-900 font-medium'
+            }`}
+          >
+            <Users className="w-5 h-5 mb-0.5" />
+            <span className="text-[11px] leading-tight">Squad</span>
+          </button>
+
+          {/* 3. Match XI */}
+          <button
+            type="button"
+            onClick={() => { setActiveTab('lineup'); setShowMobileMore(false); }}
+            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
+              activeTab === 'lineup' && !showMobileMore
+                ? 'bg-[#e8edf2] text-slate-900 font-semibold shadow-2xs'
+                : 'text-slate-500 hover:text-slate-900 font-medium'
+            }`}
+          >
+            <Activity className="w-5 h-5 mb-0.5" />
+            <span className="text-[11px] leading-tight whitespace-nowrap">Match XI</span>
+          </button>
+
+          {/* 4. Finances */}
+          <button
+            type="button"
+            onClick={() => { setActiveTab('wage'); setShowMobileMore(false); }}
+            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
+              activeTab === 'wage' && !showMobileMore
+                ? 'bg-[#e8edf2] text-slate-900 font-semibold shadow-2xs'
+                : 'text-slate-500 hover:text-slate-900 font-medium'
+            }`}
+          >
+            <Wallet className="w-5 h-5 mb-0.5" />
+            <span className="text-[11px] leading-tight">Finances</span>
+          </button>
+
+          {/* 5. Ground */}
+          <button
+            type="button"
+            onClick={() => { setActiveTab('stadium'); setShowMobileMore(false); }}
+            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
+              activeTab === 'stadium' && !showMobileMore
+                ? 'bg-[#e8edf2] text-slate-900 font-semibold shadow-2xs'
+                : 'text-slate-500 hover:text-slate-900 font-medium'
+            }`}
+          >
+            <Landmark className="w-5 h-5 mb-0.5" />
+            <span className="text-[11px] leading-tight">Ground</span>
+          </button>
+
+          {/* 6. More */}
+          <button
+            type="button"
+            onClick={() => setShowMobileMore(prev => !prev)}
+            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
+              showMobileMore || ['coach', 'sync', 'rules', 'admin'].includes(activeTab)
+                ? 'bg-[#e8edf2] text-slate-900 font-semibold shadow-2xs'
+                : 'text-slate-500 hover:text-slate-900 font-medium'
+            }`}
+          >
+            <MoreHorizontal className="w-5 h-5 mb-0.5" />
+            <span className="text-[11px] leading-tight">More</span>
+          </button>
         </div>
       </div>
+
+      {/* Mobile "More" Slide-up Drawer */}
+      <AnimatePresence>
+        {showMobileMore && (
+          <div className="fixed inset-0 z-50 lg:hidden flex flex-col justify-end">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowMobileMore(false)}
+              className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs"
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 280 }}
+              className="relative bg-white border-t border-slate-200 rounded-t-3xl p-5 shadow-2xl z-10 max-h-[80vh] overflow-y-auto mb-16"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <MoreHorizontal className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-display font-bold text-sm text-slate-900">More Tools & Management</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowMobileMore(false)}
+                  className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5 mt-4">
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('coach'); setShowMobileMore(false); }}
+                  className={`flex items-center gap-3 p-3 rounded-xl border text-left transition cursor-pointer ${
+                    activeTab === 'coach'
+                      ? 'bg-blue-50/80 border-blue-200 text-blue-900 font-bold'
+                      : 'bg-slate-50/70 border-slate-200/80 text-slate-800 hover:bg-slate-100'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                    <Bot className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold">Tactical AI</div>
+                    <div className="text-[10px] text-slate-500">Coach Jarvis</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('sync'); setShowMobileMore(false); }}
+                  className={`flex items-center gap-3 p-3 rounded-xl border text-left transition cursor-pointer ${
+                    activeTab === 'sync'
+                      ? 'bg-blue-50/80 border-blue-200 text-blue-900 font-bold'
+                      : 'bg-slate-50/70 border-slate-200/80 text-slate-800 hover:bg-slate-100'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                    <RefreshCw className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold">Roster Sync</div>
+                    <div className="text-[10px] text-slate-500">Import Data</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('rules'); setShowMobileMore(false); }}
+                  className={`flex items-center gap-3 p-3 rounded-xl border text-left transition cursor-pointer ${
+                    activeTab === 'rules'
+                      ? 'bg-blue-50/80 border-blue-200 text-blue-900 font-bold'
+                      : 'bg-slate-50/70 border-slate-200/80 text-slate-800 hover:bg-slate-100'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                    <BookOpen className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold">Club Rules</div>
+                    <div className="text-[10px] text-slate-500">Tactics & Setup</div>
+                  </div>
+                </button>
+
+                {user?.role === 'admin' && (
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTab('admin'); setShowMobileMore(false); }}
+                    className={`flex items-center gap-3 p-3 rounded-xl border text-left transition cursor-pointer ${
+                      activeTab === 'admin'
+                        ? 'bg-blue-50/80 border-blue-200 text-blue-900 font-bold'
+                        : 'bg-slate-50/70 border-slate-200/80 text-slate-800 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                      <Trophy className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold">Admin Suite</div>
+                      <div className="text-[10px] text-slate-500">Telemetry</div>
+                    </div>
+                  </button>
+                )}
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                <span className="text-xs text-slate-500 font-mono truncate max-w-[180px]">{user?.email}</span>
+                <button
+                  type="button"
+                  onClick={() => { setShowMobileMore(false); handleHeaderSignOut(); }}
+                  className="flex items-center gap-1.5 text-xs text-rose-600 hover:text-rose-700 font-bold font-mono px-2.5 py-1.5 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Log Out</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

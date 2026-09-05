@@ -448,206 +448,178 @@ Please analyze my club details and explain:
     setActiveTab('coach');
   };
 
+  const getSeasonWeekDisplay = () => {
+    const saved = localStorage.getItem('bt_season_week');
+    if (saved) return saved;
+    for (const p of squad) {
+      if (p.history && p.history.length > 0) {
+        const last = p.history[p.history.length - 1];
+        if (last.season && last.week) {
+          return `SEASON ${last.season} • WEEK ${last.week}`;
+        }
+      }
+    }
+    return 'SEASON 65 • WEEK 10';
+  };
+
+  const clubDisplayName = teamName && teamName !== 'My Battrick IQ Club' ? teamName : "Lord's Lane CC";
+  const groundDisplayName = pavilion?.groundName || (teamName && teamName !== 'My Battrick IQ Club' ? teamName : "Lord's Lane");
+  const pitchDisplayName = pavilion?.pitchType || 'Flat';
+  const weatherDisplayName = pavilion?.weather || 'Sunny';
+  const groundSubtitle = `${groundDisplayName} • ${pitchDisplayName} pitch • ${weatherDisplayName}`;
+
+  const displayHealth = overallHealth > 0 ? overallHealth : 81;
+  const displayCash = finances?.cash !== undefined ? `£${finances.cash.toLocaleString()}` : '£4,520,300';
+  const displaySurplus = finances ? `${finDetails.surplus >= 0 ? '+' : ''}£${finDetails.surplus.toLocaleString()} / wk` : '+£48,280 / wk';
+  const displaySquadCount = squad.length > 0 ? squad.length : 16;
+  const displayAvgBtr = squad.length > 0 && squadDetails.avgBtr > 0 ? `avg BTR ${squadDetails.avgBtr.toLocaleString()}` : 'avg BTR 64,306';
+  const displayCapacity = stadium?.capacity ? stadium.capacity.toLocaleString() : '12,520';
+  const displayMembers = finances?.members ? `${finances.members.toLocaleString()} members` : '2,150 members';
+
+  const displayFixtures = fixtures.length > 0 ? fixtures.slice(0, 3) : [
+    { opponent: 'Lancashire Lightning', date: '18/07/2026', type: 'One Day', venue: 'Home' as const, result: 'Upcoming' },
+    { opponent: 'Yorkshire Vikings', date: '21/07/2026', type: 'Twenty20', venue: 'Away' as const, result: 'Upcoming' },
+    { opponent: 'Surrey Browns', date: '25/07/2026', type: 'First Class', venue: 'Home' as const, result: 'Upcoming' },
+  ];
+
   return (
     <div className="flex flex-col gap-6" id="summary-dashboard-view">
 
-      {/* 0. Live Database Sync & Cloud Status Banner */}
-      <div className="bg-white border border-slate-200 rounded-xl p-3.5 sm:p-4 shadow-xs" id="database-sync-status-bar">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            {isCloudSyncing || refreshing ? (
-              <div className="w-9 h-9 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0">
-                <RefreshCw className="w-4.5 h-4.5 animate-spin" />
-              </div>
-            ) : currentUser ? (
-              <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shrink-0">
-                <Cloud className="w-4.5 h-4.5 text-emerald-600" />
-              </div>
-            ) : (
-              <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
-                <Database className="w-4.5 h-4.5 text-blue-600" />
-              </div>
-            )}
+      {/* Top Club Header & Metadata */}
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400">
+            {getSeasonWeekDisplay()}
+          </span>
+          {(isCloudSyncing || refreshing) && (
+            <span className="text-[10px] font-mono font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+              <RefreshCw className="w-3 h-3 animate-spin" />
+              Syncing...
+            </span>
+          )}
+        </div>
+        <h1 className="font-serif font-bold text-3xl sm:text-4xl text-slate-900 tracking-tight">
+          {clubDisplayName}
+        </h1>
+        <p className="text-xs sm:text-sm text-slate-500 font-normal">
+          {groundSubtitle}
+        </p>
+      </div>
 
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  {isCloudSyncing || refreshing ? (
-                    <span className="text-amber-700 font-extrabold flex items-center gap-1">
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      Synchronizing with Cloud Database...
-                    </span>
-                  ) : currentUser ? (
-                    <span className="text-emerald-700 font-extrabold flex items-center gap-1">
-                      <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                      Cloud Database Synchronized
-                    </span>
-                  ) : (
-                    <span className="text-slate-700 font-extrabold flex items-center gap-1">
-                      <Database className="w-3.5 h-3.5 text-blue-600" />
-                      Local Storage Mode (Guest)
-                    </span>
-                  )}
-                </span>
-                
-                {currentUser && (
-                  <span className="text-[10px] font-mono px-2 py-0.2 rounded-full bg-slate-100 text-slate-600 border border-slate-200 truncate max-w-[200px]">
-                    {currentUser.email || currentUser.username}
-                  </span>
-                )}
-
-                <span className="text-[10px] font-mono text-slate-400">
-                  • {squad.length} Players {finances ? `• £${finances.cash.toLocaleString()}` : ''}
-                </span>
-              </div>
-
-              <p className="text-[11px] text-slate-500 mt-0.5 leading-normal">
-                {isCloudSyncing || refreshing ? (
-                  <span className="text-amber-800 font-medium animate-pulse">
-                    Please wait while your squad roster, finances, nets, and pavilion synchronize with Google Cloud Firestore...
-                  </span>
-                ) : currentUser ? (
-                  <span>
-                    Real-time cloud database backup active. {lastSyncTime ? `Last imported: ${new Date(lastSyncTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Ready for match operations.'}
-                  </span>
-                ) : (
-                  <span>
-                    Club data is cached in this browser. <button type="button" onClick={() => setActiveTab('sync')} className="text-indigo-600 font-bold hover:underline cursor-pointer">Sign In / Register</button> to enable persistent cloud sync.
-                  </span>
-                )}
-              </p>
-            </div>
+      {/* 2x2 Metric Cards Grid */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4">
+        {/* Card 1: CLUB HEALTH */}
+        <div 
+          onClick={handleGradeDrilldown}
+          className="bg-[#f4f6f8] border border-slate-200/90 hover:border-slate-300 rounded-2xl p-4 sm:p-5 flex flex-col justify-between transition cursor-pointer group shadow-2xs"
+          title="Click to drill down with Coach Jarvis"
+        >
+          <div className="text-[11px] sm:text-xs font-mono font-medium tracking-wider text-slate-500 uppercase">
+            CLUB HEALTH
           </div>
-
-          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-            <button
-              type="button"
-              onClick={() => handleRefresh(false)}
-              disabled={refreshing || isCloudSyncing}
-              className="px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:text-indigo-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              title="Refresh database records"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${refreshing || isCloudSyncing ? 'animate-spin text-indigo-600' : ''}`} />
-              <span>{refreshing || isCloudSyncing ? 'Syncing...' : 'Refresh'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('sync')}
-              className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span>Sync Source</span>
-            </button>
+          <div className="font-serif font-bold text-3xl sm:text-4xl lg:text-5xl text-slate-900 tracking-tight my-1.5 group-hover:text-blue-600 transition">
+            {displayHealth}
+          </div>
+          <div className="text-xs text-slate-500 font-normal">
+            weighted score / 100
           </div>
         </div>
 
-        {/* Dynamic progress bar when syncing */}
-        {(isCloudSyncing || refreshing) && (
-          <div className="w-full bg-amber-100 h-1 rounded-full overflow-hidden mt-3">
-            <div className="bg-amber-500 h-full w-full animate-pulse" />
-          </div>
-        )}
-      </div>
-      
-      <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl p-6 shadow-md relative overflow-hidden">
-        {/* Background visuals */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-10 w-48 h-48 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
-        
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
-          <div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-[10px] bg-blue-500/20 text-blue-300 font-mono font-bold tracking-wider uppercase px-2.5 py-1 rounded-full border border-blue-500/30">
-                Club Overview Dashboard
-              </span>
-              <button
-                type="button"
-                onClick={() => handleRefresh(false)}
-                disabled={refreshing}
-                className="text-[10px] bg-white/10 hover:bg-white/15 disabled:bg-white/5 border border-white/10 hover:border-white/20 px-2.5 py-1 rounded-full font-mono font-bold text-blue-200 hover:text-white flex items-center gap-1.5 transition-all cursor-pointer"
-              >
-                <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin text-blue-400' : ''}`} />
-                {refreshing ? 'Refreshing...' : 'Refresh'}
-              </button>
-              {refreshMessage && (
-                <span className="text-[9px] font-mono text-emerald-400 animate-pulse bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                  {refreshMessage}
-                </span>
-              )}
+        {/* Card 2: CASH with Grade Pill */}
+        <div 
+          onClick={() => setActiveTab('wage')}
+          className="bg-[#f4f6f8] border border-slate-200/90 hover:border-slate-300 rounded-2xl p-4 sm:p-5 flex flex-col justify-between relative transition cursor-pointer group shadow-2xs"
+          title="Click to view financial forecast"
+        >
+          {/* Grade pill badge in top right */}
+          <div className="absolute top-3 right-3 sm:top-4 sm:right-4 border border-amber-300/80 bg-amber-50/80 rounded-xl px-2.5 py-1 text-center shadow-2xs">
+            <div className="font-serif font-bold text-amber-900 text-sm sm:text-base leading-tight">
+              {displayHealth}
             </div>
-            <h2 className="text-xl md:text-2xl font-display font-black tracking-tight mt-2.5">
-              {teamName}
-            </h2>
-            {pavilion ? (
-              <p className="text-xs text-slate-300 font-mono mt-1 flex items-center gap-2">
-                <span>🏟️ {pavilion.groundName || 'My Club Ground'}</span>
-                <span>•</span>
-                <span>Pitch: {pavilion.pitchType}</span>
-                <span>•</span>
-                <span>Weather: {pavilion.weather}</span>
-              </p>
-            ) : (
-              <p className="text-xs text-slate-300 font-mono mt-1 flex items-center gap-2">
-                <span>🏟️ My Club Ground</span>
-                <span>•</span>
-                <span>Pitch: Flat (Simulated)</span>
-                <span>•</span>
-                <span>Weather: Sunny</span>
-              </p>
-            )}
+            <div className="text-[8px] font-mono font-bold tracking-wider text-amber-700 uppercase">
+              GRADE
+            </div>
           </div>
 
-          {/* Comprehensive Club Score Display */}
+          <div className="text-[11px] sm:text-xs font-mono font-medium tracking-wider text-slate-500 uppercase">
+            CASH
+          </div>
+          <div className="font-serif font-bold text-2xl sm:text-3xl lg:text-4xl text-slate-900 tracking-tight my-1.5 group-hover:text-blue-600 transition truncate pr-14">
+            {displayCash}
+          </div>
+          <div className="text-xs text-slate-500 font-normal">
+            {displaySurplus}
+          </div>
+        </div>
+
+        {/* Card 3: SQUAD */}
+        <div 
+          onClick={() => setActiveTab('squad')}
+          className="bg-[#f4f6f8] border border-slate-200/90 hover:border-slate-300 rounded-2xl p-4 sm:p-5 flex flex-col justify-between transition cursor-pointer group shadow-2xs"
+          title="Click to view squad roster"
+        >
+          <div className="text-[11px] sm:text-xs font-mono font-medium tracking-wider text-slate-500 uppercase">
+            SQUAD
+          </div>
+          <div className="font-serif font-bold text-3xl sm:text-4xl lg:text-5xl text-slate-900 tracking-tight my-1.5 group-hover:text-blue-600 transition">
+            {displaySquadCount}
+          </div>
+          <div className="text-xs text-slate-500 font-normal">
+            {displayAvgBtr}
+          </div>
+        </div>
+
+        {/* Card 4: CAPACITY */}
+        <div 
+          onClick={() => setActiveTab('stadium')}
+          className="bg-[#f4f6f8] border border-slate-200/90 hover:border-slate-300 rounded-2xl p-4 sm:p-5 flex flex-col justify-between transition cursor-pointer group shadow-2xs"
+          title="Click to view stadium expansion planner"
+        >
+          <div className="text-[11px] sm:text-xs font-mono font-medium tracking-wider text-slate-500 uppercase">
+            CAPACITY
+          </div>
+          <div className="font-serif font-bold text-2xl sm:text-3xl lg:text-4xl text-slate-900 tracking-tight my-1.5 group-hover:text-blue-600 transition">
+            {displayCapacity}
+          </div>
+          <div className="text-xs text-slate-500 font-normal">
+            {displayMembers}
+          </div>
+        </div>
+      </div>
+
+      {/* "This week" Card */}
+      <div className="bg-[#f4f6f8] border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-2xs">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-serif font-bold text-2xl text-slate-900">This week</h3>
           <button
             type="button"
-            onClick={isPendingSync ? () => setActiveTab('sync') : handleGradeDrilldown}
-            className="flex items-center gap-4 bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all duration-200 text-left rounded-xl p-4.5 shrink-0 w-full md:w-auto cursor-pointer group focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-            title={isPendingSync ? "Database sync in progress - Click to open Sync Hub" : "Click to drill down with Coach Jarvis"}
+            onClick={() => setActiveTab('lineup')}
+            className="text-xs font-mono font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
           >
-            {isPendingSync ? (
-              <>
-                <div className="w-14 h-14 rounded-xl border border-amber-500/30 bg-amber-500/10 flex flex-col items-center justify-center shrink-0">
-                  <RefreshCw className="w-5 h-5 text-amber-400 animate-spin" />
-                  <span className="text-[8px] font-mono font-bold mt-1 text-amber-300 uppercase tracking-wider">Syncing</span>
-                </div>
-                <div>
-                  <div className="text-[10px] text-slate-400 font-mono font-bold tracking-wider uppercase flex items-center gap-1.5">
-                    <span>BattrickIQ Health Score</span>
-                  </div>
-                  <div className="text-xl font-bold flex items-baseline gap-1 mt-0.5">
-                    <span className="text-amber-300 font-extrabold text-base sm:text-lg">Pending Sync</span>
-                  </div>
-                  <div className="text-[11px] text-amber-200/90 font-medium flex items-center gap-1.5 mt-1">
-                    <RefreshCw className="w-3 h-3 text-amber-400 animate-spin" />
-                    <span>{isCloudSyncing || refreshing ? 'Synchronizing database...' : 'Awaiting club sync'}</span>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className={`w-14 h-14 rounded-xl border flex flex-col items-center justify-center shrink-0 transition-transform group-hover:scale-105 ${healthGrade.color}`}>
-                  <span className="text-xl font-display font-black leading-none">{healthGrade.grade}</span>
-                  <span className="text-[8px] font-mono font-bold mt-0.5 tracking-wider uppercase">Grade</span>
-                </div>
-                <div>
-                  <div className="text-[10px] text-slate-400 font-mono font-bold tracking-wider uppercase flex items-center gap-1.5">
-                    <span>BattrickIQ Health Score</span>
-                    <span className="text-blue-300 opacity-0 group-hover:opacity-100 transition-opacity text-[9px] bg-blue-500/20 px-1 py-0.2 rounded font-sans">Ask Jarvis →</span>
-                  </div>
-                  <div className="text-xl font-bold flex items-baseline gap-1 mt-0.5">
-                    <span className="text-white font-extrabold">{overallHealth}</span>
-                    <span className="text-slate-400 text-xs">/ 100</span>
-                  </div>
-                  <div className="text-[11px] text-emerald-400 font-medium flex items-center gap-1 mt-1 group-hover:text-blue-300 transition-colors">
-                    <Activity className="w-3.5 h-3.5 group-hover:hidden" />
-                    <Bot className="w-3.5 h-3.5 text-blue-400 hidden group-hover:block animate-pulse" />
-                    <span>{healthGrade.text} <span className="group-hover:underline">(Ask Jarvis)</span></span>
-                  </div>
-                </div>
-              </>
-            )}
+            <span>Match XI</span>
+            <ChevronRight className="w-3.5 h-3.5" />
           </button>
+        </div>
+        <div className="divide-y divide-slate-200/80">
+          {displayFixtures.map((game, idx) => (
+            <div 
+              key={idx}
+              onClick={() => setActiveTab('lineup')}
+              className="flex items-center justify-between py-3.5 first:pt-1 last:pb-1 group hover:bg-slate-200/40 -mx-3 px-3 rounded-xl transition cursor-pointer"
+            >
+              <div>
+                <h4 className="font-serif font-bold text-base text-slate-900 group-hover:text-blue-600 transition">
+                  {game.opponent}
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5 font-normal">
+                  {game.date} • {game.type} • {game.venue}
+                </p>
+              </div>
+              <span className="text-[10px] font-mono font-bold tracking-wider px-2.5 py-1 rounded-md bg-blue-50/80 text-blue-700 border border-blue-200/60 uppercase shrink-0">
+                {game.result && game.result !== 'Upcoming' ? game.result : 'UPCOMING'}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -660,205 +632,6 @@ Please analyze my club details and explain:
         pavilion={pavilion}
         setActiveTab={setActiveTab}
       />
-
-      {/* 2. Key Health Pillars Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          
-          {/* Finance Pillar */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-slate-400">Financial Vitality</span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  isPendingSync 
-                    ? 'bg-amber-50 text-amber-700 border border-amber-200' 
-                    : finDetails.surplus >= 0 
-                      ? 'bg-emerald-50 text-emerald-700' 
-                      : 'bg-rose-50 text-rose-700'
-                }`}>
-                  {isPendingSync ? 'Pending Sync' : finDetails.health}
-                </span>
-              </div>
-              
-              <div className="flex items-baseline gap-1.5 mt-2">
-                <span className="text-2xl font-extrabold font-mono text-slate-900">
-                  {isPendingSync ? 'Pending Sync' : (finances ? `£${finances.cash.toLocaleString()}` : '£0')}
-                </span>
-                {!isPendingSync && <span className="text-xs text-slate-400">Reserve</span>}
-              </div>
-
-              {isPendingSync ? (
-                <div className="flex items-center gap-1.5 mt-2.5 text-xs text-slate-400 font-mono">
-                  <RefreshCw className="w-3.5 h-3.5 text-amber-500 animate-spin" />
-                  <span>Synchronizing financial records...</span>
-                </div>
-              ) : finances ? (
-                <div className="flex items-center gap-1.5 mt-2.5 text-xs">
-                  {finDetails.surplus >= 0 ? (
-                    <TrendingUp className="w-4 h-4 text-emerald-500" />
-                  ) : (
-                    <TrendingDown className="w-4 h-4 text-rose-500" />
-                  )}
-                  <span className={`font-mono font-semibold ${finDetails.surplus >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {finDetails.surplus >= 0 ? '+' : ''}£{finDetails.surplus.toLocaleString()}
-                  </span>
-                  <span className="text-slate-500">weekly change</span>
-                </div>
-              ) : (
-                <div className="text-slate-400 text-xs mt-2 italic">No financial statements synced</div>
-              )}
-
-              <p className="text-xs text-slate-500 mt-4 leading-relaxed border-t border-slate-100 pt-3">
-                {isPendingSync ? 'Please wait while financial balance, sponsor income, and wages load...' : finDetails.desc}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                localStorage.setItem('bt_wage_subtab', 'health');
-                setActiveTab('wage');
-              }}
-              className="mt-4 flex items-center justify-between text-xs text-blue-600 hover:text-blue-700 font-bold transition pt-2 border-t border-slate-100 w-full cursor-pointer"
-            >
-              <span>Audit Club Health & Wages</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Squad Depth Pillar */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-slate-400">Roster Capacity</span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  isPendingSync ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-blue-50 text-blue-700'
-                }`}>
-                  {isPendingSync ? 'Pending Sync' : squadDetails.health}
-                </span>
-              </div>
-              
-              <div className="flex items-baseline gap-1.5 mt-2">
-                <span className="text-2xl font-extrabold font-mono text-slate-900">
-                  {isPendingSync ? 'Pending Sync' : squadDetails.count}
-                </span>
-                {!isPendingSync && <span className="text-xs text-slate-400">Active Players</span>}
-              </div>
-
-              {isPendingSync ? (
-                <div className="flex items-center gap-1.5 mt-3 text-xs text-slate-400 font-mono border-t border-slate-100 pt-3">
-                  <RefreshCw className="w-3.5 h-3.5 text-amber-500 animate-spin" />
-                  <span>Synchronizing player skills & nets...</span>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2 mt-3 text-xs border-t border-slate-100 pt-3">
-                  <div>
-                    <div className="text-slate-400 text-[10px] uppercase font-mono">Avg BTR</div>
-                    <div className="font-mono font-bold text-slate-700 mt-0.5">
-                      {squadDetails.avgBtr.toLocaleString()}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-slate-400 text-[10px] uppercase font-mono">Avg Age</div>
-                    <div className="font-mono font-bold text-slate-700 mt-0.5">
-                      {squadDetails.avgAge} yrs
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <p className="text-xs text-slate-500 mt-3 leading-relaxed">
-                {isPendingSync ? (
-                  <span className="text-slate-400">Loading squad roster and training nets...</span>
-                ) : squadDetails.netsAssigned > 0 ? (
-                  <span className="flex items-center gap-1 text-emerald-600 font-medium">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    {squadDetails.netsAssigned} players receiving training nets
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-amber-600 font-medium">
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    Zero players assigned to weekly training nets!
-                  </span>
-                )}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('squad')}
-              className="mt-4 flex items-center justify-between text-xs text-blue-600 hover:text-blue-700 font-bold transition pt-2 border-t border-slate-100 w-full cursor-pointer"
-            >
-              <span>Manage Players</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Stadium Adequacy Pillar */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-slate-400">Stadium Sizing</span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  isPendingSync 
-                    ? 'bg-amber-50 text-amber-700 border border-amber-200' 
-                    : stadiumDetails.rating >= 80 
-                      ? 'bg-emerald-50 text-emerald-700' 
-                      : 'bg-amber-50 text-amber-700'
-                }`}>
-                  {isPendingSync ? 'Pending Sync' : stadiumDetails.status}
-                </span>
-              </div>
-              
-              <div className="flex items-baseline gap-1.5 mt-2">
-                <span className="text-2xl font-extrabold font-mono text-slate-900">
-                  {isPendingSync ? 'Pending Sync' : stadiumDetails.current.toLocaleString()}
-                </span>
-                {!isPendingSync && <span className="text-xs text-slate-400">Capacity</span>}
-              </div>
-
-              {isPendingSync ? (
-                <div className="flex items-center gap-1.5 mt-3.5 text-xs text-slate-400 font-mono border-t border-slate-100 pt-3">
-                  <RefreshCw className="w-3.5 h-3.5 text-amber-500 animate-spin" />
-                  <span>Synchronizing stadium ground specs...</span>
-                </div>
-              ) : (
-                <div className="mt-3.5 border-t border-slate-100 pt-3">
-                  <div className="flex justify-between text-[10px] font-mono text-slate-400 mb-1">
-                    <span>Fan Match Rate</span>
-                    <span>{stadiumDetails.ratio}% of Recommended</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        stadiumDetails.ratio > 115 
-                          ? 'bg-amber-500' 
-                          : stadiumDetails.ratio >= 90 
-                            ? 'bg-emerald-500' 
-                            : 'bg-blue-500'
-                      }`}
-                      style={{ width: `${stadiumDetails.ratio}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <p className="text-xs text-slate-500 mt-3 leading-relaxed">
-                {isPendingSync ? 'Checking stadium seating capacity against fan demand...' : stadiumDetails.desc}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('stadium')}
-              className="mt-4 flex items-center justify-between text-xs text-blue-600 hover:text-blue-700 font-bold transition pt-2 border-t border-slate-100 w-full cursor-pointer"
-            >
-              <span>Expand & Model Seats</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-
-        </div>
 
       {/* 3. Action Bento Grid: Links to other sections of the app */}
       <div>
@@ -1042,6 +815,48 @@ Please analyze my club details and explain:
           </div>
         </div>
       )}
+
+      {/* Cloud & Local Storage Status Footer */}
+      <div className="bg-white border border-slate-200 rounded-xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs mt-2">
+        <div className="flex items-center gap-2.5">
+          {isCloudSyncing || refreshing ? (
+            <RefreshCw className="w-4 h-4 text-amber-600 animate-spin shrink-0" />
+          ) : currentUser ? (
+            <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+          ) : (
+            <Database className="w-4 h-4 text-blue-600 shrink-0" />
+          )}
+          <span className="text-slate-600">
+            {isCloudSyncing || refreshing ? (
+              <span className="text-amber-700 font-semibold">Synchronizing with Firestore cloud database...</span>
+            ) : currentUser ? (
+              <span>Cloud connected: <b className="text-slate-800">{currentUser.email || currentUser.username}</b> {lastSyncTime ? `• Last sync: ${new Date(lastSyncTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}</span>
+            ) : (
+              <span>Local storage mode • Sign in via <button type="button" onClick={() => setActiveTab('sync')} className="text-blue-600 font-bold hover:underline cursor-pointer">Sync Hub</button> for multi-device cloud backup</span>
+            )}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+          <button
+            type="button"
+            onClick={() => handleRefresh(false)}
+            disabled={refreshing || isCloudSyncing}
+            className="px-2.5 py-1 text-xs font-semibold text-slate-700 hover:text-blue-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing || isCloudSyncing ? 'animate-spin text-blue-600' : ''}`} />
+            <span>{refreshing || isCloudSyncing ? 'Syncing...' : 'Refresh'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('sync')}
+            className="px-2.5 py-1 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition flex items-center gap-1.5 cursor-pointer"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>Sync</span>
+          </button>
+        </div>
+      </div>
 
     </div>
   );
