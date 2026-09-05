@@ -3522,8 +3522,10 @@ export function extractOpponentTeamNameFromSquadHtml(content: string): string | 
       if (found) return found;
     }
 
-    // 2. A link back to the team's own club/squad page usually carries the name as its text.
-    const selfLink = doc.querySelector('a[href*="club.asp?teamID="], a[href*="squad.asp?teamID="]');
+    // 2. A link back to the team's own office/club page usually carries the name as its text.
+    // Battrick's real squad page links the club name to office.asp?teamID=..., e.g.
+    // "[Darlington Stripes](https://www.battrick.org/nl/office.asp?teamID=4327) » Squad"
+    const selfLink = doc.querySelector('a[href*="office.asp?teamID="], a[href*="club.asp?teamID="], a[href*="squad.asp?teamID="]');
     const linkName = clean(selfLink?.textContent);
     if (linkName) return linkName;
 
@@ -3581,7 +3583,7 @@ export function parseOpponentSquad(content: string, overrideTeamName?: string, o
 
         // BTR
         const btrEl = pDiv.querySelector('.player_btr');
-        const btrMatch = btrEl?.textContent?.replace(/,/g, '') || fullText.match(/BT\s*Rating\s*=\s*([0-9,]+)/i)?.[1].replace(/,/g, '');
+        const btrMatch = btrEl?.textContent?.replace(/,/g, '') || fullText.match(/BT\s*(?:\(Battrick\)\s*)?Rating\s*=\s*([0-9,]+)/i)?.[1].replace(/,/g, '');
         const btRating = btrMatch ? parseInt(btrMatch, 10) : 5000;
 
         // Wage
@@ -3695,9 +3697,126 @@ export function parseOpponentSquad(content: string, overrideTeamName?: string, o
     }
   }
 
-  // Fallback if regex parsing is needed
+  // 2. Fallback for Battrick's real squad.asp markup, which lists players as flat
+  // paragraphs with no per-player wrapper div, e.g.:
+  //   "Nicky Alfred - 20 yo, BT (Battrick) Rating=121,808, Wage=£26,573
+  //    A cautious RH batter and a defensive RFM bowler.
+  //    He has woeful leadership skills and worthless experience.
+  //    He currently has superb batting form, superb bowling form and invigorated fitness."
+  // This is what battrick.org actually serves, so it's tried before the stricter
+  // final regex fallback below.
   if (players.length === 0) {
-    const playerRegex = /<a[^>]*playerID=(\d+)[^>]*>(.*?)<\/a>.*?(\d+)\s*yo.*?BT\s*Rating\s*=\s*([0-9,]+).*?Wage\s*=\s*&#163;?([0-9,]+)/gis;
+    const linkRegex = /<a[^>]*href="[^"]*playerdetails\.asp\?playerID=(\d+)[^"]*"[^>]*>(.*?)<\/a>/gis;
+    const linkMatches: { id: string; name: string; index: number; end: number }[] = [];
+    let lm;
+    while ((lm = linkRegex.exec(content)) !== null) {
+      linkMatches.push({
+        id: lm[1],
+        name: lm[2].replace(/<[^>]+>/g, '').trim(),
+        index: lm.index,
+        end: lm.index + lm[0].length
+      });
+    }
+
+    for (let i = 0; i < linkMatches.length; i++) {
+      const cur = linkMatches[i];
+      const next = linkMatches[i + 1];
+      const block = content.slice(cur.end, next ? next.index : Math.min(content.length, cur.end + 1500));
+      const plainBlock = block.replace(/<[^>]+>/g, ' ');
+
+      const ageMatch = plainBlock.match(/(\d+)\s*yo/i);
+      const age = ageMatch ? parseInt(ageMatch[1], 10) : 25;
+
+      const btrMatch = plainBlock.match(/BT\s*(?:\(Battrick\)\s*)?Rating\s*=\s*([0-9,]+)/i);
+      const btRating = btrMatch ? parseInt(btrMatch[1].replace(/,/g, ''), 10) : 5000;
+
+      const wageMatch = plainBlock.match(/Wage\s*=\s*(?:&#163;|£)?\s*([0-9,]+)/i);
+      const wage = wageMatch ? parseInt(wageMatch[1].replace(/,/g, ''), 10) : 1000;
+
+      const batHandMatch = plainBlock.match(/\b(LH|RH)\s*batter/i);
+      const batHand = batHandMatch ? batHandMatch[1].toUpperCase() : 'RH';
+
+      const batStyleMatch = plainBlock.match(/\b(defensive|cautious|steady|attacking|destructive)\b\s*(?:LH|RH)\s*batter/i);
+      const batStyle = batStyleMatch ? batStyleMatch[1].toLowerCase() : 'cautious';
+
+      const bowlMatch = plainBlock.match(/\b(LF|LFM|LM|LB|LBG|OB|RF|RFM|RM|SLC|SLW|LH|RH)\s*(?:finger spin\s*)?bowler/i);
+      const bowlingType = bowlMatch ? bowlMatch[1].toUpperCase() : 'None';
+      const bowlHand = bowlingType.startsWith('L') ? 'L' : 'R';
+
+      const isKeeper = /wicketkeeper|keeper/i.test(plainBlock);
+      const isBowler = bowlingType !== 'None';
+
+      let role: 'Batter' | 'Bowler' | 'Keeper' | 'All-rounder' | 'Prospect' = 'Batter';
+      let primaryRoleClassifier: 'Batter' | 'Bowler' | 'All-Rounder' | 'Wicketkeeper' = 'Batter';
+      if (isKeeper) {
+        role = 'Keeper';
+        primaryRoleClassifier = 'Wicketkeeper';
+      } else if (isBowler) {
+        if (wage > 15000 && btRating > 30000) {
+          role = 'All-rounder';
+          primaryRoleClassifier = 'All-Rounder';
+        } else {
+          role = 'Bowler';
+          primaryRoleClassifier = 'Bowler';
+        }
+      }
+
+      const { estimatedSkillLabel, estimatedSkillLevel } = estimateSkillFromWageAndBTR(wage, btRating, primaryRoleClassifier);
+
+      const isAR = primaryRoleClassifier === 'All-Rounder';
+      const isBwl = primaryRoleClassifier === 'Bowler';
+      const isKpr = primaryRoleClassifier === 'Wicketkeeper';
+
+      const calcBatAvg = isBwl ? 12.5 : (41.5 + Math.min(12, estimatedSkillLevel));
+      const calcBowlAvg = isBwl ? (21.0 + Math.max(0, 8 - estimatedSkillLevel)) : (isAR ? 26.5 : 0);
+      const calcKeeping = isKpr ? Math.max(8, estimatedSkillLevel) : 1;
+
+      players.push({
+        id: cur.id,
+        playerId: cur.id,
+        name: cur.name || 'Rival Player',
+        age,
+        wage,
+        btRating,
+        bowlingType,
+        role,
+        battingAverage: calcBatAvg,
+        bowlingAverage: calcBowlAvg,
+        keeping: calcKeeping,
+        battingHand: batHand,
+        battingStyle: batStyle,
+        bowlingHand: bowlHand,
+        bowlingStyle: bowlingType !== 'None' ? bowlingType : '',
+        bowlingAggression: '',
+        battingFormLabel: 'proficient',
+        bowlingFormLabel: 'respectable',
+        fitnessLabel: 'invigorated',
+        estimatedSkillLabel,
+        estimatedSkillLevel,
+        primaryRoleClassifier,
+        teamName: overrideTeamName || 'Rival Club',
+        teamId: overrideTeamId || '',
+        form: 8,
+        fitness: 8,
+        skills: {
+          batting: primaryRoleClassifier === 'Batter' || primaryRoleClassifier === 'All-Rounder' ? estimatedSkillLevel : Math.max(1, estimatedSkillLevel - 4),
+          bowling: primaryRoleClassifier === 'Bowler' || primaryRoleClassifier === 'All-Rounder' ? estimatedSkillLevel : Math.max(1, estimatedSkillLevel - 4),
+          keeping: primaryRoleClassifier === 'Wicketkeeper' ? estimatedSkillLevel : 1,
+          stamina: 7,
+          leadership: 2,
+          experience: 10,
+          concentration: estimatedSkillLevel,
+          consistency: estimatedSkillLevel,
+          fielding: 6
+        },
+        nets: { batting: 0, bowling: 0, keeping: 0, fielding: 0, stamina: 0 }
+      });
+    }
+  }
+
+  // 3. Last-resort strict regex, kept for any older/alternate page formats.
+  if (players.length === 0) {
+    const playerRegex = /<a[^>]*playerID=(\d+)[^>]*>(.*?)<\/a>.*?(\d+)\s*yo.*?BT\s*(?:\(Battrick\)\s*)?Rating\s*=\s*([0-9,]+).*?Wage\s*=\s*(?:&#163;|£)?([0-9,]+)/gis;
     let match;
     while ((match = playerRegex.exec(content)) !== null) {
       const id = match[1];
