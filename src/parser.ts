@@ -2239,7 +2239,8 @@ export function generateOpponentScoutDossier(
   format: MatchFormat = 'One Day',
   mySquadAvgBtr: number = 25000
 ): OpponentScoutDossier {
-  const top11 = players.length >= 11 ? players.slice(0, 11) : players;
+  const sortedPlayers = buildStrongestXI(players);
+  const top11 = sortedPlayers.length >= 11 ? sortedPlayers.slice(0, 11) : sortedPlayers;
   const topOrder = top11.slice(0, 3);
   const middleOrder = top11.slice(3, 6);
   const lowerOrder = top11.slice(6, 11);
@@ -2375,7 +2376,7 @@ export function generateOpponentScoutDossier(
   return {
     clubName,
     scoutedDate: new Date().toLocaleDateString(),
-    players: top11,
+    players: sortedPlayers,
     topOrderRating: parseFloat(topOrderRating.toFixed(1)),
     middleOrderRating: parseFloat(middleOrderRating.toFixed(1)),
     tailVulnerabilityRating: parseFloat(tailVulnerabilityRating.toFixed(1)),
@@ -3974,6 +3975,41 @@ export function parseBattrickPlayerDetails(content: string): BattrickPlayer | nu
       }
     }
 
+    // Estimate hidden skills if the player is an opponent (batting === 0)
+    let role = batting > bowling ? 'Batter' : bowling > batting ? 'Bowler' : 'All-rounder';
+    let estimatedSkillLabel = '';
+    let estimatedSkillLevel = 0;
+
+    let adjBatting = batting;
+    let adjBowling = bowling;
+    let adjKeeping = keeping;
+    let adjConcentration = concentration;
+    let adjConsistency = consistency;
+    let adjFielding = fielding;
+    let adjStamina = stamina;
+    let adjLeadership = leadership;
+    let adjExperience = experience;
+
+    if (batting === 0 && bowling === 0) {
+      const est = estimatePlayerSkills(Number(wage) || 500, Number(btr) || 1000, runsVal, oversVal, matchesVal);
+      role = est.discipline;
+      if (role === 'Specialist') role = 'Batter'; // Fallback
+      
+      const { estimatedSkillLabel: estLabel, estimatedSkillLevel: estLevel } = estimateSkillFromWageAndBTR(Number(wage) || 500, Number(btr) || 1000, role as 'Batter' | 'Bowler' | 'All-Rounder');
+      estimatedSkillLabel = estLabel;
+      estimatedSkillLevel = estLevel;
+
+      adjBatting = role === 'Batter' || role === 'All-Rounder' ? estLevel : Math.max(1, estLevel - 4);
+      adjBowling = role === 'Bowler' || role === 'All-Rounder' ? estLevel : Math.max(1, estLevel - 4);
+      adjConcentration = estLevel;
+      adjConsistency = estLevel;
+      adjKeeping = 1;
+      adjFielding = 6;
+      adjStamina = stamina || 7;
+      adjLeadership = leadership || 2;
+      adjExperience = experience || 6;
+    }
+
     const player: BattrickPlayer = {
       id: id.toString(),
       name,
@@ -3981,21 +4017,23 @@ export function parseBattrickPlayerDetails(content: string): BattrickPlayer | nu
       btRating: Number(btr) || 1000,
       wage: Number(wage) || 500,
       bowlingType: 'unknown',
-      role: batting > bowling ? 'Batter' : bowling > batting ? 'Bowler' : 'All-rounder',
+      role: role as 'Batter' | 'Bowler' | 'Keeper' | 'All-rounder' | 'Prospect',
       form: 8,
       fitness: 8,
       battingFormLabel: formText,
       fitnessLabel: fatigueText,
+      estimatedSkillLabel,
+      estimatedSkillLevel,
       skills: {
-        batting,
-        bowling,
-        keeping,
-        concentration,
-        consistency,
-        fielding,
-        stamina,
-        leadership,
-        experience
+        batting: adjBatting,
+        bowling: adjBowling,
+        keeping: adjKeeping,
+        concentration: adjConcentration,
+        consistency: adjConsistency,
+        fielding: adjFielding,
+        stamina: adjStamina,
+        leadership: adjLeadership,
+        experience: adjExperience
       },
       nets: {
         batting: 0,
@@ -4068,3 +4106,82 @@ export function estimatePlayerSkills(
 
 
 
+
+
+export function buildStrongestXI(players: OpponentPlayer[]): OpponentPlayer[] {
+  if (!players || players.length === 0) return [];
+
+  const getBattingScore = (p: OpponentPlayer) => {
+    let score = 0;
+    if (p.batting > 0) score = p.batting + (p.concentration || 0) * 0.3;
+    else score = (p.estimatedSkillLevel || 1) * 2;
+    // Boost score if they are explicitly a Batter
+    if (p.primaryRoleClassifier === 'Batter' || p.role === 'Batter') score += 5;
+    return score + (p.btRating / 100000);
+  };
+  
+  const getBowlingScore = (p: OpponentPlayer) => {
+    let score = 0;
+    if (p.bowling > 0) score = p.bowling + (p.consistency || 0) * 0.3;
+    else score = (p.estimatedSkillLevel || 1) * 2;
+    // Boost score if explicitly Bowler
+    if (p.primaryRoleClassifier === 'Bowler' || p.role === 'Bowler') score += 5;
+    return score + (p.btRating / 100000);
+  };
+  
+  const getKeepingScore = (p: OpponentPlayer) => {
+    let score = 0;
+    if (p.keeping > 0) score = p.keeping + p.batting * 0.5;
+    else score = (p.estimatedSkillLevel || 1) * 2;
+    return score + (p.btRating / 100000);
+  };
+
+  const pool = [...players];
+  const xi: OpponentPlayer[] = [];
+
+  // 1. Find Wicketkeeper
+  let wks = pool.filter(p => p.primaryRoleClassifier === 'Wicketkeeper' || p.role === 'Keeper');
+  wks.sort((a, b) => getKeepingScore(b) - getKeepingScore(a));
+  
+  let keeper: OpponentPlayer | null = null;
+  if (wks.length > 0) {
+    keeper = wks[0];
+  } else {
+    pool.sort((a, b) => b.btRating - a.btRating);
+    keeper = pool[0];
+  }
+  
+  if (keeper) {
+    xi.push(keeper);
+    const idx = pool.findIndex(p => p.id === keeper!.id);
+    if (idx > -1) pool.splice(idx, 1);
+  }
+
+  // 2. Find 4-5 Bowlers
+  let bowlers = pool.filter(p => p.primaryRoleClassifier === 'Bowler' || p.primaryRoleClassifier === 'All-Rounder' || p.role === 'Bowler');
+  bowlers.sort((a, b) => getBowlingScore(b) - getBowlingScore(a));
+  
+  const selectedBowlers = bowlers.slice(0, 4);
+  for (const b of selectedBowlers) {
+    xi.push(b);
+    const idx = pool.findIndex(p => p.id === b.id);
+    if (idx > -1) pool.splice(idx, 1);
+  }
+
+  // 3. Fill the rest
+  pool.sort((a, b) => getBattingScore(b) - getBattingScore(a));
+  const selectedBatters = pool.slice(0, 11 - xi.length);
+  for (const b of selectedBatters) {
+    xi.push(b);
+    const idx = pool.findIndex(p => p.id === b.id);
+    if (idx > -1) pool.splice(idx, 1);
+  }
+
+  // 4. Arrange XI by Batting Score (Openers to Tail)
+  xi.sort((a, b) => getBattingScore(b) - getBattingScore(a));
+
+  // 5. Append bench
+  pool.sort((a, b) => b.btRating - a.btRating);
+
+  return [...xi, ...pool];
+}

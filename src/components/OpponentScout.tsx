@@ -226,24 +226,13 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   const [pastedPlayerText, setPastedPlayerText] = useState<string>('');
   const [isPlayerPasteOpen, setIsPlayerPasteOpen] = useState<boolean>(false);
 
-  // Interactive Hidden Skill Estimation state
-  const [estMatches, setEstMatches] = useState<number>(30);
-  const [estRuns, setEstRuns] = useState<number>(500);
-  const [estOvers, setEstOvers] = useState<number>(20);
-
-  useEffect(() => {
-    if (scoutedPlayer) {
-      setEstMatches(scoutedPlayer.careerStats?.matches ?? 30);
-      setEstRuns(scoutedPlayer.careerStats?.runs ?? 500);
-      setEstOvers(scoutedPlayer.careerStats?.overs ?? 20);
-    }
-  }, [scoutedPlayer]);
 
   const handleSyncPlayerLive = async () => {
     if (!scoutPlayerId.trim()) {
       setPlayerSyncError('Please enter a valid Battrick Player ID.');
       return;
     }
+    setScoutedPlayer(null);
     setIsSyncingPlayer(true);
     setPlayerSyncError(null);
     setPlayerSyncStatus(`Syncing Player ID #${scoutPlayerId} from Battrick servers...`);
@@ -668,8 +657,13 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   };
 
   const handleSyncOpponentSquadLive = async () => {
-    const targetTeamId = opponentTeamId.trim() || '24514'; // Default to Bluejays if empty
+    const targetTeamId = opponentTeamId.trim();
+    if (!targetTeamId) {
+      setSquadSyncError('Opponent Team ID is required for live sync. Please manually enter the Team ID (e.g. 14112) in the input field above.');
+      return;
+    }
     
+    setOpponentPlayers([]);
     setIsSyncingSquad(true);
     setSquadSyncStatus(`Connecting to Battrick server and fetching Squad ID ${targetTeamId}...`);
     setSquadSyncError(null);
@@ -2241,7 +2235,10 @@ TACTICAL ORDERS:
                   <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-mono">
                     {renderSortableTh('#', 'order', lineupSortField, lineupSortDirection, handleLineupSort, "w-12")}
                     {renderSortableTh('Player Card / Link', 'name', lineupSortField, lineupSortDirection, handleLineupSort, "text-left font-sans")}
-                    {renderSortableTh('Battrick Grouping & Averages', 'grouping', lineupSortField, lineupSortDirection, handleLineupSort, "text-left")}
+                    {renderSortableTh('Battrick Grouping', 'grouping', lineupSortField, lineupSortDirection, handleLineupSort, "text-left")}
+                    {renderSortableTh('Avg - Batting', 'battingAverage', lineupSortField, lineupSortDirection, handleLineupSort, "text-left")}
+                    {renderSortableTh('Avg - Bowling', 'bowlingAverage', lineupSortField, lineupSortDirection, handleLineupSort, "text-left")}
+                    {renderSortableTh('Keeping', 'keeping', lineupSortField, lineupSortDirection, handleLineupSort, "text-left")}
                     {renderSortableTh('Estimated Grade', 'grade', lineupSortField, lineupSortDirection, handleLineupSort, "text-left")}
                     {renderSortableTh('BTR', 'btr', lineupSortField, lineupSortDirection, handleLineupSort, "text-left")}
                     {renderSortableTh('Wage', 'wage', lineupSortField, lineupSortDirection, handleLineupSort, "text-left")}
@@ -2267,12 +2264,24 @@ TACTICAL ORDERS:
                         const getGrp = (p: typeof a) => {
                           const batAvg = p.battingAverage !== undefined ? p.battingAverage : (p.role === 'Batter' || p.role === 'Keeper' ? 52.4 : 12.4);
                           const bowlAvg = p.bowlingAverage !== undefined ? p.bowlingAverage : (p.role === 'Bowler' ? 24.8 : 0);
-                          if (batAvg < 50 && bowlAvg < 30 && bowlAvg > 0) return 'Bowler';
-                          if (batAvg >= 50 && (bowlAvg === 0 || bowlAvg >= 30)) return 'Batter';
+                          const isBowler = bowlAvg < 30 && bowlAvg > 0;
+                          const isBatter = batAvg > 40;
+                          if (isBowler && isBatter) return 'All-rounder';
+                          if (isBowler) return 'Bowler';
+                          if (isBatter) return 'Batter';
                           return p.role;
                         };
                         valA = getGrp(a);
                         valB = getGrp(b);
+                      } else if (lineupSortField === 'battingAverage') {
+                        valA = a.battingAverage || 0;
+                        valB = b.battingAverage || 0;
+                      } else if (lineupSortField === 'bowlingAverage') {
+                        valA = a.bowlingAverage || 0;
+                        valB = b.bowlingAverage || 0;
+                      } else if (lineupSortField === 'keeping') {
+                        valA = a.keeping || 0;
+                        valB = b.keeping || 0;
                       } else if (lineupSortField === 'grade') {
                         valA = a.estimatedSkillLabel || '';
                         valB = b.estimatedSkillLabel || '';
@@ -2323,13 +2332,21 @@ TACTICAL ORDERS:
                       ) : null;
 
                       // Classification logic based on user's definition: 
-                      // "Grady is a bowler as his batting average is below 50 and his bowling average is below 30"
+                      // If bowlingAverage < 30 (and > 0), they are a 'Bowler'.
+                      // If battingAverage > 40, they are a 'Batter'.
+                      // If both (bowlingAverage < 30 AND battingAverage > 40), they are an 'All-rounder'.
                       let computedGrouping = hasHiddenSkills ? est!.discipline : p.role;
                       if (!hasHiddenSkills) {
-                        if (batAvg < 50 && bowlAvg < 30 && bowlAvg > 0) {
+                        const isBowler = bowlAvg < 30 && bowlAvg > 0;
+                        const isBatter = batAvg > 40;
+                        if (isBowler && isBatter) {
+                          computedGrouping = 'All-rounder';
+                        } else if (isBowler) {
                           computedGrouping = 'Bowler';
-                        } else if (batAvg >= 50 && (bowlAvg === 0 || bowlAvg >= 30)) {
+                        } else if (isBatter) {
                           computedGrouping = 'Batter';
+                        } else {
+                          computedGrouping = p.role;
                         }
                       }
 
@@ -2346,22 +2363,30 @@ TACTICAL ORDERS:
                       }
 
                       return (
-                        <tr key={p.id} className={`hover:bg-slate-50/80 transition ${isTail ? 'bg-rose-50/20' : ''}`}>
+                        <React.Fragment key={p.id}>
+                          {displayIdx === 11 && lineupSortField === 'order' && (
+                            <tr className="bg-slate-200/50 text-slate-500 uppercase text-[10px] font-bold font-sans">
+                              <td colSpan={9} className="py-1.5 px-3 tracking-widest text-center border-t border-b border-slate-300/50">
+                                — Bench / Reserves —
+                              </td>
+                            </tr>
+                          )}
+                          <tr className={`hover:bg-slate-50/80 transition ${isTail ? 'bg-rose-50/20' : ''}`}>
                           <td className="py-3 px-3 font-mono font-bold text-slate-400">{p.originalIndex + 1}</td>
                         <td className="py-3 px-3">
                           <div className="flex flex-col gap-0.5">
                             <a 
-                              href={`https://www.battrick.org/nl/playerdetails.asp?playerID=${p.playerId || '5634292'}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-bold text-slate-900 hover:text-blue-600 hover:underline inline-flex items-center gap-1"
-                              title="View player details on Battrick"
+                              href={p.playerId ? `https://www.battrick.org/nl/playerdetails.asp?playerID=${p.playerId}` : '#'}
+                              target={p.playerId ? "_blank" : undefined}
+                              rel={p.playerId ? "noopener noreferrer" : undefined}
+                              className={`font-bold text-slate-900 ${p.playerId ? 'hover:text-blue-600 hover:underline cursor-pointer' : 'cursor-default'} inline-flex items-center gap-1`}
+                              title={p.playerId ? "View player details on Battrick" : "No Battrick ID available"}
                             >
                               <span>{p.name}</span>
-                              <ExternalLink className="w-2.5 h-2.5 text-slate-400" />
+                              {p.playerId && <ExternalLink className="w-2.5 h-2.5 text-slate-400" />}
                             </a>
                             <span className="text-[10px] text-slate-500 font-mono font-medium">
-                              {p.age} yo • ID: {p.playerId || '5634292'}
+                              {p.age} yo • {p.playerId ? `ID: ${p.playerId}` : 'No ID'}
                             </span>
                           </div>
                         </td>
@@ -2370,11 +2395,11 @@ TACTICAL ORDERS:
                             <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${groupBadgeStyle}`}>
                               {computedGrouping} {hasHiddenSkills ? '⭐' : ''}
                             </span>
-                            <span className="text-[10px] font-mono text-slate-500">
-                              Bat Avg: {batAvg > 0 ? batAvg : 'N/A'} • Bowl Avg: {bowlAvg > 0 ? bowlAvg : 'N/A'}
-                            </span>
                           </div>
                         </td>
+                        <td className="py-3 px-3 font-mono text-xs">{batAvg > 0 ? batAvg.toFixed(1) : '-'}</td>
+                        <td className="py-3 px-3 font-mono text-xs">{bowlAvg > 0 ? bowlAvg.toFixed(1) : '-'}</td>
+                        <td className="py-3 px-3 font-mono text-xs">{p.keeping || '-'}</td>
                         <td className="py-3 px-3">
                           <span className="font-serif font-semibold text-xs text-slate-800 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
                             {hasHiddenSkills ? est!.primarySkill : (p.estimatedSkillLabel || 'Strong')}
@@ -2431,6 +2456,7 @@ TACTICAL ORDERS:
                           )}
                         </td>
                       </tr>
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
@@ -2591,9 +2617,9 @@ TACTICAL ORDERS:
                       const estimation = estimatePlayerSkills(
                         scoutedPlayer.wage,
                         scoutedPlayer.btRating,
-                        estRuns,
-                        estOvers,
-                        estMatches
+                        scoutedPlayer.careerStats?.runs ?? 500,
+                        scoutedPlayer.careerStats?.overs ?? 20,
+                        scoutedPlayer.careerStats?.matches ?? 30
                       );
                       return (
                         <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-1">
@@ -2701,82 +2727,33 @@ TACTICAL ORDERS:
                         </p>
                       </div>
 
-                      {/* Interactive Stats Controls */}
-                      <div className="space-y-3 font-mono text-xs">
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-bold text-slate-500">Matches:</span>
-                            <span className="font-bold text-slate-900">{estMatches}</span>
-                          </div>
-                          <input
-                            type="range"
-                            min={1}
-                            max={150}
-                            value={estMatches}
-                            onChange={(e) => setEstMatches(Number(e.target.value))}
-                            className="w-full h-1 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                          />
-                        </div>
-
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-bold text-slate-500">Runs Scored:</span>
-                            <span className="font-bold text-slate-900">{estRuns.toLocaleString()}</span>
-                          </div>
-                          <input
-                            type="range"
-                            min={0}
-                            max={8000}
-                            step={50}
-                            value={estRuns}
-                            onChange={(e) => setEstRuns(Number(e.target.value))}
-                            className="w-full h-1 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                          />
-                        </div>
-
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-bold text-slate-500">Overs Bowled:</span>
-                            <span className="font-bold text-slate-900">{estOvers.toFixed(1)}</span>
-                          </div>
-                          <input
-                            type="range"
-                            min={0}
-                            max={1000}
-                            step={5}
-                            value={estOvers}
-                            onChange={(e) => setEstOvers(Number(e.target.value))}
-                            className="w-full h-1 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                          />
-                        </div>
-                      </div>
 
                       {/* Live Estimator Output Details */}
                       {(() => {
                         const estimation = estimatePlayerSkills(
                           scoutedPlayer.wage,
                           scoutedPlayer.btRating,
-                          estRuns,
-                          estOvers,
-                          estMatches
+                          scoutedPlayer.careerStats?.runs ?? 500,
+                          scoutedPlayer.careerStats?.overs ?? 20,
+                          scoutedPlayer.careerStats?.matches ?? 30
                         );
                         return (
-                          <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-3 space-y-2 font-mono text-xs">
+                          <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-4 space-y-3 font-mono text-sm">
                             <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
-                              <span className="text-slate-400 font-bold">Estimated Class:</span>
-                              <span className="font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded">
+                              <span className="text-slate-500 font-bold">Estimated Class:</span>
+                              <span className="font-extrabold text-indigo-800 bg-indigo-100 px-3 py-1 rounded">
                                 {estimation.discipline}
                               </span>
                             </div>
                             <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
-                              <span className="text-slate-400 font-bold">Estimated Primary:</span>
-                              <span className="font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded text-right">
+                              <span className="text-slate-500 font-bold">Estimated Primary:</span>
+                              <span className="font-extrabold text-emerald-800 bg-emerald-100 px-3 py-1 rounded text-right">
                                 {estimation.primarySkill}
                               </span>
                             </div>
                             <div className="flex justify-between items-center">
-                              <span className="text-slate-400 font-bold">Secondaries:</span>
-                              <span className="font-extrabold text-amber-700 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded text-[10px] text-right">
+                              <span className="text-slate-500 font-bold">Secondaries:</span>
+                              <span className="font-extrabold text-amber-800 bg-amber-100 px-3 py-1 rounded text-xs text-right">
                                 {estimation.secondaries}
                               </span>
                             </div>

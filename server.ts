@@ -610,7 +610,9 @@ async function startServer() {
         'league.asp': req.body.leagueId ? `https://www.battrick.org/nl/leagues.asp?leagueID=${req.body.leagueId}` : 'https://www.battrick.org/nl/leagues.asp',
 
         matchinfo: req.body.matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${req.body.matchId}` : '',
-        matchsummary: req.body.matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${req.body.matchId}&action=summary` : ''
+        matchsummary: req.body.matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${req.body.matchId}&action=summary` : '',
+        playerdetails: req.body.pageUrl ? req.body.pageUrl : '',
+        'playerdetails.asp': req.body.pageUrl ? req.body.pageUrl : ''
       };
 
       let targetUrl = pageUrlMap[pageKey];
@@ -618,7 +620,7 @@ async function startServer() {
         let customUrl = req.body.pageUrl.trim();
         if (customUrl.startsWith('/nl/')) {
           customUrl = `https://www.battrick.org${customUrl}`;
-        } else if (customUrl.startsWith('matchinfo.asp') || customUrl.startsWith('fixtures.asp') || customUrl.startsWith('squad.asp') || customUrl.startsWith('leagues.asp')) {
+        } else if (customUrl.startsWith('matchinfo.asp') || customUrl.startsWith('fixtures.asp') || customUrl.startsWith('squad.asp') || customUrl.startsWith('leagues.asp') || customUrl.startsWith('playerdetails.asp')) {
           customUrl = `https://www.battrick.org/nl/${customUrl}`;
         }
         if (customUrl.startsWith('https://www.battrick.org/')) {
