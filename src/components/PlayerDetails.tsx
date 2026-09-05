@@ -11,7 +11,7 @@ import {
   ArrowLeft, Cpu, Sliders, BarChart2, BookOpen
 } from 'lucide-react';
 import { 
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip 
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend
 } from 'recharts';
 import { generateRealisticHistory, getWeeklyChanges } from '../utils/history';
 
@@ -264,6 +264,114 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
   const pScore = getPlayerWeightedScore(player);
   const trade = getTradeAction(player);
   const changes = getWeeklyChanges(player);
+
+  // Shared training projection math - computes expected skill pops, BTR gain
+  // and wage growth based on the nets currently allocated in the simulator
+  // below ("training sessions allocated"). Used by both the Net Forecast
+  // Prediction panel (Skills tab) and the projected bars appended to the
+  // Rating & Salary Growth chart (History tab), so the two stay consistent.
+  const trainingForecast = (() => {
+    const lastHistory = player.history && player.history.length > 0
+      ? player.history[player.history.length - 1]
+      : { season: 65, week: 10 };
+    const currentSeason = lastHistory.season || 65;
+    const currentWeek = lastHistory.week || 10;
+
+    function addWeeks(s: number, w: number, add: number): { season: number, week: number } {
+      const roundedAdd = Math.round(add);
+      let totalWeeks = (s - 1) * 16 + (w - 1) + roundedAdd;
+      const newS = Math.floor(totalWeeks / 16) + 1;
+      const newW = (totalWeeks % 16) + 1;
+      return { season: newS, week: newW };
+    }
+
+    const rawEfficiency = 100 / Math.pow(1.22, player.age - 17);
+    const efficiency = Math.min(100, Math.max(2, Math.round(rawEfficiency)));
+
+    let efficiencyText = '';
+    let efficiencyColor = '';
+    if (player.age <= 19) {
+      efficiencyText = '⚡ Elite Speed: Young age guarantees rapid progression. Ideal for development!';
+      efficiencyColor = 'text-emerald-700 bg-emerald-50 border-emerald-100';
+    } else if (player.age <= 22) {
+      efficiencyText = '🏃 Good Speed: Moderate standard progression. Keep focused on primary skills.';
+      efficiencyColor = 'text-blue-700 bg-blue-50 border-blue-100';
+    } else if (player.age <= 26) {
+      efficiencyText = '🐢 Slow Speed: Mature age limits training velocity. High intensity (multiple nets) required.';
+      efficiencyColor = 'text-amber-700 bg-amber-50 border-amber-100';
+    } else {
+      efficiencyText = '⛔ Extremely Inefficient: Training is very slow. Nets are only recommended to keep fitness/stamina high.';
+      efficiencyColor = 'text-rose-700 bg-rose-50 border-rose-100';
+    }
+
+    const forecasts: {
+      skillName: string;
+      currentLevel: number;
+      targetLevel: number;
+      weeksNeeded: number;
+      targetSeason: number;
+      targetWeek: number;
+      nets: number;
+    }[] = [];
+
+    const activeNetsList = [
+      { key: 'batting' as const, label: 'Batting', level: player.skills.batting, isSquad: false },
+      { key: 'bowling' as const, label: 'Bowling', level: player.skills.bowling, isSquad: false },
+      { key: 'keeping' as const, label: 'Wicket Keeping', level: player.skills.keeping, isSquad: false },
+      { key: 'stamina' as const, label: 'Stamina', level: player.skills.stamina, isSquad: squadTrainingStamina },
+      { key: 'fielding' as const, label: 'Fielding', level: player.skills.fielding || 0, isSquad: squadTrainingFielding },
+    ];
+
+    activeNetsList.forEach((n) => {
+      const count = plannerNets[n.key];
+      const maxLevelForSkill = n.key === 'stamina' ? 11 : 20;
+      const isTrainingActive = count > 0 || (n.isSquad && count === 0);
+      if (isTrainingActive && n.level < maxLevelForSkill) {
+        const weeks = estimateWeeksToNextLevel(n.level, player.age, count, coachLevel, n.key, n.isSquad);
+        if (weeks !== Infinity && weeks > 0) {
+          const target = addWeeks(currentSeason, currentWeek, weeks);
+          forecasts.push({
+            skillName: n.label + (count === 0 && n.isSquad ? ' (Squad)' : ''),
+            currentLevel: n.level,
+            targetLevel: n.level + 1,
+            weeksNeeded: weeks,
+            targetSeason: target.season,
+            targetWeek: target.week,
+            nets: count,
+          });
+        }
+      }
+    });
+
+    let btrGain = 0;
+    forecasts.forEach(f => {
+      if (f.skillName === 'Batting' || f.skillName === 'Bowling' || f.skillName === 'Wicket Keeping') {
+        btrGain += 1800;
+      } else if (f.skillName === 'Fielding') {
+        btrGain += 600;
+      } else if (f.skillName === 'Stamina') {
+        btrGain += 400;
+      }
+    });
+    const projectedBtr = player.btRating + btrGain;
+    const isYoung = player.age <= 21;
+    const projectedWage = btrGain > 0
+      ? Math.round((player.wage * (isYoung ? 1.15 : 1.05) + (btrGain * 0.12)) / 50) * 50
+      : player.wage;
+
+    // Furthest-out target week among all forecast skills, used to label the
+    // projected bar/point on the growth chart.
+    let furthestWeeksOut = 0;
+    forecasts.forEach(f => { furthestWeeksOut = Math.max(furthestWeeksOut, f.weeksNeeded); });
+    const projectedArrival = furthestWeeksOut > 0 ? addWeeks(currentSeason, currentWeek, furthestWeeksOut) : null;
+
+    return {
+      currentSeason, currentWeek, addWeeks,
+      efficiency, efficiencyText, efficiencyColor,
+      forecasts, btrGain, projectedBtr, projectedWage,
+      projectedArrival,
+    };
+  })();
 
   const actionColors = {
     HOLD: 'bg-emerald-50 text-emerald-800 border-emerald-200',
@@ -687,93 +795,7 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
                 </h5>
 
                 {(() => {
-                  const lastHistory = player.history && player.history.length > 0 
-                    ? player.history[player.history.length - 1] 
-                    : { season: 65, week: 10 };
-                  const currentSeason = lastHistory.season || 65;
-                  const currentWeek = lastHistory.week || 10;
-
-                  function addWeeks(s: number, w: number, add: number): { season: number, week: number } {
-                    const roundedAdd = Math.round(add);
-                    let totalWeeks = (s - 1) * 16 + (w - 1) + roundedAdd;
-                    const newS = Math.floor(totalWeeks / 16) + 1;
-                    const newW = (totalWeeks % 16) + 1;
-                    return { season: newS, week: newW };
-                  }
-
-                  const rawEfficiency = 100 / Math.pow(1.22, player.age - 17);
-                  const efficiency = Math.min(100, Math.max(2, Math.round(rawEfficiency)));
-
-                  let efficiencyText = '';
-                  let efficiencyColor = '';
-                  if (player.age <= 19) {
-                    efficiencyText = '⚡ Elite Speed: Young age guarantees rapid progression. Ideal for development!';
-                    efficiencyColor = 'text-emerald-700 bg-emerald-50 border-emerald-100';
-                  } else if (player.age <= 22) {
-                    efficiencyText = '🏃 Good Speed: Moderate standard progression. Keep focused on primary skills.';
-                    efficiencyColor = 'text-blue-700 bg-blue-50 border-blue-100';
-                  } else if (player.age <= 26) {
-                    efficiencyText = '🐢 Slow Speed: Mature age limits training velocity. High intensity (multiple nets) required.';
-                    efficiencyColor = 'text-amber-700 bg-amber-50 border-amber-100';
-                  } else {
-                    efficiencyText = '⛔ Extremely Inefficient: Training is very slow. Nets are only recommended to keep fitness/stamina high.';
-                    efficiencyColor = 'text-rose-700 bg-rose-50 border-rose-100';
-                  }
-
-                  const forecasts: {
-                    skillName: string;
-                    currentLevel: number;
-                    targetLevel: number;
-                    weeksNeeded: number;
-                    targetSeason: number;
-                    targetWeek: number;
-                    nets: number;
-                  }[] = [];
-
-                  const activeNetsList = [
-                    { key: 'batting' as const, label: 'Batting', level: player.skills.batting, isSquad: false },
-                    { key: 'bowling' as const, label: 'Bowling', level: player.skills.bowling, isSquad: false },
-                    { key: 'keeping' as const, label: 'Wicket Keeping', level: player.skills.keeping, isSquad: false },
-                    { key: 'stamina' as const, label: 'Stamina', level: player.skills.stamina, isSquad: squadTrainingStamina },
-                    { key: 'fielding' as const, label: 'Fielding', level: player.skills.fielding || 0, isSquad: squadTrainingFielding },
-                  ];
-
-                  activeNetsList.forEach((n) => {
-                    const count = plannerNets[n.key];
-                    const maxLevelForSkill = n.key === 'stamina' ? 11 : 20;
-                    const isTrainingActive = count > 0 || (n.isSquad && count === 0);
-                    if (isTrainingActive && n.level < maxLevelForSkill) {
-                      const weeks = estimateWeeksToNextLevel(n.level, player.age, count, coachLevel, n.key, n.isSquad);
-                      if (weeks !== Infinity && weeks > 0) {
-                        const target = addWeeks(currentSeason, currentWeek, weeks);
-                        forecasts.push({
-                          skillName: n.label + (count === 0 && n.isSquad ? ' (Squad)' : ''),
-                          currentLevel: n.level,
-                          targetLevel: n.level + 1,
-                          weeksNeeded: weeks,
-                          targetSeason: target.season,
-                          targetWeek: target.week,
-                          nets: count,
-                        });
-                      }
-                    }
-                  });
-
-                  let btrGain = 0;
-                  forecasts.forEach(f => {
-                    if (f.skillName === 'Batting' || f.skillName === 'Bowling' || f.skillName === 'Wicket Keeping') {
-                      btrGain += 1800;
-                    } else if (f.skillName === 'Fielding') {
-                      btrGain += 600;
-                    } else if (f.skillName === 'Stamina') {
-                      btrGain += 400;
-                    }
-                  });
-                  const projectedBtr = player.btRating + btrGain;
-                  const isYoung = player.age <= 21;
-                  const projectedWage = btrGain > 0 
-                    ? Math.round((player.wage * (isYoung ? 1.15 : 1.05) + (btrGain * 0.12)) / 50) * 50
-                    : player.wage;
+                  const { efficiency, efficiencyText, efficiencyColor, forecasts, btrGain, projectedBtr, projectedWage } = trainingForecast;
 
                   if (forecasts.length === 0) {
                     return (
@@ -918,47 +940,83 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
               </button>
             </div>
 
-            {/* Line chart of historical stats */}
+            {/* Bar chart of historical stats, plus a projected bar based on
+                the training nets currently allocated in the simulator above */}
             <div className="bg-white p-4.5 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-4">
-              <span className="text-[10px] text-slate-400 font-bold font-mono uppercase tracking-wider flex items-center gap-1.5">
-                <BarChart2 className="w-4 h-4 text-blue-600" />
-                Battrick Rating & Salary Growth
-              </span>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-[10px] text-slate-400 font-bold font-mono uppercase tracking-wider flex items-center gap-1.5">
+                  <BarChart2 className="w-4 h-4 text-blue-600" />
+                  Battrick Rating & Salary Growth
+                </span>
+                {trainingForecast.forecasts.length > 0 && (
+                  <span className="text-[9px] font-mono font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+                    Projected bar reflects {trainingForecast.forecasts.length} active net{trainingForecast.forecasts.length > 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
               
               <div className="h-64 w-full">
                 {player.history && player.history.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart
-                      data={player.history.map(h => ({
-                        label: `S${h.season} W${h.week}`,
-                        rating: h.btRating,
-                        wage: h.wage,
-                      }))}
-                      margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                    >
-                      <defs>
-                        <linearGradient id="colorRating" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#2563eb" stopOpacity={0.2}/>
-                          <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} fontClassName="font-mono" tickLine={false} />
-                      <YAxis stroke="#94a3b8" fontSize={10} fontClassName="font-mono" tickLine={false} />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: '#0f172a', borderRadius: '8px', border: 'none', color: '#fff' }}
-                        labelStyle={{ color: '#94a3b8', fontFamily: 'monospace', fontSize: '11px' }}
-                        itemStyle={{ fontSize: '11px', fontFamily: 'monospace' }}
-                      />
-                      <Area type="monotone" dataKey="rating" stroke="#2563eb" strokeWidth={2} fillOpacity={1} fill="url(#colorRating)" name="BT Rating" />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  (() => {
+                    const historyBars = player.history.map(h => ({
+                      label: `S${h.season} W${h.week}`,
+                      rating: h.btRating,
+                      wage: h.wage,
+                      ratingProjected: null as number | null,
+                      wageProjected: null as number | null,
+                    }));
+
+                    // Append one projected bar based on current net allocation,
+                    // labeled with its expected arrival week, so the "actual"
+                    // bars and the "projected" bar sit side by side on the
+                    // same chart.
+                    const chartData = [...historyBars];
+                    if (trainingForecast.forecasts.length > 0) {
+                      const arrival = trainingForecast.projectedArrival;
+                      chartData.push({
+                        label: arrival ? `S${arrival.season} W${arrival.week}*` : 'Projected*',
+                        rating: null as unknown as number,
+                        wage: null as unknown as number,
+                        ratingProjected: trainingForecast.projectedBtr,
+                        wageProjected: trainingForecast.projectedWage,
+                      });
+                    }
+
+                    return (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={chartData}
+                          margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="label" stroke="#94a3b8" fontSize={9} fontClassName="font-mono" tickLine={false} />
+                          <YAxis yAxisId="rating" stroke="#2563eb" fontSize={9} fontClassName="font-mono" tickLine={false} />
+                          <YAxis yAxisId="wage" orientation="right" stroke="#059669" fontSize={9} fontClassName="font-mono" tickLine={false} />
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#0f172a', borderRadius: '8px', border: 'none', color: '#fff' }}
+                            labelStyle={{ color: '#94a3b8', fontFamily: 'monospace', fontSize: '11px' }}
+                            itemStyle={{ fontSize: '11px', fontFamily: 'monospace' }}
+                          />
+                          <Legend wrapperStyle={{ fontSize: '10px', fontFamily: 'monospace' }} />
+                          <Bar yAxisId="rating" dataKey="rating" name="BT Rating" fill="#2563eb" radius={[3, 3, 0, 0]} maxBarSize={28} />
+                          <Bar yAxisId="rating" dataKey="ratingProjected" name="BT Rating (Projected)" fill="#93c5fd" radius={[3, 3, 0, 0]} maxBarSize={28} />
+                          <Bar yAxisId="wage" dataKey="wage" name="Wage" fill="#059669" radius={[3, 3, 0, 0]} maxBarSize={28} />
+                          <Bar yAxisId="wage" dataKey="wageProjected" name="Wage (Projected)" fill="#6ee7b7" radius={[3, 3, 0, 0]} maxBarSize={28} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    );
+                  })()
                 ) : (
                   <div className="h-full flex items-center justify-center text-slate-400 italic text-xs">
                     Insufficient historical snapshots to render growth models.
                   </div>
                 )}
               </div>
+              {trainingForecast.forecasts.length > 0 && (
+                <p className="text-[9px] text-slate-400 italic -mt-1">
+                  *Projected bar assumes the training nets currently allocated in the simulator above stay constant until the next pop.
+                </p>
+              )}
             </div>
 
             {/* Table of historic logs */}
