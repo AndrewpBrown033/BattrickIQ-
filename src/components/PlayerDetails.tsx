@@ -22,7 +22,10 @@ interface PlayerDetailsProps {
 
 export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) {
   const [player, setPlayer] = useState<BattrickPlayer | null>(null);
-  const [inspectorTab, setInspectorTab] = useState<'skills' | 'history'>('skills');
+  // Defaults to 'history' (the "Weekly Progress Report" tab) so that
+  // drilling into a player immediately shows their weekly training pop
+  // snapshots, rather than requiring an extra tap to get to it.
+  const [inspectorTab, setInspectorTab] = useState<'skills' | 'history'>('history');
   const [isWicketKeeper, setIsWicketKeeper] = useState<boolean>(false);
 
   // Training planner states
