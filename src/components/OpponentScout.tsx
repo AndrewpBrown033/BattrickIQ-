@@ -1878,9 +1878,56 @@ TACTICAL ORDERS:
             </div>
           )}
 
+          {/* Team Search Input Bar - Matches the style of the Player Scout input bar */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs">
+            <div className="flex flex-col sm:flex-row items-end gap-4">
+              <div className="flex-1 w-full">
+                <label className="text-[11px] font-mono font-bold uppercase text-slate-500 block mb-1.5">
+                  Battrick Team ID
+                </label>
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={opponentTeamId}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setOpponentTeamId(val);
+                      setOpponentPlayers(generateRealisticOpponentRoster(opponentName, false, matchFormat, val));
+                    }}
+                    placeholder="Enter Battrick Team ID (e.g. 24514)"
+                    className="w-full pl-10 pr-3 py-2 text-xs font-mono font-bold border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-mono"
+                  />
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleSyncOpponentSquadLive}
+                disabled={isSyncingSquad}
+                className="w-full sm:w-auto px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-mono font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSquad ? 'animate-spin' : ''}`} />
+                <span>{isSyncingSquad ? 'Syncing...' : '⚡ Sync Live Squad'}</span>
+              </button>
+            </div>
+
+            {squadSyncStatus && (
+              <div className="mt-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-mono font-bold px-4 py-3 rounded-xl flex items-center gap-2 animate-fadeIn">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{squadSyncStatus}</span>
+              </div>
+            )}
+            {squadSyncError && (
+              <div className="mt-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-mono font-bold px-4 py-3 rounded-xl flex items-center gap-2 animate-fadeIn">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{squadSyncError}</span>
+              </div>
+            )}
+          </div>
+
           {/* Match Conditions & Opponent Selection Bar */}
           <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               
               {/* Target Opponent */}
               <div className="lg:col-span-2">
@@ -1916,24 +1963,6 @@ TACTICAL ORDERS:
                     />
                   )}
                 </div>
-              </div>
-
-              {/* Battrick Team ID */}
-              <div>
-                <label className="text-[11px] font-mono font-bold uppercase text-slate-500 block mb-1.5">
-                  Battrick Team ID
-                </label>
-                <input
-                  type="text"
-                  value={opponentTeamId}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setOpponentTeamId(val);
-                    setOpponentPlayers(generateRealisticOpponentRoster(opponentName, false, matchFormat, val));
-                  }}
-                  placeholder="e.g. 24514"
-                  className="w-full text-xs font-mono font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
               </div>
 
               {/* Pitch */}
@@ -2095,33 +2124,11 @@ TACTICAL ORDERS:
               </div>
 
               <div className="flex flex-wrap items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={handleSyncOpponentSquadLive}
-                  disabled={isSyncingSquad}
-                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-mono font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSquad ? 'animate-spin' : ''}`} />
-                  <span>{isSyncingSquad ? 'Syncing...' : '⚡ Sync Live Squad'}</span>
-                </button>
                 <span className="text-xs font-mono font-bold text-slate-500 bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl">
                   Avg Wage: £{Math.round(dossier.players.reduce((acc, p) => acc + p.wage, 0) / (dossier.players.length || 1)).toLocaleString()}
                 </span>
               </div>
             </div>
-
-            {squadSyncStatus && (
-              <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-mono font-bold px-4 py-3 rounded-xl flex items-center gap-2 animate-fadeIn">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{squadSyncStatus}</span>
-              </div>
-            )}
-            {squadSyncError && (
-              <div className="mb-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-mono font-bold px-4 py-3 rounded-xl flex items-center gap-2 animate-fadeIn">
-                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{squadSyncError}</span>
-              </div>
-            )}
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
@@ -2429,19 +2436,19 @@ TACTICAL ORDERS:
                 <div className="grid grid-cols-2 gap-3 text-xs font-mono">
                   <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
                     <span className="text-slate-400 block text-[9px] uppercase font-bold">BTR (Rating)</span>
-                    <strong className="text-slate-800 text-sm">{scoutedPlayer.btr.toLocaleString()}</strong>
+                    <strong className="text-slate-800 text-sm">{(scoutedPlayer.btRating || 0).toLocaleString()}</strong>
                   </div>
                   <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
                     <span className="text-slate-400 block text-[9px] uppercase font-bold">Wage</span>
-                    <strong className="text-slate-800 text-sm">£{scoutedPlayer.wage.toLocaleString()}</strong>
+                    <strong className="text-slate-800 text-sm">£{(scoutedPlayer.wage || 0).toLocaleString()}</strong>
                   </div>
                   <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
                     <span className="text-slate-400 block text-[9px] uppercase font-bold">Form</span>
-                    <strong className="text-emerald-600 text-xs font-bold uppercase">{scoutedPlayer.form}</strong>
+                    <strong className="text-emerald-600 text-xs font-bold uppercase">{scoutedPlayer.battingFormLabel || 'respectable'}</strong>
                   </div>
                   <div className="bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
                     <span className="text-slate-400 block text-[9px] uppercase font-bold">Fatigue</span>
-                    <strong className="text-slate-700 text-xs font-bold uppercase">{scoutedPlayer.fatigue}</strong>
+                    <strong className="text-slate-700 text-xs font-bold uppercase">{scoutedPlayer.fitnessLabel || 'fit'}</strong>
                   </div>
                 </div>
 
