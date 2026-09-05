@@ -1,21 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { RefreshCw, Send, Sparkles, HelpCircle, User, Bot, AlertCircle, Plus, History } from 'lucide-react';
+import { RefreshCw, Send, Sparkles, HelpCircle, User, Bot, AlertCircle, Plus, History, Settings, Cpu, ShieldCheck, Check } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { getCustomUser } from '../lib/customAuth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import AICoachHistory from './AICoachHistory';
+import { LLMProvider } from '../types';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
 
+const OPENROUTER_MODELS = [
+  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', desc: 'Top strategic reasoning & cricket tactics' },
+  { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B Instruct', desc: 'Fast, open-weights tactical LLM' },
+  { id: 'openai/gpt-4o', name: 'GPT-4o', desc: 'High capability multimodal reasoning' },
+  { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3', desc: 'Efficient, deep mathematical analysis' },
+  { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash (via OpenRouter)', desc: 'Ultra-low latency tactical responses' },
+  { id: 'mistralai/mistral-large-2407', name: 'Mistral Large', desc: 'Advanced European reasoning model' }
+];
+
 export default function AICoach() {
   const [activeSubTab, setActiveSubTab] = useState<'chat' | 'history'>('chat');
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content: "Hello Manager! I am **Coach Jarvis**, your strategic advisor. I have loaded your team's live squad roster, weekly finances, and stadium capacities to provide bespoke assessments. Ask me anything, or choose a shortcut template below."
+      content: "Hello Manager! I am **Coach Jarvis**, your strategic advisor powered by OpenRouter LLMs. I have loaded your live squad roster, weekly finances, stadium capacities, and opponent match intelligence to provide bespoke assessments. Ask me anything, or choose a shortcut template below."
     }
   ]);
   const [input, setInput] = useState<string>('');
@@ -24,6 +34,19 @@ export default function AICoach() {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [loadingChat, setLoadingChat] = useState<boolean>(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Model & Provider Configuration State
+  const [provider, setProvider] = useState<LLMProvider>(() => {
+    return (localStorage.getItem('bt_llm_provider') as LLMProvider) || 'openrouter';
+  });
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    return localStorage.getItem('bt_llm_model') || 'anthropic/claude-3.5-sonnet';
+  });
+  const [openRouterKey, setOpenRouterKey] = useState<string>(() => {
+    return localStorage.getItem('bt_openrouter_api_key') || '';
+  });
+  const [isModelModalOpen, setIsModelModalOpen] = useState<boolean>(false);
+  const [keySavedMessage, setKeySavedMessage] = useState<boolean>(false);
 
   const currentUser = getCustomUser();
 
@@ -221,16 +244,21 @@ export default function AICoach() {
       let errorMsg = "";
       let useClientFallback = false;
 
-      // 1. Attempt server-side proxy route first
+      // 1. Attempt server-side proxy route first with OpenRouter / selected LLM
       try {
-        const customKey = localStorage.getItem('bt_custom_api_key') || '';
+        const customGeminiKey = localStorage.getItem('bt_custom_api_key') || '';
+        const activeOpenRouterKey = openRouterKey || localStorage.getItem('bt_openrouter_api_key') || '';
+
         const response = await fetch('/api/coach-chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: textToSend,
             context: teamContext,
-            customApiKey: customKey
+            provider: provider,
+            model: selectedModel,
+            openRouterApiKey: activeOpenRouterKey,
+            customApiKey: customGeminiKey
           })
         });
 
@@ -254,77 +282,93 @@ export default function AICoach() {
 
       // 2. Client-side direct fallback if server-side proxy is unavailable
       if (useClientFallback) {
-        const customKey = localStorage.getItem('bt_custom_api_key') || '';
-        const clientKey = customKey || (import.meta as any).env?.VITE_GEMINI_API_KEY;
-        if (clientKey) {
-          console.log("[AICoach] Server-side API is unavailable. Falling back to direct client-side Gemini API call...");
-          
-          const systemInstruction = `You are 'Coach Jarvis', the premier AI Strategic Coach for Battrick, an online multiplayer cricket management game.
-Your task is to analyze the user's questions or requests, evaluate their team context (if provided), and deliver highly professional, precise, and strategically sound advice.
-
-Your expertise includes:
-1. Trade Selections & Transfer Evaluation: Advise on whether a player should be kept (HOLD), sold (TRADE), trained (DEVELOP), or retired. Estimate their transfer values based on age premiums, skills, and wages.
-2. Weekly Training Plans: Suggest the optimal distribution of coaching nets (Max 3 nets per player, up to 10 nets total across the squad). Primary nets (Batting, Bowling, Keeping) should match the player's core role, and secondary nets (Stamina, Fielding) should support overall rating.
-3. Financial & Stadium Planning: Advise on weekly budget balances, staff salaries, optimal Financial Advisor (FA) and PR Officer counts, and stadium size expansion.
-   - PR Staff ratio: Approx 1 PR Officer per 250 club members (up to 10 max).
-   - FA Staff ratio: Approx 1 FA per £1,000,000 in bank balance (up to 10 max) to maximize compound interest. Since each FA costs £1,250/week, FAs are only profitable when your reserves exceed £2,500,000. Hold 0 FAs under £2.5M, and 10 FAs immediately upon crossing £2.5M.
-   - Ideal Seating Distribution Ratios: Terracing (60%), Grass Banks (30%), Seats (8%), Executive Boxes (2%).
-   - Expansion Capacity Recommendation: Weak/rebuilding (Members * 13), Mid-table (Members * 15), Top-3 (Members * 17), Championship (Members * 20).
-4. Home Pitch Recommendation: Analyze their squad players (bowling types/styles and batting skills) and compare them with the current home ground pitch type (found under Current Ground & Pitch Condition). Recommend what the optimal pitch type should be (Flat, Hard, Green, Dusty, Cracked, Uneven) to maximize their home match ratings.
-   - If they have strong spin bowlers (bowling styles like OS, SLA, LBG), recommend Dusty or Cracked pitches.
-   - If they have strong fast/seam bowlers (bowling styles like RF, LF, RFM, LFM), recommend Green or Hard pitches.
-   - If their batting ratings/skills are vastly superior to their weak bowling ratings, suggest Flat to pile on high batting totals.
-   - If they have mostly medium-pace bowlers and moderate batsmen, suggest Uneven or Cracked to introduce low/high bounce variance.
-
-Respond with supportive, highly specialized, yet easy-to-read formatting. Use Markdown lists, bold highlights, and clean spacing.`;
-
-          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${clientKey}`;
-          try {
-            const geminiRes = await fetch(geminiUrl, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify({
-                contents: [
-                  {
-                    role: "user",
-                    parts: [
-                      {
-                        text: `[TEAM CONTEXT]:\n${teamContext || "No context provided yet."}\n\n[USER INQUIRY]:\n${textToSend}`
-                      }
-                    ]
-                  }
-                ],
-                systemInstruction: {
-                  parts: [
+        if (provider === 'openrouter') {
+          const activeOpenRouterKey = openRouterKey || localStorage.getItem('bt_openrouter_api_key') || '';
+          if (activeOpenRouterKey) {
+            console.log("[AICoach] Server-side unavailable. Calling OpenRouter client-side directly...");
+            try {
+              const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${activeOpenRouterKey}`,
+                  "HTTP-Referer": window.location.origin,
+                  "X-Title": "Battrick Tactical Assistant",
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                  model: selectedModel || "anthropic/claude-3.5-sonnet",
+                  messages: [
                     {
-                      text: systemInstruction
+                      role: "system",
+                      content: `You are 'Coach Jarvis', the premier AI Strategic Coach and Opponent Scout for Battrick cricket management. You are an expert at reverse-engineering match ratings, Batstats, top/middle/lower order groupings, tail collapses, and custom net planning.`
+                    },
+                    {
+                      role: "user",
+                      content: `[TEAM & MATCH CONTEXT]:\n${teamContext || "No context provided yet."}\n\n[USER INQUIRY]:\n${textToSend}`
                     }
                   ]
-                }
-              })
-            });
+                })
+              });
 
-            if (!geminiRes.ok) {
-              const errData = await geminiRes.json().catch(() => ({}));
-              throw new Error(errData.error?.message || `HTTP status ${geminiRes.status}`);
+              if (!orRes.ok) {
+                const errData = await orRes.json().catch(() => ({}));
+                throw new Error(errData.error?.message || `HTTP ${orRes.status}`);
+              }
+              const orData = await orRes.json();
+              const reply = orData.choices?.[0]?.message?.content;
+              if (reply) {
+                replyText = reply;
+                success = true;
+              } else {
+                throw new Error("Empty response from OpenRouter API.");
+              }
+            } catch (orErr: any) {
+              errorMsg = `OpenRouter Direct API call failed: ${orErr.message}`;
             }
-
-            const geminiData = await geminiRes.json();
-            const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (text) {
-              replyText = text;
-              success = true;
-            } else {
-              throw new Error("No response text found in Gemini payload.");
-            }
-          } catch (directErr: any) {
-            console.error("[AICoach] Direct client fallback failed:", directErr);
-            errorMsg = `Direct Gemini API call failed: ${directErr.message || "Network blocked"}. This usually occurs when direct requests are blocked by CORS policies, browser adblockers, or secure iframe sandboxing constraints in AI Studio. To resolve this, configure the GEMINI_API_KEY environment variable in your platform Settings > Secrets panel to use the recommended server-side proxy instead.`;
+          } else {
+            errorMsg = "OpenRouter API Key not set. Please click 'Model Settings' in the top-right corner to enter your OpenRouter API key or select Gemini.";
           }
         } else {
-          errorMsg = "Direct API proxy is not available on this static hosting environment. To enable Coach Jarvis on static hosts like Firebase, build your application with the 'VITE_GEMINI_API_KEY' environment variable set, or switch your hosting to a full-stack container platform like Cloud Run.";
+          const customKey = localStorage.getItem('bt_custom_api_key') || '';
+          const clientKey = customKey || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+          if (clientKey) {
+            console.log("[AICoach] Falling back to direct client-side Gemini API call...");
+            const systemInstruction = `You are 'Coach Jarvis', the premier AI Strategic Coach for Battrick, an online multiplayer cricket management game. Analyze questions, opponent lineups, and club management.`;
+            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${clientKey}`;
+            try {
+              const geminiRes = await fetch(geminiUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents: [
+                    {
+                      role: "user",
+                      parts: [{ text: `[TEAM CONTEXT]:\n${teamContext || "No context provided."}\n\n[USER INQUIRY]:\n${textToSend}` }]
+                    }
+                  ],
+                  systemInstruction: { parts: [{ text: systemInstruction }] }
+                })
+              });
+
+              if (!geminiRes.ok) {
+                const errData = await geminiRes.json().catch(() => ({}));
+                throw new Error(errData.error?.message || `HTTP status ${geminiRes.status}`);
+              }
+
+              const geminiData = await geminiRes.json();
+              const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (text) {
+                replyText = text;
+                success = true;
+              } else {
+                throw new Error("No response text found in Gemini payload.");
+              }
+            } catch (directErr: any) {
+              errorMsg = `Direct Gemini API call failed: ${directErr.message || "Network error"}.`;
+            }
+          } else {
+            errorMsg = "No API Key configured. Please click 'Model Settings' in the top right to configure OpenRouter or Gemini.";
+          }
         }
       }
 
@@ -367,9 +411,10 @@ Respond with supportive, highly specialized, yet easy-to-read formatting. Use Ma
   }, [teamContext]);
 
   const templates = [
+    { label: 'Opponent Match & Batstat Analysis', text: 'Analyze our opponent match intelligence (Match ID 32554717). How did Battrick grade and group their top order (#1-3), middle order (#4-6), and lower order tail (#7-11)? What does their Batstat number indicate about where their run scoring is concentrated, and how can we exploit their 5th bowler?' },
     { label: 'Roster Trade Advice', text: 'Evaluate my current squad player list, estimate which prospects are worthy of long-term development, and give recommendations on which high-wage players I should consider listing for trade.' },
-    { label: 'Stadium & Financial audit', text: 'Analyze my active club members, weekly sponsors payouts, and current stadium seating capacities. Should I invest in expansion, and do I have the right staff ratios?' },
     { label: 'Coaching Nets Plan', text: 'Please construct a custom coaching net plan (maximum 10 total nets across my players, up to 4 nets maximum per individual) to optimize my team growth and prevent efficiency penalties.' },
+    { label: 'Stadium & Financial audit', text: 'Analyze my active club members, weekly sponsors payouts, and current stadium seating capacities. Should I invest in expansion, and do I have the right staff ratios?' },
     { label: 'Pitch Preparation Advice', text: 'Recommend the optimal home pitch preparation type (Flat, Hard, Green, Dusty, Cracked, Uneven) based on my current squad players, bowlers and batters. How does this compare to my current pitch?' },
   ];
 
@@ -467,11 +512,27 @@ Respond with supportive, highly specialized, yet easy-to-read formatting. Use Ma
         </div>
         
         <div className="flex items-center gap-2">
+          {/* Model Selector & Settings Button */}
+          <button
+            type="button"
+            onClick={() => setIsModelModalOpen(true)}
+            className="text-[10px] font-mono font-bold bg-indigo-900/90 hover:bg-indigo-800 border border-indigo-700/80 text-indigo-200 hover:text-white px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition shrink-0 cursor-pointer shadow-sm"
+            title="Configure LLM Provider & Model"
+          >
+            <Cpu className="w-3.5 h-3.5 text-indigo-300" />
+            <span className="hidden md:inline">
+              {provider === 'openrouter' 
+                ? (OPENROUTER_MODELS.find(m => m.id === selectedModel)?.name || 'Claude 3.5 Sonnet')
+                : 'Gemini 2.5 Flash'}
+            </span>
+            <Settings className="w-3 h-3 text-indigo-300" />
+          </button>
+
           {currentChatId && activeSubTab === 'chat' && (
             <button
               type="button"
               onClick={handleNewChat}
-              className="text-[10px] font-bold bg-indigo-800 hover:bg-indigo-700 border border-indigo-700 text-white px-2.5 py-1.5 rounded flex items-center gap-1 transition shrink-0 cursor-pointer shadow-sm"
+              className="text-[10px] font-bold bg-indigo-800 hover:bg-indigo-700 border border-indigo-700 text-white px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition shrink-0 cursor-pointer shadow-sm"
               title="Start a new conversation"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -481,7 +542,7 @@ Respond with supportive, highly specialized, yet easy-to-read formatting. Use Ma
           
           {/* Sync Status Badge */}
           <div className="hidden sm:block text-[10px] font-mono bg-indigo-900/60 border border-indigo-800 text-indigo-200 px-3 py-1.5 rounded-full shrink-0">
-            Roster loaded
+            Roster synced
           </div>
         </div>
       </div>
@@ -513,6 +574,151 @@ Respond with supportive, highly specialized, yet easy-to-read formatting. Use Ma
           Jarvis History
         </button>
       </div>
+
+      {/* Model Settings Modal */}
+      {isModelModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 text-slate-800 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600">
+                  <Cpu className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900">AI Intelligence Engine</h3>
+                  <p className="text-xs text-slate-500 font-mono">Select LLM Provider & Tactical Reasoning Model</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsModelModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 text-xs font-bold font-mono px-2 py-1 rounded-lg hover:bg-slate-100 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Provider Selection */}
+            <div>
+              <label className="text-xs font-mono font-bold uppercase text-slate-500 block mb-2">
+                LLM Provider
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProvider('openrouter');
+                    localStorage.setItem('bt_llm_provider', 'openrouter');
+                  }}
+                  className={`p-3 rounded-xl border text-left transition flex items-start gap-2.5 ${
+                    provider === 'openrouter'
+                      ? 'border-indigo-600 bg-indigo-50/50 text-indigo-950 font-bold'
+                      : 'border-slate-200 bg-white hover:border-slate-300 text-slate-600'
+                  }`}
+                >
+                  <Cpu className="w-4 h-4 text-indigo-600 mt-0.5" />
+                  <div>
+                    <div className="text-xs font-bold">OpenRouter (Recommended)</div>
+                    <div className="text-[10px] text-slate-500 font-normal mt-0.5">Claude 3.5, Llama 3.3, GPT-4o, DeepSeek</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProvider('gemini');
+                    localStorage.setItem('bt_llm_provider', 'gemini');
+                  }}
+                  className={`p-3 rounded-xl border text-left transition flex items-start gap-2.5 ${
+                    provider === 'gemini'
+                      ? 'border-indigo-600 bg-indigo-50/50 text-indigo-950 font-bold'
+                      : 'border-slate-200 bg-white hover:border-slate-300 text-slate-600'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4 text-indigo-600 mt-0.5" />
+                  <div>
+                    <div className="text-xs font-bold">Google Gemini</div>
+                    <div className="text-[10px] text-slate-500 font-normal mt-0.5">Gemini 2.5 Flash / Pro</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Model Selection (if OpenRouter) */}
+            {provider === 'openrouter' && (
+              <div>
+                <label className="text-xs font-mono font-bold uppercase text-slate-500 block mb-2">
+                  Select OpenRouter Model
+                </label>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {OPENROUTER_MODELS.map(m => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedModel(m.id);
+                        localStorage.setItem('bt_llm_model', m.id);
+                      }}
+                      className={`w-full p-2.5 rounded-xl border text-left transition flex items-center justify-between ${
+                        selectedModel === m.id
+                          ? 'border-indigo-600 bg-indigo-50/80 text-indigo-950 font-bold'
+                          : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
+                      }`}
+                    >
+                      <div>
+                        <div className="text-xs font-bold">{m.name}</div>
+                        <div className="text-[10px] text-slate-500 font-normal">{m.desc}</div>
+                      </div>
+                      {selectedModel === m.id && (
+                        <Check className="w-4 h-4 text-indigo-600 shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* OpenRouter API Key Input */}
+            {provider === 'openrouter' && (
+              <div>
+                <label className="text-xs font-mono font-bold uppercase text-slate-500 block mb-1">
+                  OpenRouter API Key (Optional)
+                </label>
+                <p className="text-[11px] text-slate-500 mb-2">
+                  Enter your <span className="font-mono text-indigo-600">sk-or-v1-...</span> key if not pre-configured on the server.
+                </p>
+                <input
+                  type="password"
+                  value={openRouterKey}
+                  onChange={(e) => {
+                    setOpenRouterKey(e.target.value);
+                    localStorage.setItem('bt_openrouter_api_key', e.target.value);
+                    setKeySavedMessage(true);
+                    setTimeout(() => setKeySavedMessage(false), 2000);
+                  }}
+                  placeholder="sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxx"
+                  className="w-full text-xs font-mono p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                {keySavedMessage && (
+                  <span className="text-[11px] text-emerald-600 font-mono font-bold mt-1 block">
+                    ✓ Key saved to browser storage!
+                  </span>
+                )}
+              </div>
+            )}
+
+            <div className="pt-2 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsModelModalOpen(false)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-mono font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                Apply & Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {activeSubTab === 'history' ? (
         <div className="flex-1 overflow-y-auto bg-slate-50/50">

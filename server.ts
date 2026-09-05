@@ -2,23 +2,19 @@ import express from "express";
 import path from "path";
 import { GoogleGenAI } from "@google/genai";
 
-let aiClient: any = null;
-function getAiClient() {
-  if (!aiClient) {
-    const key = process.env.GEMINI_API_KEY;
-    if (!key) {
-      throw new Error("GEMINI_API_KEY is not configured in the server environment. Please define it in your Secrets panel.");
-    }
-    aiClient = new GoogleGenAI({ 
-      apiKey: key,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
+function getAiClient(customKey?: string) {
+  const key = customKey?.trim() || process.env.GEMINI_API_KEY;
+  if (!key) {
+    throw new Error("GEMINI_API_KEY is not configured in the server environment. Please configure it in your Settings > Secrets panel.");
   }
-  return aiClient;
+  return new GoogleGenAI({ 
+    apiKey: key,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
 }
 
 async function startServer() {
@@ -839,31 +835,36 @@ async function startServer() {
     }
   });
 
-  // API Route for AI Coach Assistance
+  // API Route to inspect available LLM providers
+  app.get("/api/llm-config", (req, res) => {
+    const hasOpenRouter = !!(process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY.trim() !== "");
+    const hasGemini = !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== "");
+    res.json({
+      hasOpenRouter,
+      hasGemini,
+      defaultProvider: hasOpenRouter ? "openrouter" : "gemini",
+      supportedModels: [
+        { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet (Recommended)", provider: "openrouter" },
+        { id: "meta-llama/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct", provider: "openrouter" },
+        { id: "openai/gpt-4o", name: "GPT-4o", provider: "openrouter" },
+        { id: "deepseek/deepseek-chat", name: "DeepSeek V3", provider: "openrouter" },
+        { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash (via OpenRouter)", provider: "openrouter" },
+        { id: "mistralai/mistral-large-2407", name: "Mistral Large", provider: "openrouter" },
+        { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash (Direct Google SDK)", provider: "gemini" }
+      ]
+    });
+  });
+
+  // API Route for AI Coach Assistance (supports OpenRouter & Gemini)
   app.post("/api/coach-chat", async (req, res) => {
-    const { message, context, customApiKey } = req.body;
+    const { message, context, provider = "openrouter", model, customApiKey, openRouterApiKey } = req.body;
 
     if (!message) {
       res.status(400).json({ error: "A message is required." });
       return;
     }
 
-    try {
-      let ai;
-      if (customApiKey && customApiKey.trim() !== "") {
-        console.log(`[AI Coach] Instantiating Gemini client with custom manager-provided key...`);
-        ai = new GoogleGenAI({ 
-          apiKey: customApiKey.trim(),
-          httpOptions: {
-            headers: {
-              'User-Agent': 'aistudio-build',
-            }
-          }
-        });
-      } else {
-        ai = getAiClient();
-      }
-      const systemInstruction = `You are 'Coach Jarvis', the premier AI Strategic Coach for Battrick, an online multiplayer cricket management game.
+    const systemInstruction = `You are 'Coach Jarvis', the premier AI Strategic Coach for Battrick, an online multiplayer cricket management game.
 Your task is to analyze the user's questions or requests, evaluate their team context (if provided), and deliver highly professional, precise, and strategically sound advice.
 
 Your expertise includes:
@@ -879,27 +880,100 @@ Your expertise includes:
    - If they have strong fast/seam bowlers (bowling styles like RF, LF, RFM, LFM), recommend Green or Hard pitches.
    - If their batting ratings/skills are vastly superior to their weak bowling ratings, suggest Flat to pile on high batting totals.
    - If they have mostly medium-pace bowlers and moderate batsmen, suggest Uneven or Cracked to introduce low/high bounce variance.
+5. Opponent Scouting & Match Analysis:
+   - Analyze opposition match scorecards and reporter summaries (Top Order #1-3, Middle Order #4-6, Lower Order #7-11).
+   - Evaluate Batstat ratings, tail vulnerability (large gap between top and bottom order), and 5th bowler weakness.
+   - Propose tailored match orders (GFI, PAN, TIE) and pitch strategies to exploit opposition weaknesses.
 
 Respond with supportive, highly specialized, yet easy-to-read formatting. Use Markdown lists, bold highlights, and clean spacing.`;
 
-      const contents = [
-        { role: "user", parts: [{ text: `${systemInstruction}\n\n[TEAM CONTEXT]:\n${context || "No context provided yet."}\n\n[USER INQUIRY]:\n${message}` }] }
-      ];
+    // 1. OPENROUTER FLOW
+    const effectiveOpenRouterKey = openRouterApiKey?.trim() || process.env.OPENROUTER_API_KEY?.trim();
+    const effectiveProvider = provider === "openrouter" || (effectiveOpenRouterKey && provider !== "gemini") ? "openrouter" : "gemini";
 
-      console.log(`[AI Coach] Generating response for message...`);
+    if (effectiveProvider === "openrouter") {
+      if (!effectiveOpenRouterKey) {
+        res.status(401).json({ 
+          error: "OpenRouter API Key is missing. Please enter your OpenRouter key in the AI Coach settings or configure OPENROUTER_API_KEY in the environment secrets." 
+        });
+        return;
+      }
+
+      const targetModel = model || "anthropic/claude-3.5-sonnet";
+      console.log(`[AI Coach] Generating response via OpenRouter with model ${targetModel}...`);
+
+      try {
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${effectiveOpenRouterKey}`,
+            "HTTP-Referer": "https://ai.studio/build",
+            "X-Title": "BattrickIQ AI Coach",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: targetModel,
+            messages: [
+              { role: "system", content: systemInstruction },
+              { role: "user", content: `[TEAM CONTEXT]:\n${context || "No context provided yet."}\n\n[USER INQUIRY]:\n${message}` }
+            ],
+            temperature: 0.7,
+            max_tokens: 2048
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          console.error("OpenRouter API error response:", errData);
+          const errorMsg = errData?.error?.message || `OpenRouter returned HTTP status ${response.status}`;
+          res.status(response.status).json({ error: errorMsg });
+          return;
+        }
+
+        const data = await response.json();
+        const replyText = data.choices?.[0]?.message?.content || "No response generated from OpenRouter.";
+
+        res.json({
+          success: true,
+          reply: replyText,
+          provider: "openrouter",
+          model: targetModel
+        });
+        return;
+
+      } catch (orErr: any) {
+        console.error("OpenRouter network error:", orErr);
+        res.status(500).json({ error: orErr.message || "Failed to communicate with OpenRouter API." });
+        return;
+      }
+    }
+
+    // 2. GEMINI FLOW (Fallback / Alternative)
+    try {
+      const ai = getAiClient(customApiKey);
+      console.log(`[AI Coach] Generating response via Google Gemini (gemini-3.8-flash)...`);
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: contents
+        model: "gemini-3.8-flash",
+        contents: `[TEAM CONTEXT]:\n${context || "No context provided yet."}\n\n[USER INQUIRY]:\n${message}`,
+        config: {
+          systemInstruction: systemInstruction,
+        },
       });
 
       res.json({
         success: true,
-        reply: response.text
+        reply: response.text,
+        provider: "gemini",
+        model: "gemini-3.8-flash"
       });
 
     } catch (error: any) {
       console.error("Gemini API error:", error);
-      res.status(500).json({ error: error.message || "An error occurred with Coach Jarvis's speech synthesizer." });
+      const isAuthErr = error?.status === 401 || error?.message?.includes("UNAUTHENTICATED") || error?.message?.includes("invalid authentication credentials") || error?.message?.includes("ACCESS_TOKEN_TYPE_UNSUPPORTED");
+      const errorDetail = isAuthErr 
+        ? "Gemini API key is invalid or not yet configured. Please check your GEMINI_API_KEY in the Settings > Secrets panel or switch to OpenRouter." 
+        : (error.message || "An error occurred while generating AI advice.");
+      res.status(500).json({ error: errorDetail });
     }
   });
 

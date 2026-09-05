@@ -11,11 +11,12 @@ import BusinessRules from './components/BusinessRules';
 import LoginPage from './components/LoginPage';
 import AdminDashboard from './components/AdminDashboard';
 import PlayerDetails from './components/PlayerDetails';
+import OpponentScout from './components/OpponentScout';
 import { onCustomAuthStateChanged, customSignOut, CustomUser } from './lib/customAuth';
-import { Award, Calculator, Users, FolderOpen, Heart, RefreshCw, Landmark, Bot, BookOpen, Trophy, Clock, ShieldAlert, LogOut, Eye, Activity, History, LayoutGrid, Wallet, MoreHorizontal, X, ChevronUp } from 'lucide-react';
+import { Award, Calculator, Users, FolderOpen, Heart, RefreshCw, Landmark, Bot, BookOpen, Trophy, Clock, ShieldAlert, LogOut, Eye, Activity, History, LayoutGrid, Wallet, MoreHorizontal, X, ChevronUp, Swords } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-type TabType = 'summary' | 'sync' | 'squad' | 'lineup' | 'wage' | 'stadium' | 'coach' | 'coach-history' | 'rules' | 'admin' | 'player-details';
+type TabType = 'summary' | 'sync' | 'squad' | 'lineup' | 'scout' | 'wage' | 'stadium' | 'coach' | 'coach-history' | 'rules' | 'admin' | 'player-details';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('summary');
@@ -166,11 +167,12 @@ export default function App() {
     { id: 'summary' as TabType, step: '01', label: 'Club Summary', icon: <Activity className="w-4 h-4" />, desc: 'Overall Club Health', status: 'Overview' },
     { id: 'squad' as TabType, step: '02', label: 'Squad & Pops', icon: <FolderOpen className="w-4 h-4" />, desc: 'Roster & Skill Pops', status: 'Ready' },
     { id: 'lineup' as TabType, step: '03', label: 'Lineup XI', icon: <Users className="w-4 h-4" />, desc: 'Rating Optimizer', status: 'Draft' },
-    { id: 'wage' as TabType, step: '04', label: 'Financial Forecast', icon: <Calculator className="w-4 h-4" />, desc: 'Wages & Cashflow Projections', status: 'Config' },
-    { id: 'stadium' as TabType, step: '05', label: 'Stadium Plan', icon: <Landmark className="w-4 h-4" />, desc: 'Expansion Helper', status: 'Auto' },
-    { id: 'coach' as TabType, step: '06', label: 'Tactical AI', icon: <Bot className="w-4 h-4" />, desc: 'AI Tactical Advice', status: 'AI Ready' },
-    { id: 'sync' as TabType, step: '07', label: 'Roster Sync', icon: <RefreshCw className="w-4 h-4" />, desc: 'Paste Battrick Pages', status: 'Active' },
-    { id: 'rules' as TabType, step: '08', label: 'Club Setup', icon: <BookOpen className="w-4 h-4" />, desc: 'Profile & Tactical Rules', status: 'Setup' },
+    { id: 'scout' as TabType, step: '04', label: 'Opponent Scout', icon: <Swords className="w-4 h-4" />, desc: 'Tactical Analysis & Tail Vulnerabilities', status: 'Tactics' },
+    { id: 'wage' as TabType, step: '05', label: 'Financial Forecast', icon: <Calculator className="w-4 h-4" />, desc: 'Wages & Cashflow Projections', status: 'Config' },
+    { id: 'stadium' as TabType, step: '06', label: 'Stadium Plan', icon: <Landmark className="w-4 h-4" />, desc: 'Expansion Helper', status: 'Auto' },
+    { id: 'coach' as TabType, step: '07', label: 'Tactical AI', icon: <Bot className="w-4 h-4" />, desc: 'AI Tactical Advice', status: 'AI Ready' },
+    { id: 'sync' as TabType, step: '08', label: 'Roster Sync', icon: <RefreshCw className="w-4 h-4" />, desc: 'Paste Battrick Pages', status: 'Active' },
+    { id: 'rules' as TabType, step: '09', label: 'Club Setup', icon: <BookOpen className="w-4 h-4" />, desc: 'Profile & Tactical Rules', status: 'Setup' },
   ];
 
   const tabs = user?.role === 'admin'
@@ -473,6 +475,7 @@ export default function App() {
                     />
                   )}
                   {activeTab === 'lineup' && <LineupOptimizer setActiveTab={setActiveTab} />}
+                  {activeTab === 'scout' && <OpponentScout setActiveTab={setActiveTab} />}
                   {activeTab === 'wage' && <WageCalculator />}
                   {activeTab === 'stadium' && <StadiumPlanner setActiveTab={setActiveTab} />}
                   {activeTab === 'coach' && <AICoach />}

@@ -6,12 +6,12 @@ import {
   Award, Calculator, Users, FolderOpen, BookOpen, RefreshCw, Landmark, Bot, 
   TrendingUp, TrendingDown, DollarSign, Activity, ChevronRight, Calendar, 
   AlertTriangle, CheckCircle2, ShieldAlert, Sparkles, Scale, Info, Cloud,
-  Database, Wifi, WifiOff, CheckCircle, ArrowUpRight, Upload
+  Database, Wifi, WifiOff, CheckCircle, ArrowUpRight, Upload, Swords
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface SummaryDashboardProps {
-  setActiveTab: (tab: 'summary' | 'sync' | 'squad' | 'lineup' | 'wage' | 'stadium' | 'coach' | 'rules' | 'admin') => void;
+  setActiveTab: (tab: any) => void;
 }
 
 export default function SummaryDashboard({ setActiveTab }: SummaryDashboardProps) {
@@ -672,25 +672,38 @@ Please analyze my club details and explain:
       <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-2xs">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-serif font-bold text-2xl text-slate-900">This week</h3>
-          <button
-            type="button"
-            onClick={() => setActiveTab('lineup')}
-            className="text-xs font-mono font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
-          >
-            <span>Match XI</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab('scout')}
+              className="text-xs font-mono font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/60 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
+            >
+              <Swords className="w-3.5 h-3.5" />
+              <span>Scout Opponent</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('lineup')}
+              className="text-xs font-mono font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
+            >
+              <span>Match XI</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
         <div className="divide-y divide-slate-100">
           {displayFixtures.map((game, idx) => (
             <div 
               key={idx}
-              onClick={() => setActiveTab('lineup')}
+              onClick={() => setActiveTab('scout')}
               className="flex items-center justify-between py-3.5 first:pt-1 last:pb-1 group hover:bg-slate-50 -mx-3 px-3 rounded-xl transition cursor-pointer"
             >
               <div>
-                <h4 className="font-serif font-bold text-base text-slate-900 group-hover:text-blue-600 transition">
-                  {game.opponent}
+                <h4 className="font-serif font-bold text-base text-slate-900 group-hover:text-blue-600 transition flex items-center gap-2">
+                  <span>{game.opponent}</span>
+                  <span className="text-[10px] font-mono text-indigo-600 font-bold bg-indigo-50 px-1.5 py-0.5 rounded group-hover:bg-indigo-100">
+                    Scout &gt;
+                  </span>
                 </h4>
                 <p className="text-xs text-slate-500 mt-0.5 font-normal">
                   {game.date} • {game.type} • {game.venue}
@@ -857,6 +870,29 @@ Please analyze my club details and explain:
             </div>
             <div className="flex items-center gap-1 text-[11px] font-bold text-blue-600 mt-4 group-hover:translate-x-0.5 transition-transform duration-150">
               <span>Consult Coach</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </div>
+          </div>
+
+          {/* Card: Opponent Scouting & Match Analysis */}
+          <div 
+            onClick={() => setActiveTab('scout')}
+            className="group bg-white border border-slate-200 hover:border-blue-300 rounded-xl p-5 shadow-sm hover:shadow-md transition duration-150 cursor-pointer flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition">
+                  <Swords className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-mono text-slate-400 font-bold">Step 07</span>
+              </div>
+              <h4 className="font-display font-bold text-sm text-slate-900 group-hover:text-blue-600 transition">Opponent Scout & Tactics</h4>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                Analyze opposition lineups, identify tail collapses (#7–11), target weak 5th bowlers, and align match intensity with pitch conditions.
+              </p>
+            </div>
+            <div className="flex items-center gap-1 text-[11px] font-bold text-blue-600 mt-4 group-hover:translate-x-0.5 transition-transform duration-150">
+              <span>Scout Opposition</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </div>
           </div>

@@ -61,8 +61,8 @@ export function getSkillLabel(skillKey: string, value: number): string {
   return SKILL_LEVELS[Math.min(value, SKILL_LEVELS.length - 1)] || 'useless';
 }
 
-export type PitchType = 'Flat' | 'Hard' | 'Green' | 'Dusty' | 'Cracked' | 'Uneven';
-export type WeatherType = 'Sunny' | 'Cloudy' | 'Windy' | 'Overcast';
+export type PitchType = 'Flat' | 'Hard' | 'Green' | 'Dusty' | 'Cracked' | 'Uneven' | 'Slow';
+export type WeatherType = 'Sunny' | 'Cloudy' | 'Windy' | 'Overcast' | 'Humid' | 'Partially Cloudy';
 export type MatchFormat = 'First Class' | 'One Day' | 'Twenty20';
 
 export interface BattrickPlayer {
@@ -181,4 +181,161 @@ export interface MatchConditions {
   pitch: PitchType;
   weather: WeatherType;
   format: MatchFormat;
+}
+
+export interface OpponentPlayer {
+  id: string;
+  name: string;
+  age: number;
+  wage: number;
+  btRating: number;
+  role: 'Batter' | 'Bowler' | 'Keeper' | 'All-rounder' | 'Prospect';
+  bowlingType: string;
+  batting: number;
+  bowling: number;
+  keeping: number;
+  stamina: number;
+  experience: number;
+  concentration?: number;
+  consistency?: number;
+  fielding?: number;
+  order?: number;
+}
+
+export interface OpponentVulnerability {
+  id: string;
+  severity: 'critical' | 'moderate' | 'minor' | 'strength';
+  category: 'batting_tail' | 'fifth_bowler' | 'pitch_mismatch' | 'stamina_fatigue' | 'spin_weakness' | 'pace_weakness';
+  title: string;
+  description: string;
+  tacticalAction: string;
+}
+
+export interface OpponentScoutDossier {
+  clubName: string;
+  scoutedDate: string;
+  players: OpponentPlayer[];
+  topOrderRating: number;
+  middleOrderRating: number;
+  tailVulnerabilityRating: number;
+  paceAttackRating: number;
+  spinAttackRating: number;
+  overallSquadPower: number;
+  vulnerabilities: OpponentVulnerability[];
+  recommendedMatchIntensity: 'Take It Easy' | 'Play As Normal' | 'Go For It';
+  battingAggressionAdvice: string;
+  bowlingRotationAdvice: string;
+  fieldingPressureAdvice: string;
+}
+
+export interface MatchSummaryRatings {
+  topOrder: string;
+  topOrderScore: number;
+  middleOrder: string;
+  middleOrderScore: number;
+  lowerOrder: string;
+  lowerOrderScore: number;
+  seamBowling: string;
+  seamBowlingScore: number;
+  spinBowling: string;
+  spinBowlingScore: number;
+  fielding: string;
+  fieldingScore: number;
+  batstat: number;
+}
+
+export interface MatchBatterStat {
+  order: number;
+  name: string;
+  id?: string;
+  dismissal: string;
+  runs: number;
+  balls: number;
+  fours: number;
+  sixes: number;
+  strikeRate: number;
+  group: 'Top Order' | 'Middle Order' | 'Lower Order';
+  estimatedSkillGrade?: string;
+}
+
+export interface MatchBowlerStat {
+  order: number;
+  name: string;
+  id?: string;
+  overs: number;
+  maidens: number;
+  runs: number;
+  wickets: number;
+  economy: number;
+  bowlingType?: string;
+  isSeam?: boolean;
+  isSpin?: boolean;
+}
+
+export interface MatchFallOfWicket {
+  wicket: number;
+  score: number;
+  player: string;
+  over: string;
+}
+
+export interface MatchInnings {
+  teamName: string;
+  inningsNumber: number;
+  totalRuns: number;
+  wickets: number;
+  overs: string;
+  batters: MatchBatterStat[];
+  bowlers: MatchBowlerStat[];
+  fallOfWickets: MatchFallOfWicket[];
+}
+
+export interface BatstatDecomposition {
+  teamName: string;
+  batstatValue: number;
+  topOrderRatingText: string;
+  topOrderRatingValue: number;
+  middleOrderRatingText: string;
+  middleOrderRatingValue: number;
+  lowerOrderRatingText: string;
+  lowerOrderRatingValue: number;
+  seamBowlingText: string;
+  spinBowlingText: string;
+  fieldingText: string;
+  tailDropoffPercent: number; // percentage drop from top order to tail
+  topOrderContributionPct: number;
+  fifthBowlerConceded: number;
+  fifthBowlerEcon: number;
+  fifthBowlerName: string;
+  keyInsights: string[];
+  tacticalExploits: string[];
+}
+
+export interface ParsedBattrickMatch {
+  matchId: string;
+  matchUrl: string;
+  summaryUrl: string;
+  matchDate: string;
+  matchType: string;
+  homeTeam: string;
+  awayTeam: string;
+  venue: string;
+  crowd?: string;
+  toss?: string;
+  pitch: PitchType;
+  weather: WeatherType;
+  result: string;
+  homeRatings?: MatchSummaryRatings;
+  awayRatings?: MatchSummaryRatings;
+  innings: MatchInnings[];
+  batstatAnalysis?: BatstatDecomposition[];
+}
+
+export type LLMProvider = 'openrouter' | 'gemini';
+
+export interface LLMConfig {
+  provider: LLMProvider;
+  model: string;
+  openRouterApiKey?: string;
+  geminiApiKey?: string;
 }
