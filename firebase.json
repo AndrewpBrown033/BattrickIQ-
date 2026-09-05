@@ -13,8 +13,8 @@
       {
         "source": "/api/**",
         "run": {
-          "serviceId": "api",
-          "region": "us-central1"
+          "serviceId": "battrickiq",
+          "region": "asia-southeast1"
         }
       },
       {
