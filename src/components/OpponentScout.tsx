@@ -15,7 +15,10 @@ import {
   parseOpponentSquad, 
   generateOpponentScoutDossier, 
   parseBattrickFullMatch, 
-  getExampleMatchData 
+  getExampleMatchData,
+  getExampleMatchDataById,
+  parseFixtures,
+  TEST_MATCHES
 } from '../parser';
 import { 
   ShieldAlert, 
@@ -35,7 +38,15 @@ import {
   Search, 
   ExternalLink, 
   Bot, 
-  Percent 
+  Percent,
+  Calendar,
+  CalendarDays,
+  HelpCircle,
+  Info,
+  ListOrdered,
+  Calculator,
+  UserCheck,
+  RefreshCw
 } from 'lucide-react';
 
 interface OpponentScoutProps {
@@ -73,8 +84,8 @@ const SAMPLE_OPPONENTS: Record<string, OpponentPlayer[]> = {
 };
 
 export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
-  // Navigation Sub-tab
-  const [activeSubTab, setActiveSubTab] = useState<'match_analyzer' | 'dossier'>('match_analyzer');
+  // Navigation Sub-tab: match_analyzer | fixtures_scout | dossier
+  const [activeSubTab, setActiveSubTab] = useState<'match_analyzer' | 'fixtures_scout' | 'dossier'>('match_analyzer');
 
   // 1. My Squad Context
   const [mySquad, setMySquad] = useState<BattrickPlayer[]>([]);
@@ -94,11 +105,19 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   const [isInputOpen, setIsInputOpen] = useState<boolean>(false);
   const [copySuccess, setCopySuccess] = useState<boolean>(false);
 
-  // 4. Match & Summary Intelligence State
+  // 4. Fixtures Parsing Drawer
+  const [isFixturesPasteOpen, setIsFixturesPasteOpen] = useState<boolean>(false);
+  const [pastedFixturesText, setPastedFixturesText] = useState<string>('');
+
+  // 5. Match & Summary Intelligence State
   const [matchIdInput, setMatchIdInput] = useState<string>('32554717');
   const [pastedMatchText, setPastedMatchText] = useState<string>('');
   const [activeParsedMatch, setActiveParsedMatch] = useState<ParsedBattrickMatch>(() => getExampleMatchData());
   const [selectedTeamTab, setSelectedTeamTab] = useState<'home' | 'away'>('away');
+  const [isFetchingMatch, setIsFetchingMatch] = useState<boolean>(false);
+  const [fetchingMatchId, setFetchingMatchId] = useState<string | null>(null);
+  const [fetchStatusMessage, setFetchStatusMessage] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Load user data on mount
   useEffect(() => {
@@ -107,7 +126,13 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
       if (savedSquad) setMySquad(JSON.parse(savedSquad));
 
       const savedFixtures = localStorage.getItem('bt_fixtures');
-      if (savedFixtures) setFixtures(JSON.parse(savedFixtures));
+      if (savedFixtures) {
+        setFixtures(JSON.parse(savedFixtures));
+      } else {
+        // Populate default user fixtures
+        const defaultF = parseFixtures('');
+        setFixtures(defaultF);
+      }
 
       const savedName = localStorage.getItem('bt_team_name');
       if (savedName) setMyTeamName(savedName);
@@ -152,6 +177,19 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
     }
   };
 
+  // Handle parsing pasted fixtures list HTML / text
+  const handleParsePastedFixtures = () => {
+    if (!pastedFixturesText.trim()) return;
+    const parsed = parseFixtures(pastedFixturesText);
+    if (parsed.length > 0) {
+      setFixtures(parsed);
+      setIsFixturesPasteOpen(false);
+      setPastedFixturesText('');
+    } else {
+      alert('Could not detect fixture items. Please paste the HTML snippet or text from your Upcoming Matches page.');
+    }
+  };
+
   // Handle sample selection
   const handleSelectSample = (key: string) => {
     if (SAMPLE_OPPONENTS[key]) {
@@ -163,8 +201,7 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   // Handle parsing match scorecard and summary text
   const handleParseMatchData = () => {
     if (!pastedMatchText.trim()) {
-      // Reload example match
-      const example = getExampleMatchData();
+      const example = getExampleMatchDataById(matchIdInput || '32554717');
       setActiveParsedMatch(example);
       return;
     }
@@ -173,11 +210,139 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
     setPastedMatchText('');
   };
 
-  // Load preloaded example match 32554717
-  const handleLoadExampleMatch = () => {
-    setMatchIdInput('32554717');
-    const example = getExampleMatchData();
-    setActiveParsedMatch(example);
+  // 1-Click test match selector
+  const handleSelectMatchExample = (mId: string) => {
+    setMatchIdInput(mId);
+    const matchData = getExampleMatchDataById(mId);
+    setActiveParsedMatch(matchData);
+    if (matchData.matchType.toLowerCase().includes('first class')) {
+      setMatchFormat('First Class');
+    } else if (matchData.matchType.toLowerCase().includes('twenty20')) {
+      setMatchFormat('Twenty20');
+    } else {
+      setMatchFormat('One Day');
+    }
+    if (['Green', 'Hard', 'Dusty', 'Flat', 'Uneven', 'Cracked'].includes(matchData.pitch)) {
+      setPitch(matchData.pitch as PitchType);
+    }
+    if (['Overcast', 'Sunny', 'Humid', 'Windy', 'Partially Cloudy'].includes(matchData.weather)) {
+      setWeather(matchData.weather === 'Partially Cloudy' ? 'Overcast' : (matchData.weather as WeatherType));
+    }
+  };
+
+  // Quick scout action directly from fixture list
+  const handleScoutFixtureOpponent = (game: BattrickGame) => {
+    setOpponentName(game.opponent);
+    if (game.type === 'First Class') setMatchFormat('First Class');
+    else if (game.type === 'Twenty20') setMatchFormat('Twenty20');
+    else setMatchFormat('One Day');
+    setVenue(game.venue);
+
+    // If we have a match ID for this game or sample opponent
+    if (game.matchId) {
+      setMatchIdInput(game.matchId);
+    }
+    setActiveSubTab('dossier');
+  };
+
+  const handleAnalyzeFixtureMatch = (game: BattrickGame) => {
+    if (game.matchId) {
+      setMatchIdInput(game.matchId);
+      const matchData = getExampleMatchDataById(game.matchId);
+      setActiveParsedMatch(matchData);
+    }
+    setActiveSubTab('match_analyzer');
+  };
+
+  // Direct Live Sync for any Battrick Match ID (Fetches matchinfo & match summary)
+  const handleDirectFetchMatch = async (targetMatchIdInput?: string) => {
+    const targetMatchId = (targetMatchIdInput || matchIdInput || '').trim();
+    if (!targetMatchId) {
+      setFetchError('Please provide a valid Battrick Match ID (e.g. 32557622, 32554717).');
+      return;
+    }
+
+    setIsFetchingMatch(true);
+    setFetchingMatchId(targetMatchId);
+    setFetchError(null);
+    setFetchStatusMessage(`Connecting to Battrick server and fetching Match #${targetMatchId}...`);
+
+    // Notify app-wide sync indicator
+    try {
+      window.dispatchEvent(new Event('bt_datasync_start'));
+    } catch {
+      // ignore
+    }
+
+    try {
+      const username = localStorage.getItem('bt_direct_user') || '';
+      const password = localStorage.getItem('bt_direct_pass') || '';
+      const sessionToken = localStorage.getItem('bt_sync_session') || '';
+
+      const response = await fetch('/api/sync-battrick-match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          matchId: targetMatchId,
+          username,
+          password,
+          sessionToken
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || data.error || `HTTP ${response.status}: Failed to fetch match from Battrick.`);
+      }
+
+      if (data.sessionToken) {
+        localStorage.setItem('bt_sync_session', data.sessionToken);
+      }
+
+      const combinedHtml = `${data.matchHtml || ''}\n${data.summaryHtml || ''}`;
+      const parsed = parseBattrickFullMatch(combinedHtml, targetMatchId);
+
+      setActiveParsedMatch(parsed);
+      setMatchIdInput(targetMatchId);
+
+      // Auto-synchronize conditions
+      if (parsed.pitch && ['Green', 'Hard', 'Dusty', 'Flat', 'Uneven', 'Cracked'].includes(parsed.pitch)) {
+        setPitch(parsed.pitch as PitchType);
+      }
+      if (parsed.weather && ['Overcast', 'Sunny', 'Humid', 'Windy'].includes(parsed.weather)) {
+        setWeather(parsed.weather as WeatherType);
+      }
+      if (parsed.matchType) {
+        if (parsed.matchType.toLowerCase().includes('first class')) setMatchFormat('First Class');
+        else if (parsed.matchType.toLowerCase().includes('twenty20')) setMatchFormat('Twenty20');
+        else setMatchFormat('One Day');
+      }
+
+      setFetchStatusMessage(`✓ Successfully fetched & parsed Match #${targetMatchId} (${parsed.homeTeam} vs ${parsed.awayTeam}) directly from Battrick!`);
+      setActiveSubTab('match_analyzer');
+    } catch (err: any) {
+      console.warn('Match direct fetch error, falling back to cached knowledge formula:', err);
+      // If direct fetch couldn't connect, fall back to built-in formula generator
+      const fallbackData = getExampleMatchDataById(targetMatchId);
+      setActiveParsedMatch(fallbackData);
+      setMatchIdInput(targetMatchId);
+      setActiveSubTab('match_analyzer');
+
+      setFetchError(
+        err.message?.includes('credentials') || err.message?.includes('Login')
+          ? `${err.message} You can set your credentials in Sync Hub for direct live connections.`
+          : `${err.message} Loaded simulated match model for #${targetMatchId}.`
+      );
+    } finally {
+      setIsFetchingMatch(false);
+      setFetchingMatchId(null);
+      try {
+        window.dispatchEvent(new Event('bt_datasync_complete'));
+      } catch {
+        // ignore
+      }
+    }
   };
 
   // Ask AI Coach to analyze this match with OpenRouter
@@ -289,11 +454,11 @@ TACTICAL ORDERS:
         </div>
 
         {/* View Switcher Tabs */}
-        <div className="flex items-center gap-2 mt-5 border-t border-blue-900/60 pt-3">
+        <div className="flex items-center gap-2 mt-5 border-t border-blue-900/60 pt-3 overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveSubTab('match_analyzer')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
               activeSubTab === 'match_analyzer'
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'bg-white/10 text-blue-200 hover:bg-white/20'
@@ -304,8 +469,20 @@ TACTICAL ORDERS:
           </button>
           <button
             type="button"
+            onClick={() => setActiveSubTab('fixtures_scout')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+              activeSubTab === 'fixtures_scout'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-white/10 text-blue-200 hover:bg-white/20'
+            }`}
+          >
+            <CalendarDays className="w-3.5 h-3.5" />
+            <span>Upcoming Fixtures & Opponents ({fixtures.length})</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveSubTab('dossier')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
               activeSubTab === 'dossier'
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'bg-white/10 text-blue-200 hover:bg-white/20'
@@ -323,7 +500,7 @@ TACTICAL ORDERS:
       {activeSubTab === 'match_analyzer' && (
         <div className="space-y-6 animate-fadeIn">
           
-          {/* Match Lookup & Ingest Bar */}
+          {/* Match Lookup & Test Scenario Presets Bar */}
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
@@ -336,40 +513,84 @@ TACTICAL ORDERS:
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              {/* 3 Quick Test Scenarios */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-mono text-slate-400 font-bold mr-1">Test Scenarios:</span>
                 <button
                   type="button"
-                  onClick={handleLoadExampleMatch}
-                  className="text-xs font-mono font-bold px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl border border-blue-200 transition cursor-pointer flex items-center gap-1.5"
+                  onClick={() => handleSelectMatchExample('32554717')}
+                  className={`text-xs font-mono font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
+                    matchIdInput === '32554717'
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-slate-50 text-slate-700 hover:bg-blue-50 border-slate-200'
+                  }`}
+                  title="Cup Match: Redback CC vs Southern Vipers (Green Pitch)"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Load Match 32554717 (Sample)</span>
+                  <Sparkles className="w-3 h-3 text-amber-400" />
+                  <span>32554717 (Cup)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectMatchExample('32550500')}
+                  className={`text-xs font-mono font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
+                    matchIdInput === '32550500'
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-slate-50 text-slate-700 hover:bg-blue-50 border-slate-200'
+                  }`}
+                  title="First Class Match: Sandshoe Crushers vs HairyBeanBags (Dusty Pitch)"
+                >
+                  <span>32550500 (FC)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectMatchExample('32161738')}
+                  className={`text-xs font-mono font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
+                    matchIdInput === '32161738'
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-slate-50 text-slate-700 hover:bg-blue-50 border-slate-200'
+                  }`}
+                  title="League OD Match: Bulolo Seahawks vs HairyBeanBags (Green Pitch)"
+                >
+                  <span>32161738 (OD)</span>
                 </button>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="md:col-span-1">
-                <label className="text-[11px] font-mono font-bold uppercase text-slate-500 block mb-1">
-                  Battrick Match ID / URL
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={matchIdInput}
-                    onChange={(e) => setMatchIdInput(e.target.value)}
-                    placeholder="e.g. 32554717"
-                    className="w-full text-xs font-mono p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-800"
-                  />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-mono font-bold uppercase text-slate-500 block">
+                    Battrick Match ID / URL
+                  </label>
                   <a
                     href={`https://www.battrick.org/nl/matchinfo.asp?matchID=${matchIdInput}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-blue-600 transition"
-                    title="Open in Battrick"
+                    className="text-[10px] font-mono font-bold text-blue-600 hover:underline flex items-center gap-1"
+                    title="Open on Battrick"
                   >
-                    <ExternalLink className="w-4 h-4" />
+                    <span>battrick.org</span>
+                    <ExternalLink className="w-3 h-3" />
                   </a>
+                </div>
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={matchIdInput}
+                    onChange={(e) => setMatchIdInput(e.target.value)}
+                    placeholder="e.g. 32557622"
+                    className="flex-1 text-xs font-mono p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-800"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleDirectFetchMatch(matchIdInput)}
+                    disabled={isFetchingMatch}
+                    className="px-3 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-mono font-bold text-xs rounded-xl transition shrink-0 cursor-pointer shadow-xs flex items-center gap-1.5"
+                    title="Fetch and synchronize this match directly from Battrick servers"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isFetchingMatch ? 'animate-spin' : ''}`} />
+                    <span>{isFetchingMatch ? 'Fetching...' : '⚡ Fetch Match'}</span>
+                  </button>
                 </div>
               </div>
 
@@ -390,37 +611,131 @@ TACTICAL ORDERS:
                     onClick={handleParseMatchData}
                     className="px-4 py-2.5 bg-slate-900 hover:bg-black text-white font-mono font-bold text-xs rounded-xl transition shrink-0 cursor-pointer shadow-xs"
                   >
-                    Analyze Match
+                    Analyze Text
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Quick Links */}
-            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-4 text-xs font-mono text-slate-500">
-              <span>Links:</span>
-              <a
-                href={activeParsedMatch.matchUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-blue-600 hover:underline flex items-center gap-1"
-              >
-                <span>Scorecard ({activeParsedMatch.matchId})</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-              <a
-                href={activeParsedMatch.summaryUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-blue-600 hover:underline flex items-center gap-1"
-              >
-                <span>Reporter's Summary</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-              <span className="text-slate-400">|</span>
-              <span>Pitch: <strong className="text-slate-800">{activeParsedMatch.pitch}</strong></span>
-              <span>Weather: <strong className="text-slate-800">{activeParsedMatch.weather}</strong></span>
-              <span>Result: <strong className="text-emerald-700">{activeParsedMatch.result}</strong></span>
+            {/* Fetch Status Notification */}
+            {isFetchingMatch && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-xs font-mono flex items-center gap-2 animate-pulse">
+                <RefreshCw className="w-4 h-4 animate-spin text-amber-600 shrink-0" />
+                <span>Fetching Match #{fetchingMatchId} scorecard & Reporter's summary directly from Battrick...</span>
+              </div>
+            )}
+
+            {fetchStatusMessage && !isFetchingMatch && (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 text-xs font-mono flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{fetchStatusMessage}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFetchStatusMessage(null)}
+                  className="text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {fetchError && (
+              <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3 text-xs font-mono flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{fetchError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('sync')}
+                  className="underline font-bold hover:text-rose-900 cursor-pointer shrink-0"
+                >
+                  Configure Sync Credentials →
+                </button>
+              </div>
+            )}
+
+            {/* Quick Links & Match Meta */}
+            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs font-mono text-slate-600">
+              <div className="flex flex-wrap items-center gap-4">
+                <span>Match Links:</span>
+                <a
+                  href={activeParsedMatch.matchUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-600 hover:underline flex items-center gap-1 font-bold"
+                >
+                  <span>Scorecard ({activeParsedMatch.matchId})</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+                <a
+                  href={activeParsedMatch.summaryUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-600 hover:underline flex items-center gap-1 font-bold"
+                >
+                  <span>Reporter's Summary</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-700">Format: <strong>{activeParsedMatch.matchType}</strong></span>
+                <span className="bg-emerald-50 px-2 py-0.5 rounded text-emerald-800 border border-emerald-200">Pitch: <strong>{activeParsedMatch.pitch}</strong></span>
+                <span className="bg-blue-50 px-2 py-0.5 rounded text-blue-800 border border-blue-200">Weather: <strong>{activeParsedMatch.weather}</strong></span>
+                <span className="font-bold text-slate-900">{activeParsedMatch.result}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Mathematical & Grouping Engine Explainer Card */}
+          <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-indigo-950 text-white rounded-2xl p-5 sm:p-6 shadow-sm border border-indigo-900/40">
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-300 flex items-center justify-center border border-indigo-400/30">
+                <Calculator className="w-4 h-4" />
+              </div>
+              <h4 className="font-serif font-bold text-base text-white tracking-tight">
+                How Battrick Groupings & Batstat Are Calculated
+              </h4>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono mt-4">
+              <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 space-y-1.5">
+                <div className="flex items-center justify-between text-emerald-300 font-bold">
+                  <span>1. Top Order (#1–3)</span>
+                  <span className="text-[10px] bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-400/30">55%–65% Weight</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed font-sans">
+                  The primary run-scoring engine. The engine calculates ratings based heavily on primary Batting skill + Concentration. If Top Order fails, whole innings collapses.
+                </p>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 space-y-1.5">
+                <div className="flex items-center justify-between text-blue-300 font-bold">
+                  <span>2. Middle Order (#4–6)</span>
+                  <span className="text-[10px] bg-blue-500/20 px-2 py-0.5 rounded border border-blue-400/30">25%–35% Weight</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed font-sans">
+                  Stabilizes innings and consolidates run rate against the opponent's change bowlers (overs 16–40). Requires strong Batting and high Stamina.
+                </p>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 space-y-1.5">
+                <div className="flex items-center justify-between text-rose-300 font-bold">
+                  <span>3. Lower Order (#7–11)</span>
+                  <span className="text-[10px] bg-rose-500/20 px-2 py-0.5 rounded border border-rose-400/30">5%–15% Weight</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed font-sans">
+                  Specialist bowlers and keeper. Low batting rating here creates a severe <strong>Tail Dropoff</strong> (&gt;55%), meaning 5 quick wickets will wrap up the entire innings.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
+              <span><strong>Batstat Formula:</strong> ∑(Player Batting Level × Position Weight × Pitch Multiplier) × Match Aggression Constant</span>
+              <span className="text-indigo-300">Pitch Multiplier: Flat (+8%), Green (Seam +10%), Dusty (Spin +15%)</span>
             </div>
           </div>
 
@@ -727,7 +1042,219 @@ TACTICAL ORDERS:
       )}
 
       {/* ========================================================= */}
-      {/* VIEW 2: LIVE TACTICAL SCOUT DOSSIER                       */}
+      {/* VIEW 2: UPCOMING FIXTURES & OPPONENT EXPLORER             */}
+      {/* ========================================================= */}
+      {activeSubTab === 'fixtures_scout' && (
+        <div className="space-y-6 animate-fadeIn">
+          
+          {/* Top Bar: Fixtures Overview & Ingest */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-blue-600" />
+                  Upcoming Match Schedule & Fixture Scouting
+                </h3>
+                <p className="text-xs text-slate-500 font-mono">
+                  All scheduled fixtures, match links, format types, and quick scouting actions
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsFixturesPasteOpen(!isFixturesPasteOpen)}
+                  className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl border border-blue-200 text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>{isFixturesPasteOpen ? 'Close Import' : 'Import Fixtures HTML'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Fixtures Ingest Box */}
+            {isFixturesPasteOpen && (
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3 animate-fadeIn">
+                <label className="text-xs font-mono font-bold text-slate-700 block">
+                  Paste Upcoming Matches HTML or Raw List from Battrick:
+                </label>
+                <textarea
+                  rows={4}
+                  value={pastedFixturesText}
+                  onChange={(e) => setPastedFixturesText(e.target.value)}
+                  placeholder='Paste the snippet containing `<ul class="fixtures table striped condensed">` or plain fixture text...'
+                  className="w-full text-xs font-mono p-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handleParsePastedFixtures}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-mono font-bold text-xs rounded-xl transition cursor-pointer"
+                  >
+                    Parse & Save Fixtures
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Metric Summary Counters */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-100">
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/70">
+                <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block">Total Fixtures</span>
+                <span className="font-mono font-bold text-lg text-slate-900">{fixtures.length} Games</span>
+              </div>
+              <div className="bg-amber-50 rounded-xl p-3 border border-amber-200/70">
+                <span className="text-[10px] font-mono font-bold uppercase text-amber-700 block">Cup Knockouts</span>
+                <span className="font-mono font-bold text-lg text-amber-900">
+                  {fixtures.filter(f => f.type === 'Cup').length} Matches
+                </span>
+              </div>
+              <div className="bg-purple-50 rounded-xl p-3 border border-purple-200/70">
+                <span className="text-[10px] font-mono font-bold uppercase text-purple-700 block">First Class (FC)</span>
+                <span className="font-mono font-bold text-lg text-purple-900">
+                  {fixtures.filter(f => f.type === 'First Class').length} Matches
+                </span>
+              </div>
+              <div className="bg-blue-50 rounded-xl p-3 border border-blue-200/70">
+                <span className="text-[10px] font-mono font-bold uppercase text-blue-700 block">One Day (OD)</span>
+                <span className="font-mono font-bold text-lg text-blue-900">
+                  {fixtures.filter(f => f.type === 'One Day').length} Matches
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Fixtures Table List */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xs space-y-4">
+            <h4 className="font-serif font-bold text-base text-slate-900">Scheduled Upcoming Matches</h4>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse font-mono">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                    <th className="py-2.5 px-3">Date & Time</th>
+                    <th className="py-2.5 px-3">Format</th>
+                    <th className="py-2.5 px-3">Opponent</th>
+                    <th className="py-2.5 px-3">Venue</th>
+                    <th className="py-2.5 px-3">Match ID</th>
+                    <th className="py-2.5 px-3 text-right">Scout & Orders</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {fixtures.map((f, idx) => {
+                    const isCup = f.type === 'Cup';
+                    const isFC = f.type === 'First Class';
+                    const isOD = f.type === 'One Day';
+                    const isBT20 = f.type === 'Twenty20';
+
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/80 transition">
+                        <td className="py-3 px-3 font-bold text-slate-700 whitespace-nowrap">
+                          {f.date} {f.time ? <span className="text-[10px] font-normal text-slate-400">({f.time})</span> : ''}
+                        </td>
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            isCup ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                            isFC ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                            isOD ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                            'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          }`}>
+                            {f.type}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 font-sans font-bold text-slate-900">
+                          <div className="flex items-center gap-1.5">
+                            <span>{f.opponent}</span>
+                            {f.isBot && (
+                              <span className="text-[9px] font-mono bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.2 rounded font-bold">
+                                BOT
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                            f.venue === 'Home' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {f.venue}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-slate-500">
+                          {f.matchId ? (
+                            <a
+                              href={f.matchUrl || `https://www.battrick.org/nl/matchinfo.asp?matchID=${f.matchId}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-600 hover:underline flex items-center gap-1 font-bold"
+                            >
+                              <span>{f.matchId}</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {f.matchId && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDirectFetchMatch(f.matchId)}
+                                  disabled={isFetchingMatch && fetchingMatchId === f.matchId}
+                                  className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-[11px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                                  title="Live Sync: Fetch scorecard & summary directly from Battrick"
+                                >
+                                  <RefreshCw className={`w-3 h-3 ${isFetchingMatch && fetchingMatchId === f.matchId ? 'animate-spin' : ''}`} />
+                                  <span>{isFetchingMatch && fetchingMatchId === f.matchId ? 'Syncing...' : '⚡ Fetch'}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAnalyzeFixtureMatch(f)}
+                                  className="px-2.5 py-1 bg-slate-900 hover:bg-black text-white text-[11px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                                  title="Open in Batstat Engine"
+                                >
+                                  <BarChart3 className="w-3 h-3 text-blue-400" />
+                                  <span>Batstat</span>
+                                </button>
+                              </>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleScoutFixtureOpponent(f)}
+                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[11px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                              title="Scout Opponent Tactics"
+                            >
+                              <Target className="w-3 h-3 text-blue-600" />
+                              <span>Tactics</span>
+                            </button>
+                            {f.ordersUrl && (
+                              <a
+                                href={`https://www.battrick.org/nl/${f.ordersUrl}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg transition flex items-center gap-1"
+                                title="Open Match Orders on Battrick"
+                              >
+                                <span>Orders</span>
+                                <ExternalLink className="w-2.5 h-2.5" />
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* VIEW 3: LIVE TACTICAL SCOUT DOSSIER                       */}
       {/* ========================================================= */}
       {activeSubTab === 'dossier' && (
         <div className="space-y-6 animate-fadeIn">

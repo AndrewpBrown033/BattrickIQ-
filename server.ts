@@ -514,8 +514,8 @@ async function startServer() {
       }
 
       // Step 2: Fetch single page using existing or auto-created session
-      if (!pageName) {
-        res.status(400).json({ error: "pageName is required." });
+      if (!pageName && !req.body.matchId && !req.body.pageUrl) {
+        res.status(400).json({ error: "pageName, matchId, or pageUrl is required." });
         return;
       }
 
@@ -526,12 +526,26 @@ async function startServer() {
         club: 'https://www.battrick.org/nl/club.asp',
         fixtures: 'https://www.battrick.org/nl/fixtures.asp',
         pavilion: 'https://www.battrick.org/nl/ground.asp',
-        ground: 'https://www.battrick.org/nl/ground.asp'
+        ground: 'https://www.battrick.org/nl/ground.asp',
+        matchinfo: req.body.matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${req.body.matchId}` : '',
+        matchsummary: req.body.matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${req.body.matchId}&action=summary` : ''
       };
 
-      const targetUrl = pageUrlMap[pageName];
+      let targetUrl = pageUrlMap[pageName || ''];
+      if (req.body.pageUrl) {
+        let customUrl = req.body.pageUrl.trim();
+        if (customUrl.startsWith('/nl/')) {
+          customUrl = `https://www.battrick.org${customUrl}`;
+        } else if (customUrl.startsWith('matchinfo.asp') || customUrl.startsWith('fixtures.asp') || customUrl.startsWith('squad.asp')) {
+          customUrl = `https://www.battrick.org/nl/${customUrl}`;
+        }
+        if (customUrl.startsWith('https://www.battrick.org/')) {
+          targetUrl = customUrl;
+        }
+      }
+
       if (!targetUrl) {
-        res.status(400).json({ error: `Unknown page name: ${pageName}` });
+        res.status(400).json({ error: `Unknown page name or invalid target URL: ${pageName}` });
         return;
       }
 
@@ -586,6 +600,76 @@ async function startServer() {
       console.error(`[Battrick Step Sync] Unhandled error:`, err);
       if (!res.headersSent) {
         res.status(500).json({ error: err?.message || 'Unexpected server error while syncing with Battrick.' });
+      }
+    }
+  });
+
+  // Dedicated endpoint for fetching both Match Scorecard and Match Summary in one step
+  app.post("/api/sync-battrick-match", async (req, res) => {
+    try {
+      const { matchId, username, password, sessionToken } = req.body;
+
+      if (!matchId) {
+        res.status(400).json({ error: "matchId is required." });
+        return;
+      }
+
+      let activeSession = sessionToken ? battrickSessionStore.get(sessionToken) : undefined;
+
+      if (!activeSession && username && password) {
+        console.log(`[Battrick Match Sync] Session token not found, authenticating user ${username}...`);
+        const authResult = await authenticateBattrickUser(username.trim(), password);
+        if (!authResult.success) {
+          res.status(401).json({ error: authResult.error || "Authentication required.", isAuthFailure: true });
+          return;
+        }
+        activeSession = authResult.sessionToken ? battrickSessionStore.get(authResult.sessionToken) : undefined;
+      }
+
+      if (!activeSession) {
+        res.status(401).json({ error: "Session expired or invalid. Please re-authenticate.", isAuthFailure: true });
+        return;
+      }
+
+      const matchUrl = `https://www.battrick.org/nl/matchinfo.asp?matchID=${matchId}`;
+      const summaryUrl = `https://www.battrick.org/nl/matchinfo.asp?matchID=${matchId}&action=summary`;
+
+      console.log(`[Battrick Match Sync] Fetching match scorecard: ${matchUrl}`);
+      const matchResult = await fetchBattrickPageWithSession(
+        activeSession.cookieHeader,
+        activeSession.cookieMap,
+        matchUrl
+      );
+
+      if (matchResult.updatedCookieHeader) {
+        activeSession.cookieHeader = matchResult.updatedCookieHeader;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 350));
+
+      console.log(`[Battrick Match Sync] Fetching match summary: ${summaryUrl}`);
+      const summaryResult = await fetchBattrickPageWithSession(
+        activeSession.cookieHeader,
+        activeSession.cookieMap,
+        summaryUrl
+      );
+
+      if (summaryResult.updatedCookieHeader) {
+        activeSession.cookieHeader = summaryResult.updatedCookieHeader;
+        activeSession.timestamp = Date.now();
+      }
+
+      res.json({
+        success: true,
+        matchId,
+        matchHtml: matchResult.success ? matchResult.html : '',
+        summaryHtml: summaryResult.success ? summaryResult.html : '',
+        sessionToken: activeSession ? sessionToken : undefined
+      });
+    } catch (err: any) {
+      console.error(`[Battrick Match Sync] Unhandled error:`, err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: err?.message || 'Unexpected server error while syncing match data.' });
       }
     }
   });

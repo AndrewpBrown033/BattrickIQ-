@@ -125,11 +125,19 @@ export interface StadiumConfig {
 }
 
 export interface BattrickGame {
+  matchId?: string;
+  matchUrl?: string;
+  ordersUrl?: string;
   date: string;
+  time?: string;
   opponent: string;
+  homeTeam?: string;
+  awayTeam?: string;
   type: string;
+  league?: string;
   venue: 'Home' | 'Away';
   result?: string;
+  isBot?: boolean;
 }
 
 export interface PavilionInfo {

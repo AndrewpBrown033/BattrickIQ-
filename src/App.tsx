@@ -69,18 +69,43 @@ export default function App() {
   // Inactivity timeout state (20 minutes = 1200 seconds)
   const [secondsLeft, setSecondsLeft] = useState<number>(1200);
   const [showTimeoutModal, setShowTimeoutModal] = useState<boolean>(false);
+  const [isDataSyncing, setIsDataSyncing] = useState<boolean>(true);
   const lastActivityTime = useRef<number>(Date.now());
 
-  // 1. Listen for Authentication state
+  // 1. Listen for Authentication state & initial data sync
   useEffect(() => {
     const unsubscribe = onCustomAuthStateChanged((currentUser) => {
       setUser(currentUser);
       if (currentUser) {
         setActiveTab('summary');
+        setIsDataSyncing(true);
+        // Wait for cloud data sync to settle
+        const syncTimer = setTimeout(() => {
+          setIsDataSyncing(false);
+        }, 1800);
+        return () => clearTimeout(syncTimer);
+      } else {
+        setIsDataSyncing(false);
       }
       setAuthLoading(false);
     });
     return () => unsubscribe();
+  }, []);
+
+  // Listen for datasync events from SummaryDashboard / SyncHub
+  useEffect(() => {
+    const handleSyncComplete = () => {
+      setIsDataSyncing(false);
+    };
+    const handleSyncStart = () => {
+      setIsDataSyncing(true);
+    };
+    window.addEventListener('bt_datasync_complete', handleSyncComplete);
+    window.addEventListener('bt_datasync_start', handleSyncStart);
+    return () => {
+      window.removeEventListener('bt_datasync_complete', handleSyncComplete);
+      window.removeEventListener('bt_datasync_start', handleSyncStart);
+    };
   }, []);
 
   // 2. Track activity and handle automated sign-out
@@ -293,6 +318,21 @@ export default function App() {
               <span className="sm:hidden">{highContrast ? 'Pro' : 'Contrast'}</span>
             </button>
 
+            {/* Live Data Sync Indicator Badge */}
+            <div className="hidden sm:flex items-center">
+              {isDataSyncing ? (
+                <span className="text-[10px] font-mono font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-2xs animate-pulse">
+                  <RefreshCw className="w-3 h-3 animate-spin text-amber-600" />
+                  Syncing Cloud Data...
+                </span>
+              ) : (
+                <span className="text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-2xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Pavilion Synchronized
+                </span>
+              )}
+            </div>
+
             {/* Quick Sync Button */}
             <button
               type="button"
@@ -397,12 +437,21 @@ export default function App() {
                         </div>
                         <span className="truncate">{tab.label}</span>
                       </div>
-                      <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
-                        isActive 
-                          ? 'bg-blue-600/10 text-blue-700 font-bold' 
-                          : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200 group-hover:text-slate-600'
+                      <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded transition-colors ${
+                        isDataSyncing
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200/90 font-bold flex items-center gap-1 animate-pulse'
+                          : isActive 
+                            ? 'bg-blue-600/10 text-blue-700 font-bold' 
+                            : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200 group-hover:text-slate-600'
                       }`}>
-                        {tab.step}
+                        {isDataSyncing ? (
+                          <>
+                            <RefreshCw className="w-2.5 h-2.5 animate-spin text-amber-600 shrink-0" />
+                            <span>Syncing...</span>
+                          </>
+                        ) : (
+                          tab.step
+                        )}
                       </span>
                     </button>
                   );

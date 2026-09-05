@@ -240,7 +240,11 @@ export function detectPageType(content: string): 'squad' | 'nets' | 'finances' |
   // 5. Fixtures page detection
   if (
     plainText.includes('upcoming matches') || 
+    plainText.includes('upcomingmatches') || 
     plainText.includes('fixture list') || 
+    plainText.includes('fixtures table') || 
+    plainText.includes('matchorders.asp') ||
+    (plainText.includes('matchinfo.asp') && plainText.includes('orders')) ||
     plainText.includes('match date') ||
     plainText.includes('match center') ||
     (plainText.includes('date') && plainText.includes('opponent') && (plainText.includes('type') || plainText.includes('venue')))
@@ -1430,68 +1434,248 @@ export function getTradeAction(player: BattrickPlayer): { action: 'HOLD' | 'DEVE
 export function parseFixtures(content: string): BattrickGame[] {
   const games: BattrickGame[] = [];
   
+  // 1. Modern Battrick HTML List Parsing (<ul class="fixtures..."> or <li data-class="...">)
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(content, 'text/html');
-    const rows = doc.querySelectorAll('tr');
+
+    // First, scan for team names across the document to determine the user's primary team name
+    const teamCounts: Record<string, number> = {};
+    const matchLinks = doc.querySelectorAll('a[href*="matchinfo.asp?matchID="]');
     
-    rows.forEach(row => {
-      const text = row.textContent || '';
-      const dateMatch = text.match(/(\d{2}\/\d{2}\/\d{4})/);
-      if (dateMatch) {
-        const date = dateMatch[1];
-        const cells = Array.from(row.querySelectorAll('td')).map(c => c.textContent?.trim() || '');
-        if (cells.length >= 3) {
-          const opponent = cells[1] || 'Unknown Opponent';
-          const type = cells[2] || 'One Day';
-          const venueOrResult = cells[3] || 'Home';
-          const venue: 'Home' | 'Away' = venueOrResult.toLowerCase().includes('away') ? 'Away' : 'Home';
-          const result = cells[4] || (venueOrResult.includes('won') || venueOrResult.includes('lost') ? venueOrResult : 'Upcoming');
-          
-          games.push({ date, opponent, type, venue, result });
+    matchLinks.forEach(link => {
+      const text = link.textContent?.trim() || '';
+      if (text.includes(' v ') || text.includes(' vs ')) {
+        const parts = text.split(/\s+(?:v|vs)\s+/i);
+        if (parts.length === 2) {
+          const t1 = parts[0].trim();
+          const t2 = parts[1].trim();
+          teamCounts[t1] = (teamCounts[t1] || 0) + 1;
+          teamCounts[t2] = (teamCounts[t2] || 0) + 1;
         }
       }
     });
+
+    let detectedUserTeam = localStorage.getItem('bt_team_name') || '';
+    let maxCount = 0;
+    for (const [tName, count] of Object.entries(teamCounts)) {
+      if (count > maxCount && tName.length > 2) {
+        maxCount = count;
+        detectedUserTeam = tName;
+      }
+    }
+
+    if (detectedUserTeam && detectedUserTeam !== 'My Club') {
+      try {
+        localStorage.setItem('bt_team_name', detectedUserTeam);
+      } catch (e) {}
+    }
+
+    // Parse list items
+    const fixtureItems = doc.querySelectorAll('li[data-class], ul.fixtures > li, li:has(a[href*="matchinfo.asp"])');
+    
+    if (fixtureItems.length > 0) {
+      fixtureItems.forEach(item => {
+        // Extract format from data-class or inner links
+        const dataClass = item.getAttribute('data-class') || '';
+        let type = 'One Day';
+        if (dataClass === 'Cup') type = 'Cup';
+        else if (dataClass === 'FC') type = 'First Class';
+        else if (dataClass === 'BT20') type = 'Twenty20';
+        else if (dataClass === 'OD') type = 'One Day';
+        else if (item.textContent?.includes('First Class') || item.textContent?.includes('(FC)')) type = 'First Class';
+        else if (item.textContent?.includes('BT20') || item.textContent?.includes('Twenty20')) type = 'Twenty20';
+        else if (item.textContent?.includes('Cup')) type = 'Cup';
+
+        // Extract Date & Time from preceding span.altcol or inner text
+        let date = 'Upcoming';
+        let time = '';
+        let altSpan = item.querySelector('span.altcol') || item.previousElementSibling;
+        if (altSpan && altSpan.tagName === 'SPAN' && altSpan.classList.contains('altcol')) {
+          const dateMatch = altSpan.textContent?.match(/(\d{2}\/\d{2}\/\d{4})(?:\s+(\d{2}:\d{2}))?/);
+          if (dateMatch) {
+            date = dateMatch[1];
+            if (dateMatch[2]) time = dateMatch[2];
+          }
+        }
+        if (date === 'Upcoming') {
+          const innerDateMatch = item.textContent?.match(/(\d{2}\/\d{2}\/\d{4})(?:\s+(\d{2}:\d{2}))?/);
+          if (innerDateMatch) {
+            date = innerDateMatch[1];
+            if (innerDateMatch[2]) time = innerDateMatch[2];
+          }
+        }
+
+        // Extract Match Info Link & Match ID
+        const matchLink = item.querySelector('a[href*="matchinfo.asp?matchID="]');
+        let matchId = '';
+        let matchUrl = '';
+        let matchTitle = '';
+        if (matchLink) {
+          const href = matchLink.getAttribute('href') || '';
+          const mIdMatch = href.match(/matchID=(\d+)/i);
+          if (mIdMatch) matchId = mIdMatch[1];
+          matchUrl = `https://www.battrick.org/nl/${href.replace(/^\//, '')}`;
+          matchTitle = matchLink.textContent?.trim() || '';
+        }
+
+        // Extract Orders Link
+        const ordersLink = item.querySelector('a[href*="matchorders.asp"]');
+        let ordersUrl = '';
+        if (ordersLink) {
+          const href = ordersLink.getAttribute('href') || '';
+          ordersUrl = `https://www.battrick.org/nl/${href.replace(/^\//, '')}`;
+        } else if (matchId) {
+          ordersUrl = `https://www.battrick.org/nl/matchorders.asp?matchID=${matchId}`;
+        }
+
+        // Check if opponent is bot
+        const botEl = item.querySelector('span.bot') || item.querySelector('.bot');
+        const isBot = Boolean(botEl || item.textContent?.includes('unmanaged (bot)') || item.textContent?.includes('(bot)'));
+
+        // Parse Teams, Opponent, and Venue
+        let homeTeam = 'Home Team';
+        let awayTeam = 'Away Team';
+        let opponent = 'Opponent';
+        let venue: 'Home' | 'Away' = 'Home';
+
+        if (matchTitle.includes(' v ') || matchTitle.includes(' vs ')) {
+          const teams = matchTitle.split(/\s+(?:v|vs)\s+/i);
+          homeTeam = teams[0].trim();
+          awayTeam = teams[1].trim();
+
+          if (detectedUserTeam) {
+            if (homeTeam.toLowerCase().includes(detectedUserTeam.toLowerCase())) {
+              opponent = awayTeam;
+              venue = 'Home';
+            } else if (awayTeam.toLowerCase().includes(detectedUserTeam.toLowerCase())) {
+              opponent = homeTeam;
+              venue = 'Away';
+            } else {
+              opponent = awayTeam;
+              venue = 'Home';
+            }
+          } else {
+            opponent = awayTeam;
+            venue = 'Home';
+          }
+        }
+
+        games.push({
+          matchId: matchId || undefined,
+          matchUrl: matchUrl || undefined,
+          ordersUrl: ordersUrl || undefined,
+          date,
+          time: time || undefined,
+          opponent,
+          homeTeam,
+          awayTeam,
+          type,
+          venue,
+          result: 'Upcoming',
+          isBot
+        });
+      });
+    }
+
+    // 2. Table rows fallback
+    if (games.length === 0) {
+      const rows = doc.querySelectorAll('tr');
+      rows.forEach(row => {
+        const text = row.textContent || '';
+        const dateMatch = text.match(/(\d{2}\/\d{2}\/\d{4})/);
+        if (dateMatch) {
+          const date = dateMatch[1];
+          const cells = Array.from(row.querySelectorAll('td')).map(c => c.textContent?.trim() || '');
+          if (cells.length >= 3) {
+            const opponent = cells[1] || 'Unknown Opponent';
+            const type = cells[2] || 'One Day';
+            const venueOrResult = cells[3] || 'Home';
+            const venue: 'Home' | 'Away' = venueOrResult.toLowerCase().includes('away') ? 'Away' : 'Home';
+            const result = cells[4] || (venueOrResult.includes('won') || venueOrResult.includes('lost') ? venueOrResult : 'Upcoming');
+            
+            const matchLink = row.querySelector('a[href*="matchinfo.asp"]');
+            let matchId = '';
+            let matchUrl = '';
+            if (matchLink) {
+              const href = matchLink.getAttribute('href') || '';
+              const mId = href.match(/matchID=(\d+)/i);
+              if (mId) matchId = mId[1];
+              matchUrl = `https://www.battrick.org/nl/${href}`;
+            }
+
+            games.push({ 
+              matchId: matchId || undefined,
+              matchUrl: matchUrl || undefined,
+              date, 
+              opponent, 
+              type, 
+              venue, 
+              result 
+            });
+          }
+        }
+      });
+    }
   } catch (e) {
     console.error('Fixtures DOMParser error:', e);
   }
 
+  // 3. Line-by-Line Regex parsing fallback for plain text
   if (games.length === 0) {
     const lines = content.split('\n');
     lines.forEach(line => {
-      const dateMatch = line.match(/(\d{2}\/\d{2}\/\d{4})/);
+      const dateMatch = line.match(/(\d{2}\/\d{2}\/\d{4})(?:\s+(\d{2}:\d{2}))?/);
       if (dateMatch) {
         const date = dateMatch[1];
-        const cleaned = line.replace(date, '').replace(/\s+/g, ' ').trim();
-        const type = cleaned.includes('First Class') ? 'First Class' : cleaned.includes('Twenty20') ? 'Twenty20' : 'One Day';
+        const time = dateMatch[2] || '';
+        const cleaned = line.replace(date, '').replace(time, '').replace(/\s+/g, ' ').trim();
+        const type = cleaned.includes('First Class') || cleaned.includes('FC') ? 'First Class' : cleaned.includes('Twenty20') || cleaned.includes('BT20') ? 'Twenty20' : cleaned.includes('Cup') ? 'Cup' : 'One Day';
         const venue: 'Home' | 'Away' = cleaned.toLowerCase().includes('away') ? 'Away' : 'Home';
         
         let opponent = 'Opponent Club';
-        const vsMatch = cleaned.match(/(?:vs|@)\s*([A-Za-z0-9\s.\-]+)/i);
+        const vsMatch = cleaned.match(/([A-Za-z0-9\s.\-']+)\s+(?:vs|v|@)\s+([A-Za-z0-9\s.\-']+)/i);
         if (vsMatch) {
-          opponent = vsMatch[1].split('(')[0].trim();
+          opponent = vsMatch[2].split('(')[0].trim();
         }
+
+        const matchIdMatch = line.match(/matchID=(\d+)/i) || line.match(/ID[:\s]+(\d+)/i);
+        const matchId = matchIdMatch ? matchIdMatch[1] : undefined;
 
         let result = 'Upcoming';
         if (cleaned.toLowerCase().includes('won')) result = 'Won';
         else if (cleaned.toLowerCase().includes('lost')) result = 'Lost';
 
-        games.push({ date, opponent, type, venue, result });
+        games.push({ 
+          matchId,
+          matchUrl: matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${matchId}` : undefined,
+          ordersUrl: matchId ? `https://www.battrick.org/nl/matchorders.asp?matchID=${matchId}` : undefined,
+          date, 
+          time: time || undefined,
+          opponent, 
+          type, 
+          venue, 
+          result 
+        });
       }
     });
   }
 
-  if (games.length === 0) {
-    return [
-      { date: '18/07/2026', opponent: 'Lancashire Lightning', type: 'One Day', venue: 'Home', result: 'Upcoming' },
-      { date: '21/07/2026', opponent: 'Yorkshire Vikings', type: 'Twenty20', venue: 'Away', result: 'Upcoming' },
-      { date: '25/07/2026', opponent: 'Surrey Browns', type: 'First Class', venue: 'Home', result: 'Upcoming' },
-      { date: '11/07/2026', opponent: 'Nottingham Outlaws', type: 'One Day', venue: 'Away', result: 'Won by 48 runs' },
-      { date: '04/07/2026', opponent: 'Somerset Sabres', type: 'One Day', venue: 'Home', result: 'Won by 6 wickets' }
-    ];
+  if (games.length > 0) {
+    try {
+      localStorage.setItem('bt_fixtures', JSON.stringify(games));
+    } catch (e) {}
+    return games;
   }
 
-  return games;
+  // Fallback demo games if completely empty
+  return [
+    { matchId: '32557622', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32557622', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32557622', date: '06/09/2026', time: '00:30', opponent: 'Steve', homeTeam: 'Steve', awayTeam: 'HairyBeanBags', type: 'Cup', venue: 'Away', result: 'Upcoming' },
+    { matchId: '32194563', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32194563', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32194563', date: '08/09/2026', time: '00:30', opponent: 'Sandshoe Crushers', homeTeam: 'Sandshoe Crushers', awayTeam: 'HairyBeanBags', type: 'First Class', venue: 'Away', result: 'Upcoming' },
+    { matchId: '32161741', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32161741', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32161741', date: '11/09/2026', time: '00:30', opponent: 'Bulolo Seahawks', homeTeam: 'HairyBeanBags', awayTeam: 'Bulolo Seahawks', type: 'One Day', venue: 'Home', result: 'Upcoming', isBot: true },
+    { matchId: '32383795', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383795', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32383795', date: '15/09/2026', time: '11:45', opponent: 'Royal West Herts GC', homeTeam: 'Royal West Herts GC', awayTeam: 'HairyBeanBags', type: 'Twenty20', venue: 'Away', result: 'Upcoming' },
+    { matchId: '32383799', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383799', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32383799', date: '16/09/2026', time: '00:30', opponent: 'Atlanta Braves', homeTeam: 'Atlanta Braves', awayTeam: 'HairyBeanBags', type: 'Twenty20', venue: 'Away', result: 'Upcoming' }
+  ];
 }
 
 export function parsePavilion(content: string): PavilionInfo {
@@ -2467,6 +2651,266 @@ export function analyzeBatstatAndLineup(match: ParsedBattrickMatch): BatstatDeco
 
 // Built-in realistic dataset for Match 32554717 (the user's match example)
 export function getExampleMatchData(): ParsedBattrickMatch {
+  return getExampleMatchDataById('32554717');
+}
+
+export const TEST_MATCHES: Record<string, { name: string; type: string; description: string }> = {
+  '32554717': {
+    name: 'Redback CC v Southern Vipers (User Match 32554717)',
+    type: 'One Day',
+    description: 'Cup / OD match testing top-order dominance vs severe lower-order tail dropoff (85.7% drop).'
+  },
+  '32550500': {
+    name: 'Sandshoe Crushers v HairyBeanBags (Match 32550500)',
+    type: 'First Class',
+    description: 'First Class 3-day fixture on Hard pitch with high-stamina middle order and 5th bowler rotation.'
+  },
+  '32161738': {
+    name: 'Bulolo Seahawks v HairyBeanBags (Match 32161738)',
+    type: 'One Day',
+    description: 'OD League match against an unmanaged Bot team showing massive Batstat gap (192k vs 89k).'
+  }
+};
+
+export function getExampleMatchDataById(id: string = '32554717'): ParsedBattrickMatch {
+  if (id === '32550500') {
+    return {
+      matchId: '32550500',
+      matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32550500',
+      summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32550500&action=summary',
+      matchDate: '08 Sep 2026',
+      matchType: 'First Class',
+      homeTeam: 'Sandshoe Crushers',
+      awayTeam: 'HairyBeanBags',
+      venue: 'Crushers Stadium',
+      crowd: '18,400',
+      toss: 'HairyBeanBags won the toss and elected to field',
+      pitch: 'Hard',
+      weather: 'Sunny',
+      result: 'HairyBeanBags won by 7 wickets',
+      homeRatings: {
+        topOrder: 'exceptional (low)',
+        topOrderScore: 14.7,
+        middleOrder: 'superb (high)',
+        middleOrderScore: 11.3,
+        lowerOrder: 'mediocre',
+        lowerOrderScore: 5.0,
+        seamBowling: 'quality',
+        seamBowlingScore: 12.0,
+        spinBowling: 'strong',
+        spinBowlingScore: 9.0,
+        fielding: 'superb',
+        fieldingScore: 10.0,
+        batstat: 154200
+      },
+      awayRatings: {
+        topOrder: 'masterful',
+        topOrderScore: 18.0,
+        middleOrder: 'sensational',
+        middleOrderScore: 16.0,
+        lowerOrder: 'respectable',
+        lowerOrderScore: 7.0,
+        seamBowling: 'sensational',
+        seamBowlingScore: 16.0,
+        spinBowling: 'quality',
+        spinBowlingScore: 12.0,
+        fielding: 'remarkable',
+        fieldingScore: 13.0,
+        batstat: 182900
+      },
+      innings: [
+        {
+          teamName: 'Sandshoe Crushers',
+          inningsNumber: 1,
+          totalRuns: 312,
+          wickets: 10,
+          overs: '94.2',
+          batters: [
+            { order: 1, name: 'D. Miller', dismissal: 'c Keeper b McGrath', runs: 74, balls: 142, fours: 9, sixes: 0, strikeRate: 52.1, group: 'Top Order', estimatedSkillGrade: 'Exceptional' },
+            { order: 2, name: 'T. Latham', dismissal: 'lbw b Lee', runs: 65, balls: 128, fours: 7, sixes: 0, strikeRate: 50.8, group: 'Top Order', estimatedSkillGrade: 'Exceptional' },
+            { order: 3, name: 'K. Williamson', dismissal: 'c Slip b Warne', runs: 88, balls: 164, fours: 11, sixes: 1, strikeRate: 53.7, group: 'Top Order', estimatedSkillGrade: 'Masterful' },
+            { order: 4, name: 'R. Taylor', dismissal: 'c Midwicket b Johnson', runs: 34, balls: 68, fours: 4, sixes: 0, strikeRate: 50.0, group: 'Middle Order', estimatedSkillGrade: 'Superb' },
+            { order: 5, name: 'H. Nicholls', dismissal: 'b Warne', runs: 22, balls: 45, fours: 2, sixes: 0, strikeRate: 48.9, group: 'Middle Order', estimatedSkillGrade: 'Superb' },
+            { order: 6, name: 'B. Watling (wk)', dismissal: 'c Keeper b McGrath', runs: 14, balls: 31, fours: 1, sixes: 0, strikeRate: 45.2, group: 'Middle Order', estimatedSkillGrade: 'Quality' },
+            { order: 7, name: 'C. de Grandhomme', dismissal: 'c Cover b Lee', runs: 8, balls: 14, fours: 1, sixes: 0, strikeRate: 57.1, group: 'Lower Order', estimatedSkillGrade: 'Competent' },
+            { order: 8, name: 'M. Santner', dismissal: 'b Warne', runs: 4, balls: 12, fours: 0, sixes: 0, strikeRate: 33.3, group: 'Lower Order', estimatedSkillGrade: 'Mediocre' },
+            { order: 9, name: 'T. Southee', dismissal: 'b McGrath', runs: 2, balls: 6, fours: 0, sixes: 0, strikeRate: 33.3, group: 'Lower Order', estimatedSkillGrade: 'Feeble' },
+            { order: 10, name: 'N. Wagner', dismissal: 'lbw b Johnson', runs: 1, balls: 8, fours: 0, sixes: 0, strikeRate: 12.5, group: 'Lower Order', estimatedSkillGrade: 'Woeful' },
+            { order: 11, name: 'T. Boult', dismissal: 'not out', runs: 0, balls: 4, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Abysmal' }
+          ],
+          bowlers: [
+            { order: 1, name: 'G. McGrath (RFM)', overs: 22, maidens: 6, runs: 62, wickets: 3, economy: 2.82, isSeam: true },
+            { order: 2, name: 'B. Lee (RF)', overs: 20, maidens: 4, runs: 71, wickets: 2, economy: 3.55, isSeam: true },
+            { order: 3, name: 'M. Johnson (LF)', overs: 18, maidens: 3, runs: 68, wickets: 2, economy: 3.78, isSeam: true },
+            { order: 4, name: 'S. Warne (LBG)', overs: 24.2, maidens: 7, runs: 74, wickets: 3, economy: 3.04, isSpin: true },
+            { order: 5, name: 'M. Clarke (5th Bowler - SLA)', overs: 10, maidens: 1, runs: 37, wickets: 0, economy: 3.70, isSpin: true }
+          ],
+          fallOfWickets: [
+            { wicket: 1, score: 128, player: 'Miller', over: '40.2' },
+            { wicket: 2, score: 172, player: 'Latham', over: '52.1' },
+            { wicket: 3, score: 260, player: 'Taylor', over: '76.4' },
+            { wicket: 4, score: 279, player: 'Williamson', over: '82.3' },
+            { wicket: 5, score: 295, player: 'Nicholls', over: '87.1' }
+          ]
+        },
+        {
+          teamName: 'HairyBeanBags',
+          inningsNumber: 2,
+          totalRuns: 388,
+          wickets: 10,
+          overs: '106.1',
+          batters: [
+            { order: 1, name: 'A. Brown', dismissal: 'c Watling b Southee', runs: 112, balls: 198, fours: 15, sixes: 2, strikeRate: 56.6, group: 'Top Order', estimatedSkillGrade: 'Masterful' },
+            { order: 2, name: 'J. Hobbs', dismissal: 'b Boult', runs: 94, balls: 172, fours: 12, sixes: 1, strikeRate: 54.7, group: 'Top Order', estimatedSkillGrade: 'Masterful' },
+            { order: 3, name: 'D. Bradman', dismissal: 'c Slip b Santner', runs: 82, balls: 130, fours: 10, sixes: 1, strikeRate: 63.1, group: 'Top Order', estimatedSkillGrade: 'Elite' },
+            { order: 4, name: 'S. Tendulkar', dismissal: 'b Wagner', runs: 45, balls: 78, fours: 6, sixes: 0, strikeRate: 57.7, group: 'Middle Order', estimatedSkillGrade: 'Sensational' },
+            { order: 5, name: 'B. Lara', dismissal: 'c Cover b Southee', runs: 28, balls: 44, fours: 4, sixes: 0, strikeRate: 63.6, group: 'Middle Order', estimatedSkillGrade: 'Sensational' },
+            { order: 6, name: 'I. Botham', dismissal: 'lbw b Boult', runs: 16, balls: 24, fours: 2, sixes: 0, strikeRate: 66.7, group: 'Middle Order', estimatedSkillGrade: 'Superb' },
+            { order: 7, name: 'A. Gilchrist (wk)', dismissal: 'c Slip b Wagner', runs: 6, balls: 10, fours: 1, sixes: 0, strikeRate: 60.0, group: 'Lower Order', estimatedSkillGrade: 'Strong' },
+            { order: 8, name: 'W. Akram', dismissal: 'b Boult', runs: 3, balls: 8, fours: 0, sixes: 0, strikeRate: 37.5, group: 'Lower Order', estimatedSkillGrade: 'Proficient' },
+            { order: 9, name: 'M. Muralitharan', dismissal: 'b Southee', runs: 1, balls: 6, fours: 0, sixes: 0, strikeRate: 16.7, group: 'Lower Order', estimatedSkillGrade: 'Feeble' },
+            { order: 10, name: 'C. Ambrose', dismissal: 'lbw b Wagner', runs: 0, balls: 2, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Woeful' },
+            { order: 11, name: 'M. Holding', dismissal: 'not out', runs: 0, balls: 1, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Abysmal' }
+          ],
+          bowlers: [
+            { order: 1, name: 'T. Boult (LF)', overs: 26, maidens: 5, runs: 88, wickets: 3, economy: 3.38, isSeam: true },
+            { order: 2, name: 'T. Southee (RFM)', overs: 24, maidens: 4, runs: 82, wickets: 3, economy: 3.42, isSeam: true },
+            { order: 3, name: 'N. Wagner (LFM)', overs: 22.1, maidens: 3, runs: 79, wickets: 3, economy: 3.56, isSeam: true },
+            { order: 4, name: 'M. Santner (SLA)', overs: 20, maidens: 4, runs: 68, wickets: 1, economy: 3.40, isSpin: true },
+            { order: 5, name: 'C. de Grandhomme (5th Bowler - RM)', overs: 14, maidens: 1, runs: 71, wickets: 0, economy: 5.07, isSeam: true }
+          ],
+          fallOfWickets: [
+            { wicket: 1, score: 184, player: 'Hobbs', over: '48.2' },
+            { wicket: 2, score: 232, player: 'Brown', over: '61.4' },
+            { wicket: 3, score: 320, player: 'Bradman', over: '82.1' },
+            { wicket: 4, score: 358, player: 'Tendulkar', over: '94.3' }
+          ]
+        }
+      ]
+    };
+  }
+
+  if (id === '32161738') {
+    return {
+      matchId: '32161738',
+      matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32161738',
+      summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32161738&action=summary',
+      matchDate: '11 Sep 2026',
+      matchType: 'One Day League',
+      homeTeam: 'Bulolo Seahawks (Bot)',
+      awayTeam: 'HairyBeanBags',
+      venue: 'Bulolo Oval',
+      crowd: '8,250',
+      toss: 'HairyBeanBags won the toss and elected to bat',
+      pitch: 'Dusty',
+      weather: 'Partially Cloudy',
+      result: 'HairyBeanBags won by 168 runs',
+      homeRatings: {
+        topOrder: 'proficient (low)',
+        topOrderScore: 7.7,
+        middleOrder: 'competent',
+        middleOrderScore: 6.0,
+        lowerOrder: 'abysmal',
+        lowerOrderScore: 2.0,
+        seamBowling: 'competent',
+        seamBowlingScore: 6.0,
+        spinBowling: 'woeful',
+        spinBowlingScore: 3.0,
+        fielding: 'feeble',
+        fieldingScore: 4.0,
+        batstat: 89400
+      },
+      awayRatings: {
+        topOrder: 'masterful (high)',
+        topOrderScore: 18.3,
+        middleOrder: 'wonderful',
+        middleOrderScore: 14.0,
+        lowerOrder: 'strong',
+        lowerOrderScore: 9.0,
+        seamBowling: 'superb',
+        seamBowlingScore: 10.0,
+        spinBowling: 'exceptional',
+        spinBowlingScore: 15.0,
+        fielding: 'quality',
+        fieldingScore: 12.0,
+        batstat: 192400
+      },
+      innings: [
+        {
+          teamName: 'HairyBeanBags',
+          inningsNumber: 1,
+          totalRuns: 342,
+          wickets: 3,
+          overs: '50.0',
+          batters: [
+            { order: 1, name: 'A. Brown', dismissal: 'not out', runs: 148, balls: 136, fours: 16, sixes: 3, strikeRate: 108.8, group: 'Top Order', estimatedSkillGrade: 'Masterful' },
+            { order: 2, name: 'S. Smith', dismissal: 'c Keeper b BotBowler1', runs: 64, balls: 68, fours: 7, sixes: 0, strikeRate: 94.1, group: 'Top Order', estimatedSkillGrade: 'Sensational' },
+            { order: 3, name: 'V. Kohli', dismissal: 'c Midwicket b BotBowler2', runs: 82, balls: 74, fours: 9, sixes: 1, strikeRate: 110.8, group: 'Top Order', estimatedSkillGrade: 'Masterful' },
+            { order: 4, name: 'A. de Villiers', dismissal: 'not out', runs: 42, balls: 22, fours: 4, sixes: 2, strikeRate: 190.9, group: 'Middle Order', estimatedSkillGrade: 'Sensational' },
+            { order: 5, name: 'B. Stokes', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Middle Order', estimatedSkillGrade: 'Wonderful' },
+            { order: 6, name: 'R. Jadeja', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Middle Order', estimatedSkillGrade: 'Superb' },
+            { order: 7, name: 'MS Dhoni (wk)', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Quality' },
+            { order: 8, name: 'P. Cummins', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Strong' },
+            { order: 9, name: 'R. Ashwin', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Competent' },
+            { order: 10, name: 'J. Bumrah', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Feeble' },
+            { order: 11, name: 'M. Starc', dismissal: 'dnb', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Abysmal' }
+          ],
+          bowlers: [
+            { order: 1, name: 'Bot Seamer 1 (RM)', overs: 10, maidens: 0, runs: 62, wickets: 1, economy: 6.2, isSeam: true },
+            { order: 2, name: 'Bot Seamer 2 (LM)', overs: 10, maidens: 0, runs: 68, wickets: 1, economy: 6.8, isSeam: true },
+            { order: 3, name: 'Bot Spinner 1 (OB)', overs: 10, maidens: 0, runs: 74, wickets: 0, economy: 7.4, isSpin: true },
+            { order: 4, name: 'Bot Spinner 2 (LB)', overs: 10, maidens: 0, runs: 65, wickets: 0, economy: 6.5, isSpin: true },
+            { order: 5, name: 'Bot 5th Bowler (RM)', overs: 10, maidens: 0, runs: 73, wickets: 0, economy: 7.3, isSeam: true }
+          ],
+          fallOfWickets: [
+            { wicket: 1, score: 112, player: 'Smith', over: '18.4' },
+            { wicket: 2, score: 268, player: 'Kohli', over: '41.2' }
+          ]
+        },
+        {
+          teamName: 'Bulolo Seahawks (Bot)',
+          inningsNumber: 2,
+          totalRuns: 174,
+          wickets: 10,
+          overs: '38.2',
+          batters: [
+            { order: 1, name: 'Bot Batter 1', dismissal: 'b Bumrah', runs: 24, balls: 32, fours: 3, sixes: 0, strikeRate: 75.0, group: 'Top Order', estimatedSkillGrade: 'Proficient' },
+            { order: 2, name: 'Bot Batter 2', dismissal: 'c Dhoni b Starc', runs: 38, balls: 46, fours: 5, sixes: 0, strikeRate: 82.6, group: 'Top Order', estimatedSkillGrade: 'Proficient' },
+            { order: 3, name: 'Bot Batter 3', dismissal: 'lbw b Ashwin', runs: 41, balls: 54, fours: 4, sixes: 0, strikeRate: 75.9, group: 'Top Order', estimatedSkillGrade: 'Competent' },
+            { order: 4, name: 'Bot Batter 4', dismissal: 'c Smith b Ashwin', runs: 22, balls: 30, fours: 2, sixes: 0, strikeRate: 73.3, group: 'Middle Order', estimatedSkillGrade: 'Competent' },
+            { order: 5, name: 'Bot Batter 5', dismissal: 'b Jadeja', runs: 16, balls: 24, fours: 1, sixes: 0, strikeRate: 66.7, group: 'Middle Order', estimatedSkillGrade: 'Competent' },
+            { order: 6, name: 'Bot Batter 6', dismissal: 'c Slip b Ashwin', runs: 9, balls: 16, fours: 0, sixes: 0, strikeRate: 56.3, group: 'Middle Order', estimatedSkillGrade: 'Mediocre' },
+            { order: 7, name: 'Bot Keeper', dismissal: 'b Jadeja', runs: 8, balls: 11, fours: 1, sixes: 0, strikeRate: 72.7, group: 'Lower Order', estimatedSkillGrade: 'Feeble' },
+            { order: 8, name: 'Bot Bowler 1', dismissal: 'lbw b Bumrah', runs: 5, balls: 7, fours: 0, sixes: 0, strikeRate: 71.4, group: 'Lower Order', estimatedSkillGrade: 'Woeful' },
+            { order: 9, name: 'Bot Bowler 2', dismissal: 'b Starc', runs: 4, balls: 5, fours: 0, sixes: 0, strikeRate: 80.0, group: 'Lower Order', estimatedSkillGrade: 'Abysmal' },
+            { order: 10, name: 'Bot Bowler 3', dismissal: 'c Dhoni b Ashwin', runs: 2, balls: 4, fours: 0, sixes: 0, strikeRate: 50.0, group: 'Lower Order', estimatedSkillGrade: 'Abysmal' },
+            { order: 11, name: 'Bot Bowler 4', dismissal: 'not out', runs: 0, balls: 1, fours: 0, sixes: 0, strikeRate: 0.0, group: 'Lower Order', estimatedSkillGrade: 'Worthless' }
+          ],
+          bowlers: [
+            { order: 1, name: 'J. Bumrah (RF)', overs: 7, maidens: 1, runs: 28, wickets: 2, economy: 4.0, isSeam: true },
+            { order: 2, name: 'M. Starc (LF)', overs: 7.2, maidens: 0, runs: 36, wickets: 2, economy: 4.9, isSeam: true },
+            { order: 3, name: 'R. Ashwin (OB)', overs: 10, maidens: 2, runs: 39, wickets: 4, economy: 3.9, isSpin: true },
+            { order: 4, name: 'R. Jadeja (SLA)', overs: 10, maidens: 1, runs: 44, wickets: 2, economy: 4.4, isSpin: true },
+            { order: 5, name: 'P. Cummins (RFM)', overs: 4, maidens: 0, runs: 27, wickets: 0, economy: 6.75, isSeam: true }
+          ],
+          fallOfWickets: [
+            { wicket: 1, score: 54, player: 'Bot Batter 1', over: '9.2' },
+            { wicket: 2, score: 86, player: 'Bot Batter 2', over: '16.4' },
+            { wicket: 3, score: 128, player: 'Bot Batter 3', over: '25.1' },
+            { wicket: 4, score: 142, player: 'Bot Batter 4', over: '28.3' },
+            { wicket: 5, score: 154, player: 'Bot Batter 5', over: '31.5' },
+            { wicket: 6, score: 162, player: 'Bot Batter 6', over: '34.2' },
+            { wicket: 7, score: 168, player: 'Bot Keeper', over: '35.4' },
+            { wicket: 8, score: 172, player: 'Bot Bowler 1', over: '36.5' },
+            { wicket: 9, score: 174, player: 'Bot Bowler 2', over: '37.3' },
+            { wicket: 10, score: 174, player: 'Bot Bowler 3', over: '38.2' }
+          ]
+        }
+      ]
+    };
+  }
+
+  // Default Match 32554717
   const matchId = '32554717';
   return {
     matchId,
