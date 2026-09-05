@@ -14,6 +14,7 @@ import {
 import { 
   parseOpponentSquad, 
   generateOpponentScoutDossier, 
+  generateRealisticOpponentRoster,
   parseBattrickFullMatch, 
   getExampleMatchData,
   getExampleMatchDataById,
@@ -53,34 +54,11 @@ interface OpponentScoutProps {
   setActiveTab: (tab: any) => void;
 }
 
-// Sample realistic opponent rosters for rapid exploration
-const SAMPLE_OPPONENTS: Record<string, OpponentPlayer[]> = {
-  'Yorkshire Strikers (Tail Vulnerable)': [
-    { id: 'ys_1', name: 'Marcus Sterling', age: 26, wage: 12500, btRating: 38000, role: 'Batter', bowlingType: 'RM', batting: 12, bowling: 2, keeping: 1, stamina: 8, experience: 8, concentration: 11, consistency: 8, order: 1 },
-    { id: 'ys_2', name: 'Dean Higgins', age: 24, wage: 11000, btRating: 34000, role: 'Batter', bowlingType: 'RM', batting: 11, bowling: 2, keeping: 1, stamina: 7, experience: 6, concentration: 10, consistency: 7, order: 2 },
-    { id: 'ys_3', name: 'Tariq Rashid', age: 28, wage: 14000, btRating: 42000, role: 'Batter', bowlingType: 'RM', batting: 13, bowling: 3, keeping: 1, stamina: 9, experience: 9, concentration: 12, consistency: 9, order: 3 },
-    { id: 'ys_4', name: 'Callum Vance', age: 23, wage: 9500, btRating: 28000, role: 'All-rounder', bowlingType: 'RFM', batting: 10, bowling: 8, keeping: 1, stamina: 7, experience: 5, concentration: 8, consistency: 8, order: 4 },
-    { id: 'ys_5', name: 'Liam O’Reilly', age: 27, wage: 8200, btRating: 24000, role: 'Keeper', bowlingType: 'RM', batting: 9, bowling: 1, keeping: 11, stamina: 7, experience: 7, concentration: 8, consistency: 7, order: 5 },
-    { id: 'ys_6', name: 'Gareth North', age: 29, wage: 6500, btRating: 19000, role: 'Batter', bowlingType: 'RM', batting: 7, bowling: 2, keeping: 1, stamina: 6, experience: 7, concentration: 6, consistency: 6, order: 6 },
-    { id: 'ys_7', name: 'Simon Archer', age: 25, wage: 4800, btRating: 14000, role: 'Bowler', bowlingType: 'LF', batting: 4, bowling: 11, keeping: 1, stamina: 6, experience: 6, concentration: 4, consistency: 10, order: 7 },
-    { id: 'ys_8', name: 'Navid Qadir', age: 26, wage: 5200, btRating: 15500, role: 'Bowler', bowlingType: 'OB', batting: 3, bowling: 11, keeping: 1, stamina: 6, experience: 6, concentration: 3, consistency: 11, order: 8 },
-    { id: 'ys_9', name: 'Ewan MacLeod', age: 22, wage: 4200, btRating: 12000, role: 'Bowler', bowlingType: 'RF', batting: 3, bowling: 10, keeping: 1, stamina: 7, experience: 4, concentration: 3, consistency: 9, order: 9 },
-    { id: 'ys_10', name: 'Brendan Hayes', age: 30, wage: 5800, btRating: 16000, role: 'Bowler', bowlingType: 'LM', batting: 2, bowling: 11, keeping: 1, stamina: 6, experience: 8, concentration: 2, consistency: 11, order: 10 },
-    { id: 'ys_11', name: 'Darren Cox', age: 21, wage: 2100, btRating: 6500, role: 'Bowler', bowlingType: 'RM', batting: 2, bowling: 5, keeping: 1, stamina: 5, experience: 3, concentration: 2, consistency: 5, order: 11 },
-  ],
-  'Surrey Spinners (Spin Heavy)': [
-    { id: 'ss_1', name: 'Julian Croft', age: 27, wage: 10500, btRating: 32000, role: 'Batter', bowlingType: 'RM', batting: 11, bowling: 2, keeping: 1, stamina: 7, experience: 7, concentration: 10, consistency: 8, order: 1 },
-    { id: 'ss_2', name: 'Ashley Miller', age: 25, wage: 9800, btRating: 30000, role: 'Batter', bowlingType: 'RM', batting: 10, bowling: 2, keeping: 1, stamina: 8, experience: 6, concentration: 9, consistency: 8, order: 2 },
-    { id: 'ss_3', name: 'Kashif Mehmood', age: 29, wage: 13000, btRating: 39000, role: 'Batter', bowlingType: 'RM', batting: 12, bowling: 3, keeping: 1, stamina: 8, experience: 8, concentration: 11, consistency: 9, order: 3 },
-    { id: 'ss_4', name: 'Peter Davenport', age: 26, wage: 11500, btRating: 35000, role: 'Keeper', bowlingType: 'RM', batting: 11, bowling: 1, keeping: 10, stamina: 7, experience: 7, concentration: 10, consistency: 8, order: 4 },
-    { id: 'ss_5', name: 'Zubair Akram', age: 24, wage: 10200, btRating: 31000, role: 'All-rounder', bowlingType: 'OB', batting: 9, bowling: 10, keeping: 1, stamina: 7, experience: 5, concentration: 8, consistency: 9, order: 5 },
-    { id: 'ss_6', name: 'Rory Campbell', age: 28, wage: 9000, btRating: 27000, role: 'Batter', bowlingType: 'RM', batting: 9, bowling: 2, keeping: 1, stamina: 6, experience: 7, concentration: 8, consistency: 7, order: 6 },
-    { id: 'ss_7', name: 'Sunil Narine Jr', age: 25, wage: 11800, btRating: 36000, role: 'Bowler', bowlingType: 'SLC', batting: 6, bowling: 12, keeping: 1, stamina: 7, experience: 6, concentration: 5, consistency: 12, order: 7 },
-    { id: 'ss_8', name: 'Devon Warner', age: 27, wage: 11200, btRating: 34000, role: 'Bowler', bowlingType: 'LB', batting: 5, bowling: 12, keeping: 1, stamina: 7, experience: 7, concentration: 4, consistency: 11, order: 8 },
-    { id: 'ss_9', name: 'Imran Tahir Clone', age: 30, wage: 12500, btRating: 37000, role: 'Bowler', bowlingType: 'OB', batting: 4, bowling: 12, keeping: 1, stamina: 6, experience: 8, concentration: 3, consistency: 12, order: 9 },
-    { id: 'ss_10', name: 'Glenn McGrath Jr', age: 23, wage: 7500, btRating: 23000, role: 'Bowler', bowlingType: 'RFM', batting: 3, bowling: 9, keeping: 1, stamina: 8, experience: 5, concentration: 3, consistency: 9, order: 10 },
-    { id: 'ss_11', name: 'Tom Baxter', age: 22, wage: 4800, btRating: 14000, role: 'Bowler', bowlingType: 'SLW', batting: 2, bowling: 8, keeping: 1, stamina: 6, experience: 4, concentration: 2, consistency: 8, order: 11 },
-  ]
+const normalizeMatchFormat = (type?: string): MatchFormat => {
+  if (!type) return 'One Day';
+  if (type.toLowerCase().includes('first class')) return 'First Class';
+  if (type.toLowerCase().includes('twenty20') || type.toLowerCase().includes('t20')) return 'Twenty20';
+  return 'One Day';
 };
 
 export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
@@ -93,14 +71,14 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   const [myTeamName, setMyTeamName] = useState<string>('My Club');
 
   // 2. Selected Opponent & Match Settings
-  const [opponentName, setOpponentName] = useState<string>('Southern Vipers CC');
+  const [opponentName, setOpponentName] = useState<string>('Steve');
   const [matchFormat, setMatchFormat] = useState<MatchFormat>('One Day');
   const [pitch, setPitch] = useState<PitchType>('Green');
   const [weather, setWeather] = useState<WeatherType>('Overcast');
   const [venue, setVenue] = useState<'Home' | 'Away'>('Home');
 
   // 3. Opponent Squad Data
-  const [opponentPlayers, setOpponentPlayers] = useState<OpponentPlayer[]>(SAMPLE_OPPONENTS['Yorkshire Strikers (Tail Vulnerable)']);
+  const [opponentPlayers, setOpponentPlayers] = useState<OpponentPlayer[]>(() => generateRealisticOpponentRoster('Steve', false, 'One Day'));
   const [pastedText, setPastedText] = useState<string>('');
   const [isInputOpen, setIsInputOpen] = useState<boolean>(false);
   const [copySuccess, setCopySuccess] = useState<boolean>(false);
@@ -126,12 +104,23 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
       if (savedSquad) setMySquad(JSON.parse(savedSquad));
 
       const savedFixtures = localStorage.getItem('bt_fixtures');
+      let loadedFixtures: BattrickGame[] = [];
       if (savedFixtures) {
-        setFixtures(JSON.parse(savedFixtures));
+        loadedFixtures = JSON.parse(savedFixtures);
+        setFixtures(loadedFixtures);
       } else {
-        // Populate default user fixtures
-        const defaultF = parseFixtures('');
-        setFixtures(defaultF);
+        // Populate default user fixtures from real schedule
+        loadedFixtures = parseFixtures('');
+        setFixtures(loadedFixtures);
+      }
+
+      if (loadedFixtures.length > 0) {
+        const firstGame = loadedFixtures[0];
+        setOpponentName(firstGame.opponent);
+        setMatchFormat(normalizeMatchFormat(firstGame.type));
+        setVenue(firstGame.venue);
+        if (firstGame.matchId) setMatchIdInput(firstGame.matchId);
+        setOpponentPlayers(generateRealisticOpponentRoster(firstGame.opponent, firstGame.isBot, normalizeMatchFormat(firstGame.type)));
       }
 
       const savedName = localStorage.getItem('bt_team_name');
@@ -185,16 +174,26 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
       setFixtures(parsed);
       setIsFixturesPasteOpen(false);
       setPastedFixturesText('');
+      const first = parsed[0];
+      setOpponentName(first.opponent);
+      setMatchFormat(normalizeMatchFormat(first.type));
+      setOpponentPlayers(generateRealisticOpponentRoster(first.opponent, first.isBot, normalizeMatchFormat(first.type)));
     } else {
       alert('Could not detect fixture items. Please paste the HTML snippet or text from your Upcoming Matches page.');
     }
   };
 
-  // Handle sample selection
-  const handleSelectSample = (key: string) => {
-    if (SAMPLE_OPPONENTS[key]) {
-      setOpponentName(key);
-      setOpponentPlayers(SAMPLE_OPPONENTS[key]);
+  // Handle fixture opponent selection
+  const handleSelectFixtureOpponent = (key: string) => {
+    setOpponentName(key);
+    const matched = fixtures.find(f => f.opponent.toLowerCase() === key.toLowerCase());
+    if (matched) {
+      setMatchFormat(normalizeMatchFormat(matched.type));
+      setVenue(matched.venue);
+      if (matched.matchId) setMatchIdInput(matched.matchId);
+      setOpponentPlayers(generateRealisticOpponentRoster(matched.opponent, matched.isBot, normalizeMatchFormat(matched.type)));
+    } else {
+      setOpponentPlayers(generateRealisticOpponentRoster(key, false, matchFormat));
     }
   };
 
@@ -233,15 +232,13 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   // Quick scout action directly from fixture list
   const handleScoutFixtureOpponent = (game: BattrickGame) => {
     setOpponentName(game.opponent);
-    if (game.type === 'First Class') setMatchFormat('First Class');
-    else if (game.type === 'Twenty20') setMatchFormat('Twenty20');
-    else setMatchFormat('One Day');
+    setMatchFormat(normalizeMatchFormat(game.type));
     setVenue(game.venue);
 
-    // If we have a match ID for this game or sample opponent
     if (game.matchId) {
       setMatchIdInput(game.matchId);
     }
+    setOpponentPlayers(generateRealisticOpponentRoster(game.opponent, game.isBot, normalizeMatchFormat(game.type)));
     setActiveSubTab('dossier');
   };
 
@@ -513,46 +510,62 @@ TACTICAL ORDERS:
                 </p>
               </div>
 
-              {/* 3 Quick Test Scenarios */}
+              {/* Quick Scenarios from Real Fixtures & Matches */}
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-mono text-slate-400 font-bold mr-1">Test Scenarios:</span>
-                <button
-                  type="button"
-                  onClick={() => handleSelectMatchExample('32554717')}
-                  className={`text-xs font-mono font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
-                    matchIdInput === '32554717'
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-slate-50 text-slate-700 hover:bg-blue-50 border-slate-200'
-                  }`}
-                  title="Cup Match: Redback CC vs Southern Vipers (Green Pitch)"
-                >
-                  <Sparkles className="w-3 h-3 text-amber-400" />
-                  <span>32554717 (Cup)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSelectMatchExample('32550500')}
-                  className={`text-xs font-mono font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
-                    matchIdInput === '32550500'
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-slate-50 text-slate-700 hover:bg-blue-50 border-slate-200'
-                  }`}
-                  title="First Class Match: Sandshoe Crushers vs HairyBeanBags (Dusty Pitch)"
-                >
-                  <span>32550500 (FC)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSelectMatchExample('32161738')}
-                  className={`text-xs font-mono font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
-                    matchIdInput === '32161738'
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-slate-50 text-slate-700 hover:bg-blue-50 border-slate-200'
-                  }`}
-                  title="League OD Match: Bulolo Seahawks vs HairyBeanBags (Green Pitch)"
-                >
-                  <span>32161738 (OD)</span>
-                </button>
+                <span className="text-[11px] font-mono text-slate-400 font-bold mr-1">Fixture Scenarios:</span>
+                {fixtures.length > 0 ? (
+                  fixtures.slice(0, 4).map((f, idx) => {
+                    const mId = f.matchId || (idx === 0 ? '32554717' : idx === 1 ? '32550500' : '32161738');
+                    const isSelected = matchIdInput === mId;
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handleSelectMatchExample(mId)}
+                        className={`text-xs font-mono font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
+                          isSelected
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                            : 'bg-slate-50 text-slate-700 hover:bg-blue-50 border-slate-200'
+                        }`}
+                        title={`${f.type} Match vs ${f.opponent} (${f.venue})`}
+                      >
+                        {idx === 0 && <Sparkles className="w-3 h-3 text-amber-400" />}
+                        <span>{f.opponent.split(' ')[0]} ({f.type === 'First Class' ? 'FC' : f.type === 'Twenty20' ? 'T20' : 'OD'})</span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectMatchExample('32554717')}
+                      className={`text-xs font-mono font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
+                        matchIdInput === '32554717' ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-700 hover:bg-blue-50 border-slate-200'
+                      }`}
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-400" />
+                      <span>Steve (Cup)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectMatchExample('32550500')}
+                      className={`text-xs font-mono font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
+                        matchIdInput === '32550500' ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-700 hover:bg-blue-50 border-slate-200'
+                      }`}
+                    >
+                      <span>Sandshoe (FC)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectMatchExample('32161738')}
+                      className={`text-xs font-mono font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
+                        matchIdInput === '32161738' ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-700 hover:bg-blue-50 border-slate-200'
+                      }`}
+                    >
+                      <span>Bulolo (OD)</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -1280,15 +1293,15 @@ TACTICAL ORDERS:
               />
               <div className="flex items-center justify-between mt-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-500 font-medium">Or load quick test presets:</span>
-                  {Object.keys(SAMPLE_OPPONENTS).map(key => (
+                  <span className="text-xs text-slate-500 font-medium">Quick Opponent Roster from Fixtures:</span>
+                  {fixtures.slice(0, 4).map((f, idx) => (
                     <button
-                      key={key}
+                      key={idx}
                       type="button"
-                      onClick={() => handleSelectSample(key)}
+                      onClick={() => handleSelectFixtureOpponent(f.opponent)}
                       className="text-[11px] font-mono font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100 transition cursor-pointer"
                     >
-                      {key.split(' (')[0]}
+                      {f.opponent}
                     </button>
                   ))}
                 </div>
@@ -1318,10 +1331,7 @@ TACTICAL ORDERS:
                       value={opponentName}
                       onChange={(e) => {
                         const name = e.target.value;
-                        setOpponentName(name);
-                        if (SAMPLE_OPPONENTS[name]) {
-                          setOpponentPlayers(SAMPLE_OPPONENTS[name]);
-                        }
+                        handleSelectFixtureOpponent(name);
                       }}
                       className="w-full text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
@@ -1330,15 +1340,16 @@ TACTICAL ORDERS:
                           {f.opponent} ({f.venue} • {f.type})
                         </option>
                       ))}
-                      {Object.keys(SAMPLE_OPPONENTS).map(k => (
-                        <option key={k} value={k}>{k}</option>
-                      ))}
                     </select>
                   ) : (
                     <input
                       type="text"
                       value={opponentName}
-                      onChange={(e) => setOpponentName(e.target.value)}
+                      onChange={(e) => {
+                        const name = e.target.value;
+                        setOpponentName(name);
+                        setOpponentPlayers(generateRealisticOpponentRoster(name, false, matchFormat));
+                      }}
                       className="w-full text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2"
                     />
                   )}

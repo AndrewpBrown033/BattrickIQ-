@@ -12,7 +12,7 @@ import LoginPage from './components/LoginPage';
 import AdminDashboard from './components/AdminDashboard';
 import PlayerDetails from './components/PlayerDetails';
 import OpponentScout from './components/OpponentScout';
-import { onCustomAuthStateChanged, customSignOut, CustomUser } from './lib/customAuth';
+import { onCustomAuthStateChanged, customSignOut, getCustomUser, CustomUser } from './lib/customAuth';
 import { Award, Calculator, Users, FolderOpen, Heart, RefreshCw, Landmark, Bot, BookOpen, Trophy, Clock, ShieldAlert, LogOut, Eye, Activity, History, LayoutGrid, Wallet, MoreHorizontal, X, ChevronUp, Swords } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -49,8 +49,8 @@ export default function App() {
   }, [highContrast]);
   
   // Auth state
-  const [user, setUser] = useState<CustomUser | null>(null);
-  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [user, setUser] = useState<CustomUser | null>(() => getCustomUser());
+  const [authLoading, setAuthLoading] = useState<boolean>(false);
 
   // Admin viewing mode states
   const [adminViewingEmail, setAdminViewingEmail] = useState<string | null>(null);
@@ -69,7 +69,7 @@ export default function App() {
   // Inactivity timeout state (20 minutes = 1200 seconds)
   const [secondsLeft, setSecondsLeft] = useState<number>(1200);
   const [showTimeoutModal, setShowTimeoutModal] = useState<boolean>(false);
-  const [isDataSyncing, setIsDataSyncing] = useState<boolean>(true);
+  const [isDataSyncing, setIsDataSyncing] = useState<boolean>(false);
   const lastActivityTime = useRef<number>(Date.now());
 
   // 1. Listen for Authentication state & initial data sync
@@ -77,12 +77,11 @@ export default function App() {
     const unsubscribe = onCustomAuthStateChanged((currentUser) => {
       setUser(currentUser);
       if (currentUser) {
-        setActiveTab('summary');
         setIsDataSyncing(true);
         // Wait for cloud data sync to settle
         const syncTimer = setTimeout(() => {
           setIsDataSyncing(false);
-        }, 1800);
+        }, 1200);
         return () => clearTimeout(syncTimer);
       } else {
         setIsDataSyncing(false);

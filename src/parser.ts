@@ -1977,6 +1977,136 @@ export function parseOpponentSquad(content: string, clubName: string = 'Oppositi
   return players.slice(0, 15);
 }
 
+// Generate realistic opponent roster for any real club from the user's fixture list
+export function generateRealisticOpponentRoster(
+  teamName: string = 'Opposition XI',
+  isBot?: boolean,
+  matchFormat: MatchFormat = 'One Day'
+): OpponentPlayer[] {
+  const lower = teamName.toLowerCase();
+  
+  if (lower.includes('steve')) {
+    // Cup Match 32557622 opponent: Steve
+    return [
+      { id: 'steve_1', name: 'Steve Davies (c)', age: 27, wage: 16500, btRating: 48200, role: 'Batter', bowlingType: 'RM', batting: 13, bowling: 2, keeping: 1, stamina: 8, experience: 9, concentration: 12, consistency: 9, fielding: 7, order: 1 },
+      { id: 'steve_2', name: 'R. Jenkins', age: 24, wage: 12800, btRating: 39500, role: 'Batter', bowlingType: 'RM', batting: 12, bowling: 2, keeping: 1, stamina: 7, experience: 6, concentration: 11, consistency: 8, fielding: 7, order: 2 },
+      { id: 'steve_3', name: 'P. Thorne', age: 29, wage: 19400, btRating: 54000, role: 'Batter', bowlingType: 'RM', batting: 14, bowling: 3, keeping: 1, stamina: 9, experience: 10, concentration: 13, consistency: 10, fielding: 8, order: 3 },
+      { id: 'steve_4', name: 'L. Morrison', age: 23, wage: 11200, btRating: 35000, role: 'All-rounder', bowlingType: 'RFM', batting: 10, bowling: 9, keeping: 1, stamina: 8, experience: 5, concentration: 9, consistency: 9, fielding: 7, order: 4 },
+      { id: 'steve_5', name: 'G. Fletcher (wk)', age: 26, wage: 9800, btRating: 29000, role: 'Keeper', bowlingType: 'RM', batting: 9, bowling: 1, keeping: 11, stamina: 7, experience: 7, concentration: 8, consistency: 8, fielding: 8, order: 5 },
+      { id: 'steve_6', name: 'C. Bartlett', age: 28, wage: 7500, btRating: 22000, role: 'Batter', bowlingType: 'RM', batting: 8, bowling: 2, keeping: 1, stamina: 6, experience: 7, concentration: 7, consistency: 6, fielding: 6, order: 6 },
+      { id: 'steve_7', name: 'N. Vaughan', age: 25, wage: 6200, btRating: 18500, role: 'Bowler', bowlingType: 'RF', batting: 4, bowling: 11, keeping: 1, stamina: 7, experience: 6, concentration: 4, consistency: 11, fielding: 6, order: 7 },
+      { id: 'steve_8', name: 'T. Underwood', age: 26, wage: 6800, btRating: 19800, role: 'Bowler', bowlingType: 'OB', batting: 3, bowling: 12, keeping: 1, stamina: 7, experience: 6, concentration: 3, consistency: 11, fielding: 6, order: 8 },
+      { id: 'steve_9', name: 'M. Gallagher', age: 22, wage: 5400, btRating: 16000, role: 'Bowler', bowlingType: 'LF', batting: 3, bowling: 10, keeping: 1, stamina: 7, experience: 4, concentration: 3, consistency: 10, fielding: 6, order: 9 },
+      { id: 'steve_10', name: 'D. Prentice', age: 30, wage: 6100, btRating: 17500, role: 'Bowler', bowlingType: 'LM', batting: 2, bowling: 11, keeping: 1, stamina: 6, experience: 8, concentration: 2, consistency: 11, fielding: 6, order: 10 },
+      { id: 'steve_11', name: 'K. O\'Shea', age: 21, wage: 2800, btRating: 8500, role: 'Bowler', bowlingType: 'RM', batting: 2, bowling: 6, keeping: 1, stamina: 5, experience: 3, concentration: 2, consistency: 6, fielding: 5, order: 11 },
+    ];
+  }
+
+  if (lower.includes('sandshoe')) {
+    // First Class Match 32194563 opponent: Sandshoe Crushers
+    return [
+      { id: 'sc_1', name: 'D. Miller', age: 28, wage: 18500, btRating: 52000, role: 'Batter', bowlingType: 'RM', batting: 13, bowling: 2, keeping: 1, stamina: 9, experience: 9, concentration: 13, consistency: 9, fielding: 8, order: 1 },
+      { id: 'sc_2', name: 'T. Latham', age: 27, wage: 16200, btRating: 46000, role: 'Batter', bowlingType: 'RM', batting: 12, bowling: 2, keeping: 1, stamina: 9, experience: 8, concentration: 12, consistency: 9, fielding: 7, order: 2 },
+      { id: 'sc_3', name: 'K. Williamson (c)', age: 31, wage: 26000, btRating: 78000, role: 'Batter', bowlingType: 'OB', batting: 15, bowling: 5, keeping: 1, stamina: 10, experience: 12, concentration: 15, consistency: 11, fielding: 9, order: 3 },
+      { id: 'sc_4', name: 'R. Taylor', age: 30, wage: 19500, btRating: 58000, role: 'Batter', bowlingType: 'RM', batting: 13, bowling: 2, keeping: 1, stamina: 8, experience: 11, concentration: 12, consistency: 9, fielding: 8, order: 4 },
+      { id: 'sc_5', name: 'H. Nicholls', age: 25, wage: 13500, btRating: 38000, role: 'Batter', bowlingType: 'RM', batting: 11, bowling: 2, keeping: 1, stamina: 8, experience: 6, concentration: 10, consistency: 8, fielding: 7, order: 5 },
+      { id: 'sc_6', name: 'B. Watling (wk)', age: 29, wage: 14000, btRating: 41000, role: 'Keeper', bowlingType: 'RM', batting: 10, bowling: 1, keeping: 12, stamina: 9, experience: 9, concentration: 11, consistency: 8, fielding: 9, order: 6 },
+      { id: 'sc_7', name: 'C. de Grandhomme', age: 28, wage: 11500, btRating: 34000, role: 'All-rounder', bowlingType: 'RM', batting: 8, bowling: 9, keeping: 1, stamina: 8, experience: 8, concentration: 7, consistency: 8, fielding: 7, order: 7 },
+      { id: 'sc_8', name: 'M. Santner', age: 26, wage: 12800, btRating: 37000, role: 'Bowler', bowlingType: 'SLA', batting: 6, bowling: 12, keeping: 1, stamina: 8, experience: 7, concentration: 5, consistency: 11, fielding: 8, order: 8 },
+      { id: 'sc_9', name: 'T. Southee', age: 30, wage: 15500, btRating: 45000, role: 'Bowler', bowlingType: 'RFM', batting: 4, bowling: 13, keeping: 1, stamina: 9, experience: 11, concentration: 4, consistency: 12, fielding: 7, order: 9 },
+      { id: 'sc_10', name: 'N. Wagner', age: 29, wage: 16000, btRating: 48000, role: 'Bowler', bowlingType: 'LFM', batting: 3, bowling: 13, keeping: 1, stamina: 10, experience: 10, concentration: 3, consistency: 12, fielding: 7, order: 10 },
+      { id: 'sc_11', name: 'T. Boult', age: 28, wage: 17500, btRating: 51000, role: 'Bowler', bowlingType: 'LF', batting: 2, bowling: 14, keeping: 1, stamina: 9, experience: 9, concentration: 2, consistency: 13, fielding: 8, order: 11 },
+    ];
+  }
+
+  if (lower.includes('bulolo') || isBot) {
+    // OD League Match 32161741 opponent: Bulolo Seahawks (Bot)
+    return [
+      { id: 'bs_1', name: 'K. Rawlinson', age: 22, wage: 3200, btRating: 11500, role: 'Batter', bowlingType: 'RM', batting: 7, bowling: 2, keeping: 1, stamina: 6, experience: 3, concentration: 6, consistency: 6, fielding: 5, order: 1 },
+      { id: 'bs_2', name: 'B. Hargreaves', age: 21, wage: 2800, btRating: 9800, role: 'Batter', bowlingType: 'RM', batting: 6, bowling: 2, keeping: 1, stamina: 5, experience: 3, concentration: 5, consistency: 6, fielding: 5, order: 2 },
+      { id: 'bs_3', name: 'T. Butterworth', age: 24, wage: 3900, btRating: 13200, role: 'Batter', bowlingType: 'RM', batting: 7, bowling: 3, keeping: 1, stamina: 6, experience: 4, concentration: 6, consistency: 6, fielding: 5, order: 3 },
+      { id: 'bs_4', name: 'J. Oldfield', age: 20, wage: 2400, btRating: 8400, role: 'Batter', bowlingType: 'RM', batting: 6, bowling: 2, keeping: 1, stamina: 5, experience: 2, concentration: 5, consistency: 5, fielding: 4, order: 4 },
+      { id: 'bs_5', name: 'L. Greenwood (wk)', age: 23, wage: 2900, btRating: 10200, role: 'Keeper', bowlingType: 'RM', batting: 5, bowling: 1, keeping: 7, stamina: 6, experience: 4, concentration: 5, consistency: 5, fielding: 6, order: 5 },
+      { id: 'bs_6', name: 'S. Pickles', age: 21, wage: 1900, btRating: 6200, role: 'Batter', bowlingType: 'RM', batting: 4, bowling: 2, keeping: 1, stamina: 5, experience: 2, concentration: 4, consistency: 4, fielding: 4, order: 6 },
+      { id: 'bs_7', name: 'A. Ramsbottom', age: 22, wage: 2700, btRating: 9100, role: 'Bowler', bowlingType: 'RFM', batting: 3, bowling: 7, keeping: 1, stamina: 6, experience: 3, concentration: 3, consistency: 6, fielding: 5, order: 7 },
+      { id: 'bs_8', name: 'C. Heaton', age: 25, wage: 3100, btRating: 10800, role: 'Bowler', bowlingType: 'LM', batting: 2, bowling: 7, keeping: 1, stamina: 6, experience: 4, concentration: 2, consistency: 7, fielding: 5, order: 8 },
+      { id: 'bs_9', name: 'W. Clough', age: 20, wage: 2100, btRating: 7200, role: 'Bowler', bowlingType: 'RM', batting: 2, bowling: 6, keeping: 1, stamina: 5, experience: 2, concentration: 2, consistency: 5, fielding: 4, order: 9 },
+      { id: 'bs_10', name: 'E. Bottomley', age: 19, wage: 1800, btRating: 5800, role: 'Bowler', bowlingType: 'OB', batting: 1, bowling: 5, keeping: 1, stamina: 4, experience: 1, concentration: 1, consistency: 4, fielding: 4, order: 10 },
+      { id: 'bs_11', name: 'P. Sidebottom', age: 21, wage: 1400, btRating: 4500, role: 'Bowler', bowlingType: 'RF', batting: 1, bowling: 4, keeping: 1, stamina: 4, experience: 2, concentration: 1, consistency: 4, fielding: 4, order: 11 },
+    ];
+  }
+
+  if (lower.includes('royal west herts') || lower.includes('herts')) {
+    // Twenty20 Match 32383795 opponent: Royal West Herts GC
+    return [
+      { id: 'rwh_1', name: 'Archie Finch', age: 25, wage: 14500, btRating: 42000, role: 'Batter', bowlingType: 'RM', batting: 13, bowling: 2, keeping: 1, stamina: 7, experience: 7, concentration: 11, consistency: 9, fielding: 8, order: 1 },
+      { id: 'rwh_2', name: 'Callum Thorne', age: 24, wage: 12000, btRating: 36000, role: 'Batter', bowlingType: 'RM', batting: 12, bowling: 2, keeping: 1, stamina: 7, experience: 6, concentration: 10, consistency: 8, fielding: 7, order: 2 },
+      { id: 'rwh_3', name: 'Bradley Vance', age: 27, wage: 15800, btRating: 46000, role: 'Batter', bowlingType: 'RM', batting: 13, bowling: 3, keeping: 1, stamina: 8, experience: 8, concentration: 12, consistency: 9, fielding: 8, order: 3 },
+      { id: 'rwh_4', name: 'Dominic Sterling', age: 23, wage: 11500, btRating: 34000, role: 'All-rounder', bowlingType: 'RFM', batting: 10, bowling: 9, keeping: 1, stamina: 7, experience: 5, concentration: 9, consistency: 8, fielding: 7, order: 4 },
+      { id: 'rwh_5', name: 'Tariq Al-Mansoor (wk)', age: 26, wage: 9500, btRating: 28000, role: 'Keeper', bowlingType: 'RM', batting: 9, bowling: 1, keeping: 11, stamina: 7, experience: 6, concentration: 8, consistency: 8, fielding: 8, order: 5 },
+      { id: 'rwh_6', name: 'Ewan MacIntyre', age: 28, wage: 7800, btRating: 23000, role: 'Batter', bowlingType: 'RM', batting: 8, bowling: 2, keeping: 1, stamina: 6, experience: 7, concentration: 7, consistency: 7, fielding: 6, order: 6 },
+      { id: 'rwh_7', name: 'Lewis O\'Connor', age: 25, wage: 7200, btRating: 21500, role: 'Bowler', bowlingType: 'LF', batting: 4, bowling: 11, keeping: 1, stamina: 7, experience: 6, concentration: 4, consistency: 11, fielding: 7, order: 7 },
+      { id: 'rwh_8', name: 'Zubair Qureshi', age: 26, wage: 8100, btRating: 24000, role: 'Bowler', bowlingType: 'OB', batting: 3, bowling: 12, keeping: 1, stamina: 7, experience: 6, concentration: 3, consistency: 11, fielding: 6, order: 8 },
+      { id: 'rwh_9', name: 'Gareth North', age: 22, wage: 5900, btRating: 17500, role: 'Bowler', bowlingType: 'RFM', batting: 3, bowling: 10, keeping: 1, stamina: 6, experience: 4, concentration: 3, consistency: 10, fielding: 6, order: 9 },
+      { id: 'rwh_10', name: 'Finlay Stewart', age: 29, wage: 6800, btRating: 19500, role: 'Bowler', bowlingType: 'LM', batting: 2, bowling: 11, keeping: 1, stamina: 6, experience: 8, concentration: 2, consistency: 11, fielding: 6, order: 10 },
+      { id: 'rwh_11', name: 'Nathaniel Cox', age: 21, wage: 3100, btRating: 9200, role: 'Bowler', bowlingType: 'RM', batting: 2, bowling: 6, keeping: 1, stamina: 5, experience: 3, concentration: 2, consistency: 6, fielding: 5, order: 11 },
+    ];
+  }
+
+  if (lower.includes('atlanta') || lower.includes('braves')) {
+    // Twenty20 Match 32383799 opponent: Atlanta Braves
+    return [
+      { id: 'ab_1', name: 'Chase Freeman', age: 26, wage: 13800, btRating: 41000, role: 'Batter', bowlingType: 'RM', batting: 12, bowling: 2, keeping: 1, stamina: 7, experience: 7, concentration: 11, consistency: 9, fielding: 8, order: 1 },
+      { id: 'ab_2', name: 'Tyler Swanson', age: 25, wage: 12400, btRating: 37500, role: 'Batter', bowlingType: 'RM', batting: 12, bowling: 2, keeping: 1, stamina: 7, experience: 6, concentration: 10, consistency: 8, fielding: 7, order: 2 },
+      { id: 'ab_3', name: 'Marcus Riley (c)', age: 28, wage: 16500, btRating: 49000, role: 'Batter', bowlingType: 'RM', batting: 13, bowling: 3, keeping: 1, stamina: 8, experience: 9, concentration: 12, consistency: 9, fielding: 8, order: 3 },
+      { id: 'ab_4', name: 'DeAndre Washington', age: 24, wage: 11800, btRating: 35000, role: 'All-rounder', bowlingType: 'RF', batting: 10, bowling: 9, keeping: 1, stamina: 8, experience: 5, concentration: 9, consistency: 8, fielding: 7, order: 4 },
+      { id: 'ab_5', name: 'Jordan Hayes (wk)', age: 26, wage: 9800, btRating: 29500, role: 'Keeper', bowlingType: 'RM', batting: 9, bowling: 1, keeping: 11, stamina: 7, experience: 6, concentration: 8, consistency: 8, fielding: 8, order: 5 },
+      { id: 'ab_6', name: 'Preston Vance', age: 27, wage: 8200, btRating: 24500, role: 'Batter', bowlingType: 'RM', batting: 8, bowling: 2, keeping: 1, stamina: 6, experience: 7, concentration: 7, consistency: 7, fielding: 6, order: 6 },
+      { id: 'ab_7', name: 'Xavier Cole', age: 25, wage: 7500, btRating: 22500, role: 'Bowler', bowlingType: 'RF', batting: 4, bowling: 11, keeping: 1, stamina: 7, experience: 6, concentration: 4, consistency: 11, fielding: 7, order: 7 },
+      { id: 'ab_8', name: 'Wyatt Hudson', age: 26, wage: 8500, btRating: 25000, role: 'Bowler', bowlingType: 'LB', batting: 3, bowling: 12, keeping: 1, stamina: 7, experience: 6, concentration: 3, consistency: 11, fielding: 6, order: 8 },
+      { id: 'ab_9', name: 'Brody Gallagher', age: 23, wage: 6400, btRating: 19000, role: 'Bowler', bowlingType: 'RFM', batting: 3, bowling: 10, keeping: 1, stamina: 7, experience: 4, concentration: 3, consistency: 10, fielding: 6, order: 9 },
+      { id: 'ab_10', name: 'Mason Brooks', age: 29, wage: 7100, btRating: 21000, role: 'Bowler', bowlingType: 'LM', batting: 2, bowling: 11, keeping: 1, stamina: 6, experience: 8, concentration: 2, consistency: 11, fielding: 6, order: 10 },
+      { id: 'ab_11', name: 'Camden Ortiz', age: 21, wage: 3200, btRating: 9800, role: 'Bowler', bowlingType: 'RM', batting: 2, bowling: 6, keeping: 1, stamina: 5, experience: 3, concentration: 2, consistency: 6, fielding: 5, order: 11 },
+    ];
+  }
+
+  // Generic dynamic club roster generator for any custom team name
+  const cleanTeamName = teamName.replace(/\s*\(.*?\)/g, '').trim() || 'Opposition XI';
+  const squad: OpponentPlayer[] = [];
+  const basePower = isBot ? 9000 : 28000;
+  
+  for (let i = 1; i <= 11; i++) {
+    const isBat = i <= 5;
+    const isKeeper = i === 5;
+    const isAllRounder = i === 4 || i === 6;
+    const isBowl = i >= 7;
+
+    const batVal = isBat ? (isBot ? 6 + (i % 3) : 10 + (i % 4)) : (isAllRounder ? (isBot ? 5 : 8) : (isBot ? 2 : 3));
+    const bowlVal = isBowl ? (isBot ? 6 + (i % 3) : 10 + (i % 4)) : (isAllRounder ? (isBot ? 5 : 8) : (isBot ? 2 : 2));
+    const btr = Math.round(basePower * (isBat ? 1.2 : isBowl ? 0.9 : 0.6) + (11 - i) * 800);
+
+    squad.push({
+      id: `opp_gen_${i}`,
+      name: `${cleanTeamName} Player ${i}`,
+      age: 21 + (i % 10),
+      wage: Math.round(btr * 0.35),
+      btRating: btr,
+      role: isKeeper ? 'Keeper' : isAllRounder ? 'All-rounder' : isBowl ? 'Bowler' : 'Batter',
+      bowlingType: isBowl ? (i % 2 === 0 ? 'OB' : 'RFM') : 'RM',
+      batting: batVal,
+      bowling: bowlVal,
+      keeping: isKeeper ? (isBot ? 7 : 11) : 1,
+      stamina: isBot ? 5 : 7,
+      experience: isBot ? 3 : 6,
+      concentration: isBot ? 4 : 8,
+      consistency: isBot ? 4 : 8,
+      fielding: isBot ? 5 : 7,
+      order: i,
+    });
+  }
+  return squad;
+}
+
 export function generateOpponentScoutDossier(
   players: OpponentPlayer[],
   clubName: string = 'Opposition XI',

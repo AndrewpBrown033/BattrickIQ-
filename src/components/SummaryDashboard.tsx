@@ -21,11 +21,11 @@ export default function SummaryDashboard({ setActiveTab }: SummaryDashboardProps
   const [fixtures, setFixtures] = useState<BattrickGame[]>([]);
   const [pavilion, setPavilion] = useState<PavilionInfo | null>(null);
   const [teamName, setTeamName] = useState<string>('My Battrick IQ Club');
-  const [refreshing, setRefreshing] = useState(true);
-  const [refreshMessage, setRefreshMessage] = useState<string | null>('Connecting to database...');
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<CustomUser | null>(getCustomUser());
-  const [isCloudSyncing, setIsCloudSyncing] = useState<boolean>(true);
-  const [hasInitialSyncCompleted, setHasInitialSyncCompleted] = useState<boolean>(false);
+  const [isCloudSyncing, setIsCloudSyncing] = useState<boolean>(false);
+  const [hasInitialSyncCompleted, setHasInitialSyncCompleted] = useState<boolean>(true);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
 
   useEffect(() => {
@@ -571,17 +571,10 @@ Please analyze my club details and explain:
             <div className="text-[11px] sm:text-xs font-mono font-bold tracking-wider text-slate-500 uppercase">
               CLUB HEALTH
             </div>
-            {(isCloudSyncing || refreshing) ? (
-              <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded flex items-center gap-1 animate-pulse">
-                <RefreshCw className="w-2.5 h-2.5 animate-spin text-amber-600" />
-                <span>Syncing...</span>
-              </span>
-            ) : (
-              <span className="text-[10px] font-mono font-semibold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 group-hover:bg-blue-600 group-hover:text-white transition">
-                <span>Diagnostics</span>
-                <ChevronRight className="w-3 h-3" />
-              </span>
-            )}
+            <span className="text-[10px] font-mono font-semibold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 group-hover:bg-blue-600 group-hover:text-white transition">
+              <span>Diagnostics</span>
+              <ChevronRight className="w-3 h-3" />
+            </span>
           </div>
           <div className="font-serif font-bold text-3xl sm:text-4xl lg:text-5xl text-slate-900 tracking-tight my-2 group-hover:text-blue-600 transition">
             {displayHealth}
@@ -602,17 +595,10 @@ Please analyze my club details and explain:
             <div className="text-[11px] sm:text-xs font-mono font-bold tracking-wider text-slate-500 uppercase">
               CASH RESERVES
             </div>
-            {(isCloudSyncing || refreshing) ? (
-              <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded flex items-center gap-1 animate-pulse">
-                <RefreshCw className="w-2.5 h-2.5 animate-spin text-amber-600" />
-                <span>Syncing...</span>
-              </span>
-            ) : (
-              <span className="text-[10px] font-mono font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 group-hover:bg-emerald-600 group-hover:text-white transition">
-                <span>Finances</span>
-                <ChevronRight className="w-3 h-3" />
-              </span>
-            )}
+            <span className="text-[10px] font-mono font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 group-hover:bg-emerald-600 group-hover:text-white transition">
+              <span>Finances</span>
+              <ChevronRight className="w-3 h-3" />
+            </span>
           </div>
           <div className="font-serif font-bold text-2xl sm:text-3xl lg:text-4xl text-slate-900 tracking-tight my-2 group-hover:text-emerald-600 transition truncate">
             {displayCash}
@@ -637,17 +623,10 @@ Please analyze my club details and explain:
             <div className="text-[11px] sm:text-xs font-mono font-bold tracking-wider text-slate-500 uppercase">
               SQUAD ROSTER
             </div>
-            {(isCloudSyncing || refreshing) ? (
-              <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded flex items-center gap-1 animate-pulse">
-                <RefreshCw className="w-2.5 h-2.5 animate-spin text-amber-600" />
-                <span>Syncing...</span>
-              </span>
-            ) : (
-              <span className="text-[10px] font-mono font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 group-hover:bg-indigo-600 group-hover:text-white transition">
-                <span>Squad</span>
-                <ChevronRight className="w-3 h-3" />
-              </span>
-            )}
+            <span className="text-[10px] font-mono font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 group-hover:bg-indigo-600 group-hover:text-white transition">
+              <span>Squad</span>
+              <ChevronRight className="w-3 h-3" />
+            </span>
           </div>
           <div className="font-serif font-bold text-3xl sm:text-4xl lg:text-5xl text-slate-900 tracking-tight my-2 group-hover:text-indigo-600 transition">
             {displaySquadCount}
@@ -672,17 +651,10 @@ Please analyze my club details and explain:
             <div className="text-[11px] sm:text-xs font-mono font-bold tracking-wider text-slate-500 uppercase">
               STADIUM CAPACITY
             </div>
-            {(isCloudSyncing || refreshing) ? (
-              <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded flex items-center gap-1 animate-pulse">
-                <RefreshCw className="w-2.5 h-2.5 animate-spin text-amber-600" />
-                <span>Syncing...</span>
-              </span>
-            ) : (
-              <span className="text-[10px] font-mono font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 group-hover:bg-amber-600 group-hover:text-white transition">
-                <span>Stadium</span>
-                <ChevronRight className="w-3 h-3" />
-              </span>
-            )}
+            <span className="text-[10px] font-mono font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 group-hover:bg-amber-600 group-hover:text-white transition">
+              <span>Stadium</span>
+              <ChevronRight className="w-3 h-3" />
+            </span>
           </div>
           <div className="font-serif font-bold text-2xl sm:text-3xl lg:text-4xl text-slate-900 tracking-tight my-2 group-hover:text-amber-700 transition">
             {displayCapacity}
@@ -774,14 +746,7 @@ Please analyze my club details and explain:
                 <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition">
                   <RefreshCw className="w-5 h-5" />
                 </div>
-                {(isCloudSyncing || refreshing) ? (
-                  <span className="text-[9px] font-mono text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-bold flex items-center gap-1 animate-pulse">
-                    <RefreshCw className="w-2 h-2 animate-spin text-amber-600" />
-                    <span>Syncing...</span>
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-mono text-slate-400 font-bold">Step 01</span>
-                )}
+                <span className="text-[10px] font-mono text-slate-400 font-bold">Step 01</span>
               </div>
               <h4 className="font-display font-bold text-sm text-slate-900 group-hover:text-blue-600 transition">Roster Synchronization</h4>
               <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
@@ -804,14 +769,7 @@ Please analyze my club details and explain:
                 <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition">
                   <FolderOpen className="w-5 h-5" />
                 </div>
-                {(isCloudSyncing || refreshing) ? (
-                  <span className="text-[9px] font-mono text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-bold flex items-center gap-1 animate-pulse">
-                    <RefreshCw className="w-2 h-2 animate-spin text-amber-600" />
-                    <span>Syncing...</span>
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-mono text-slate-400 font-bold">Step 02</span>
-                )}
+                <span className="text-[10px] font-mono text-slate-400 font-bold">Step 02</span>
               </div>
               <h4 className="font-display font-bold text-sm text-slate-900 group-hover:text-blue-600 transition">Squad & Training Pops</h4>
               <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
@@ -834,14 +792,7 @@ Please analyze my club details and explain:
                 <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition">
                   <Users className="w-5 h-5" />
                 </div>
-                {(isCloudSyncing || refreshing) ? (
-                  <span className="text-[9px] font-mono text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-bold flex items-center gap-1 animate-pulse">
-                    <RefreshCw className="w-2 h-2 animate-spin text-amber-600" />
-                    <span>Syncing...</span>
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-mono text-slate-400 font-bold">Step 03</span>
-                )}
+                <span className="text-[10px] font-mono text-slate-400 font-bold">Step 03</span>
               </div>
               <h4 className="font-display font-bold text-sm text-slate-900 group-hover:text-blue-600 transition">Lineup Optimizer</h4>
               <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
@@ -864,14 +815,7 @@ Please analyze my club details and explain:
                 <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition">
                   <Calculator className="w-5 h-5" />
                 </div>
-                {(isCloudSyncing || refreshing) ? (
-                  <span className="text-[9px] font-mono text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-bold flex items-center gap-1 animate-pulse">
-                    <RefreshCw className="w-2 h-2 animate-spin text-amber-600" />
-                    <span>Syncing...</span>
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-mono text-slate-400 font-bold">Step 04</span>
-                )}
+                <span className="text-[10px] font-mono text-slate-400 font-bold">Step 04</span>
               </div>
               <h4 className="font-display font-bold text-sm text-slate-900 group-hover:text-blue-600 transition">Wage & Budget Forecast</h4>
               <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
@@ -894,14 +838,7 @@ Please analyze my club details and explain:
                 <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition">
                   <Landmark className="w-5 h-5" />
                 </div>
-                {(isCloudSyncing || refreshing) ? (
-                  <span className="text-[9px] font-mono text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-bold flex items-center gap-1 animate-pulse">
-                    <RefreshCw className="w-2 h-2 animate-spin text-amber-600" />
-                    <span>Syncing...</span>
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-mono text-slate-400 font-bold">Step 05</span>
-                )}
+                <span className="text-[10px] font-mono text-slate-400 font-bold">Step 05</span>
               </div>
               <h4 className="font-display font-bold text-sm text-slate-900 group-hover:text-blue-600 transition">Stadium Expansion</h4>
               <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
@@ -924,14 +861,7 @@ Please analyze my club details and explain:
                 <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition">
                   <Bot className="w-5 h-5" />
                 </div>
-                {(isCloudSyncing || refreshing) ? (
-                  <span className="text-[9px] font-mono text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-bold flex items-center gap-1 animate-pulse">
-                    <RefreshCw className="w-2 h-2 animate-spin text-amber-600" />
-                    <span>Syncing...</span>
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-mono text-slate-400 font-bold">Step 06</span>
-                )}
+                <span className="text-[10px] font-mono text-slate-400 font-bold">Step 06</span>
               </div>
               <h4 className="font-display font-bold text-sm text-slate-900 group-hover:text-blue-600 transition">AI Tactical Assistant</h4>
               <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
@@ -954,14 +884,7 @@ Please analyze my club details and explain:
                 <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition">
                   <Swords className="w-5 h-5" />
                 </div>
-                {(isCloudSyncing || refreshing) ? (
-                  <span className="text-[9px] font-mono text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-bold flex items-center gap-1 animate-pulse">
-                    <RefreshCw className="w-2 h-2 animate-spin text-amber-600" />
-                    <span>Syncing...</span>
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-mono text-slate-400 font-bold">Step 07</span>
-                )}
+                <span className="text-[10px] font-mono text-slate-400 font-bold">Step 07</span>
               </div>
               <h4 className="font-display font-bold text-sm text-slate-900 group-hover:text-blue-600 transition">Opponent Scout & Tactics</h4>
               <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">

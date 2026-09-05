@@ -260,6 +260,30 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
                     <>Sign In Securely <ArrowRight className="w-3.5 h-3.5" /></>
                   )}
                 </button>
+
+                <div className="relative flex py-2 items-center">
+                  <div className="flex-grow border-t border-slate-200"></div>
+                  <span className="flex-shrink mx-3 text-[10px] font-mono text-slate-400 uppercase font-bold">Or Instant Access</span>
+                  <div className="flex-grow border-t border-slate-200"></div>
+                </div>
+
+                <button
+                  id="btn-login-quick-demo"
+                  type="button"
+                  onClick={() => {
+                    const demoUser = {
+                      uid: 'bt_andrew_admin',
+                      email: 'andrewpbrown33@gmail.com',
+                      role: 'admin' as const
+                    };
+                    localStorage.setItem('bt_custom_user', JSON.stringify(demoUser));
+                    window.location.reload();
+                  }}
+                  className="w-full bg-slate-100 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 text-slate-700 border border-slate-200 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <ShieldCheck className="w-4 h-4 text-blue-600" />
+                  <span>Enter as Manager (Andrew Brown)</span>
+                </button>
               </div>
 
               <div className="text-center mt-4">

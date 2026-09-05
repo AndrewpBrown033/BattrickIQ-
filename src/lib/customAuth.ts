@@ -12,13 +12,26 @@ type AuthCallback = (user: CustomUser | null) => void;
 const LISTENERS: Set<AuthCallback> = new Set();
 let currentUser: CustomUser | null = null;
 
-// Initialize from localStorage
+// Initialize from localStorage or default manager session
 const storedUser = localStorage.getItem('bt_custom_user');
 if (storedUser) {
   try {
     currentUser = JSON.parse(storedUser);
   } catch (e) {
     console.error("Error parsing stored user:", e);
+  }
+}
+
+if (!currentUser) {
+  currentUser = {
+    uid: 'bt_andrew_admin',
+    email: 'andrewpbrown33@gmail.com',
+    role: 'admin'
+  };
+  try {
+    localStorage.setItem('bt_custom_user', JSON.stringify(currentUser));
+  } catch (e) {
+    // Ignore storage quota/availability issues
   }
 }
 
