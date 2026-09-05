@@ -757,13 +757,24 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     }
   };
 
-  const handleDirectSync = async () => {
+  // Accepts an optional explicit list of page ids to sync. This is required
+  // for the "Sync All" one-click button below: it calls selectAllPages()
+  // (which updates state via setSelectedSyncPages) and then immediately
+  // wants to run every page. React state updates aren't visible until the
+  // next render, so reading `selectedSyncPages` right after calling
+  // selectAllPages() would still see the OLD (possibly partial) selection.
+  // Passing the page list in directly sidesteps that timing problem, while
+  // the regular "Run Direct Sync" button keeps using the checked boxes by
+  // simply calling handleDirectSync() with no argument.
+  const handleDirectSync = async (pagesOverride?: string[]) => {
+    const pagesToSync = pagesOverride && pagesOverride.length > 0 ? pagesOverride : selectedSyncPages;
+
     if (!directUsername.trim() || !directPassword.trim()) {
       setDirectSyncError('Please enter your Battrick username and password.');
       return;
     }
 
-    if (selectedSyncPages.length === 0) {
+    if (pagesToSync.length === 0) {
       setDirectSyncError('Please tick at least one section/page to synchronize below.');
       return;
     }
@@ -837,7 +848,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       }
     ];
 
-    selectedSyncPages.forEach(pageId => {
+    pagesToSync.forEach(pageId => {
       const def = stepDefinitions[pageId];
       if (def) {
         initialSteps.push({
@@ -1618,11 +1629,34 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
                 </div>
               </div>
 
-              {/* Sync Trigger Button */}
+              {/* Sync Trigger Buttons */}
               <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   type="button"
-                  onClick={handleDirectSync}
+                  onClick={() => {
+                    // Reflect "all pages" in the checklist UI, and pass the
+                    // full page list straight into handleDirectSync so the
+                    // sequential step-by-step modal (with per-page record
+                    // counts) runs immediately for every page, regardless of
+                    // whatever was previously ticked.
+                    selectAllPages();
+                    handleDirectSync(AVAILABLE_SYNC_OPTIONS.map(o => o.id));
+                  }}
+                  disabled={directSyncing || diagnosticRunning || !directUsername.trim() || !directPassword.trim()}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer font-sans"
+                  title="Selects every page and steps through each one, one at a time, showing the records returned for each"
+                >
+                  {directSyncing ? (
+                    <RefreshCw className="w-4.5 h-4.5 animate-spin" />
+                  ) : (
+                    <Zap className="w-4.5 h-4.5" />
+                  )}
+                  {directSyncing ? 'Stepping through sync queue...' : 'Sync All (Step-by-Step)'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleDirectSync()}
                   disabled={directSyncing || diagnosticRunning || selectedSyncPages.length === 0}
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer font-sans"
                 >
@@ -1651,6 +1685,9 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
                   <span>{diagnosticRunning ? 'Testing Connection...' : 'Test Connection & Logs'}</span>
                 </button>
               </div>
+              <p className="text-[10px] text-slate-400 -mt-1.5">
+                <strong className="text-slate-500">Sync All</strong> ticks every page and walks through squad → nets → finances → club → fixtures → pavilion one at a time, showing the record count returned for each before moving to the next.
+              </p>
 
               {/* Real-time Diagnostic Log Console */}
               {diagnosticResult && (
