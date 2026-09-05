@@ -568,27 +568,57 @@ async function startServer() {
         return;
       }
 
+      const pageKey = (pageName || '').toString().toLowerCase().trim();
+
       const pageUrlMap: Record<string, string> = {
         squad: req.body.teamId ? `https://www.battrick.org/nl/squad.asp?teamID=${req.body.teamId}` : 'https://www.battrick.org/nl/squad.asp',
+        players: req.body.teamId ? `https://www.battrick.org/nl/squad.asp?teamID=${req.body.teamId}` : 'https://www.battrick.org/nl/squad.asp',
+        'squad.asp': req.body.teamId ? `https://www.battrick.org/nl/squad.asp?teamID=${req.body.teamId}` : 'https://www.battrick.org/nl/squad.asp',
+
         nets: 'https://www.battrick.org/nl/nets.asp',
+        training: 'https://www.battrick.org/nl/nets.asp',
+        'nets.asp': 'https://www.battrick.org/nl/nets.asp',
+
         finances: 'https://www.battrick.org/nl/finances.asp',
+        finance: 'https://www.battrick.org/nl/finances.asp',
+        'finances.asp': 'https://www.battrick.org/nl/finances.asp',
+
         club: 'https://www.battrick.org/nl/club.asp',
+        staff: 'https://www.battrick.org/nl/club.asp',
+        'club.asp': 'https://www.battrick.org/nl/club.asp',
+
         fixtures: 'https://www.battrick.org/nl/fixtures.asp',
+        schedule: 'https://www.battrick.org/nl/fixtures.asp',
+        matches: 'https://www.battrick.org/nl/fixtures.asp',
+        'fixtures.asp': 'https://www.battrick.org/nl/fixtures.asp',
+
         pavilion: 'https://www.battrick.org/nl/myoffice.asp',
         office: 'https://www.battrick.org/nl/myoffice.asp',
         myoffice: 'https://www.battrick.org/nl/myoffice.asp',
+        'myoffice.asp': 'https://www.battrick.org/nl/myoffice.asp',
         ground: 'https://www.battrick.org/nl/ground.asp',
+        stadium: 'https://www.battrick.org/nl/ground.asp',
+        'ground.asp': 'https://www.battrick.org/nl/ground.asp',
+
         league: req.body.leagueId ? `https://www.battrick.org/nl/leagues.asp?leagueID=${req.body.leagueId}` : 'https://www.battrick.org/nl/leagues.asp',
+        leagues: req.body.leagueId ? `https://www.battrick.org/nl/leagues.asp?leagueID=${req.body.leagueId}` : 'https://www.battrick.org/nl/leagues.asp',
+        leaguetable: req.body.leagueId ? `https://www.battrick.org/nl/leagues.asp?leagueID=${req.body.leagueId}` : 'https://www.battrick.org/nl/leagues.asp',
+        league_table: req.body.leagueId ? `https://www.battrick.org/nl/leagues.asp?leagueID=${req.body.leagueId}` : 'https://www.battrick.org/nl/leagues.asp',
+        'league-table': req.body.leagueId ? `https://www.battrick.org/nl/leagues.asp?leagueID=${req.body.leagueId}` : 'https://www.battrick.org/nl/leagues.asp',
+        standings: req.body.leagueId ? `https://www.battrick.org/nl/leagues.asp?leagueID=${req.body.leagueId}` : 'https://www.battrick.org/nl/leagues.asp',
+        'leagues.asp': req.body.leagueId ? `https://www.battrick.org/nl/leagues.asp?leagueID=${req.body.leagueId}` : 'https://www.battrick.org/nl/leagues.asp',
+        'league.asp': req.body.leagueId ? `https://www.battrick.org/nl/leagues.asp?leagueID=${req.body.leagueId}` : 'https://www.battrick.org/nl/leagues.asp',
+
         matchinfo: req.body.matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${req.body.matchId}` : '',
         matchsummary: req.body.matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${req.body.matchId}&action=summary` : ''
       };
 
-      let targetUrl = pageUrlMap[pageName || ''];
+      let targetUrl = pageUrlMap[pageKey];
       if (req.body.pageUrl) {
         let customUrl = req.body.pageUrl.trim();
         if (customUrl.startsWith('/nl/')) {
           customUrl = `https://www.battrick.org${customUrl}`;
-        } else if (customUrl.startsWith('matchinfo.asp') || customUrl.startsWith('fixtures.asp') || customUrl.startsWith('squad.asp')) {
+        } else if (customUrl.startsWith('matchinfo.asp') || customUrl.startsWith('fixtures.asp') || customUrl.startsWith('squad.asp') || customUrl.startsWith('leagues.asp')) {
           customUrl = `https://www.battrick.org/nl/${customUrl}`;
         }
         if (customUrl.startsWith('https://www.battrick.org/')) {
@@ -602,6 +632,11 @@ async function startServer() {
       }
 
       let activeSession = sessionToken ? battrickSessionStore.get(sessionToken) : undefined;
+
+      // Fallback: if sessionToken was not provided, check if there's an existing active session in memory
+      if (!activeSession && !sessionToken && battrickSessionStore.size > 0) {
+        activeSession = Array.from(battrickSessionStore.values())[battrickSessionStore.size - 1];
+      }
 
       // If session expired or missing but credentials provided, re-authenticate seamlessly
       if (!activeSession && username && password) {

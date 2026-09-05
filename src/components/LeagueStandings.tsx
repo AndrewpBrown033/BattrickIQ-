@@ -155,12 +155,19 @@ export const LeagueStandings: React.FC<LeagueStandingsProps> = ({ setActiveTab, 
 
     try {
       const targetId = activeLeagueId;
+      const username = localStorage.getItem('bt_battrick_username') || localStorage.getItem('bt_direct_user') || '';
+      const password = sessionStorage.getItem('bt_direct_pass') || localStorage.getItem('bt_direct_pass') || '';
+      const sessionToken = localStorage.getItem('bt_sync_session') || '';
+
       const res = await fetch('/api/sync-battrick-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           pageName: 'league',
-          leagueId: targetId
+          leagueId: targetId,
+          username,
+          password,
+          sessionToken
         })
       });
 
@@ -170,6 +177,9 @@ export const LeagueStandings: React.FC<LeagueStandingsProps> = ({ setActiveTab, 
       }
 
       const data = await res.json();
+      if (data.sessionToken) {
+        localStorage.setItem('bt_sync_session', data.sessionToken);
+      }
       if (data.success && data.html) {
         const parsed = parseLeagueTable(data.html, activeLeagueType, targetId);
         saveLeagueTable(parsed);
