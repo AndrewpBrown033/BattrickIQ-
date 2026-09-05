@@ -569,7 +569,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
             </div>
           ) : viewMode === 'compact' ? (
             /* Compact Mobile-First List View */
-            <div className="overflow-visible sm:max-h-[640px] sm:overflow-y-auto divide-y divide-slate-150 rounded-xl border border-slate-200 bg-white shadow-sm overscroll-contain">
+            <div className="max-h-[65vh] sm:max-h-[640px] overflow-y-auto divide-y divide-slate-150 rounded-xl border border-slate-200 bg-white shadow-sm overscroll-contain [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
               {filteredSquad.map((player) => {
                 const pScore = getPlayerWeightedScore(player);
                 const isSelected = selectedPlayer?.id === player.id;
@@ -651,7 +651,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
             </div>
           ) : (
             /* Cards View (Mobile-Friendly Responsive Grid) */
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 overflow-visible sm:max-h-[640px] sm:overflow-y-auto pr-0 sm:pr-1 overscroll-contain">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[65vh] sm:max-h-[640px] overflow-y-auto pr-1 overscroll-contain [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
               {filteredSquad.map((player) => {
                 const pScore = getPlayerWeightedScore(player);
                 const isSelected = selectedPlayer?.id === player.id;
