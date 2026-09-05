@@ -77,7 +77,15 @@ export default function SummaryDashboard({ setActiveTab }: SummaryDashboardProps
 
     const savedPavilion = localStorage.getItem('bt_pavilion');
     if (savedPavilion) {
-      try { setPavilion(JSON.parse(savedPavilion)); } catch (e) { setPavilion(null); }
+      try {
+        const parsedPav = JSON.parse(savedPavilion);
+        setPavilion(parsedPav);
+        if (parsedPav?.groundName && (!localStorage.getItem('bt_team_name') || localStorage.getItem('bt_team_name') === 'My Battrick IQ Club')) {
+          setTeamName(parsedPav.groundName);
+        }
+      } catch (e) {
+        setPavilion(null);
+      }
     } else { setPavilion(null); }
   };
 
@@ -462,19 +470,21 @@ Please analyze my club details and explain:
     return 'SEASON 65 • WEEK 10';
   };
 
-  const clubDisplayName = teamName && teamName !== 'My Battrick IQ Club' ? teamName : "Lord's Lane CC";
+  const clubDisplayName = teamName && teamName !== 'My Battrick IQ Club' 
+    ? teamName 
+    : (pavilion?.groundName ? pavilion.groundName : "Lord's Lane CC");
   const groundDisplayName = pavilion?.groundName || (teamName && teamName !== 'My Battrick IQ Club' ? teamName : "Lord's Lane");
   const pitchDisplayName = pavilion?.pitchType || 'Flat';
   const weatherDisplayName = pavilion?.weather || 'Sunny';
   const groundSubtitle = `${groundDisplayName} • ${pitchDisplayName} pitch • ${weatherDisplayName}`;
 
   const displayHealth = overallHealth > 0 ? overallHealth : 81;
-  const displayCash = finances?.cash !== undefined ? `£${finances.cash.toLocaleString()}` : '£4,520,300';
-  const displaySurplus = finances ? `${finDetails.surplus >= 0 ? '+' : ''}£${finDetails.surplus.toLocaleString()} / wk` : '+£48,280 / wk';
-  const displaySquadCount = squad.length > 0 ? squad.length : 16;
-  const displayAvgBtr = squad.length > 0 && squadDetails.avgBtr > 0 ? `avg BTR ${squadDetails.avgBtr.toLocaleString()}` : 'avg BTR 64,306';
-  const displayCapacity = stadium?.capacity ? stadium.capacity.toLocaleString() : '12,520';
-  const displayMembers = finances?.members ? `${finances.members.toLocaleString()} members` : '2,150 members';
+  const displayCash = finances?.cash !== undefined ? `£${finances.cash.toLocaleString()}` : '£0';
+  const displaySurplus = finances ? `${finDetails.surplus >= 0 ? '+' : ''}£${finDetails.surplus.toLocaleString()} / wk` : '£0 / wk';
+  const displaySquadCount = squad.length > 0 ? squad.length : 0;
+  const displayAvgBtr = squad.length > 0 && squadDetails.avgBtr > 0 ? `avg BTR ${squadDetails.avgBtr.toLocaleString()}` : '0 players';
+  const displayCapacity = stadium?.capacity ? stadium.capacity.toLocaleString() : (pavilion ? '14,000' : '0');
+  const displayMembers = finances?.members ? `${finances.members.toLocaleString()} members` : 'Stadium ground';
 
   const displayFixtures = fixtures.length > 0 ? fixtures.slice(0, 3) : [
     { opponent: 'Lancashire Lightning', date: '18/07/2026', type: 'One Day', venue: 'Home' as const, result: 'Upcoming' },
@@ -485,110 +495,181 @@ Please analyze my club details and explain:
   return (
     <div className="flex flex-col gap-6" id="summary-dashboard-view">
 
-      {/* Top Club Header & Metadata */}
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400">
-            {getSeasonWeekDisplay()}
-          </span>
-          {(isCloudSyncing || refreshing) && (
-            <span className="text-[10px] font-mono font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-              <RefreshCw className="w-3 h-3 animate-spin" />
-              Syncing...
-            </span>
-          )}
+      {/* High-Impact Dark Blue Club Header Banner */}
+      <div className="bg-gradient-to-br from-slate-950 via-[#0b192e] to-[#0f172a] text-white rounded-2xl sm:rounded-3xl p-6 sm:p-8 shadow-md border border-blue-900/40 relative overflow-hidden" id="club-hero-heading-banner">
+        {/* Subtle decorative background accents */}
+        <div className="absolute -top-16 -right-16 w-64 h-64 bg-blue-500/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+          <div className="flex flex-col gap-2 max-w-2xl">
+            {/* Top metadata tags */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-blue-200 bg-blue-900/80 border border-blue-400/30 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-2xs">
+                <Calendar className="w-3.5 h-3.5 text-blue-300" />
+                {getSeasonWeekDisplay()}
+              </span>
+
+              {(isCloudSyncing || refreshing) ? (
+                <span className="text-[11px] font-mono font-bold text-amber-200 bg-amber-900/60 border border-amber-500/40 px-3 py-1 rounded-full flex items-center gap-1.5">
+                  <RefreshCw className="w-3 h-3 animate-spin text-amber-300" />
+                  Syncing Live Data...
+                </span>
+              ) : (
+                <span className="text-[11px] font-mono font-bold text-emerald-200 bg-emerald-950/60 border border-emerald-500/40 px-3 py-1 rounded-full flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Pavilion Synchronized
+                </span>
+              )}
+            </div>
+
+            {/* Main Club Name Display */}
+            <h1 className="font-serif font-bold text-3xl sm:text-4xl lg:text-5xl text-white tracking-tight leading-tight mt-1">
+              {clubDisplayName}
+            </h1>
+
+            {/* Stadium & Conditions Subtitle */}
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-blue-100/90 font-medium flex-wrap mt-1">
+              <span className="flex items-center gap-1.5 bg-white/10 backdrop-blur-xs px-2.5 py-1 rounded-lg border border-white/10">
+                <Landmark className="w-3.5 h-3.5 text-blue-200" />
+                <span>{groundDisplayName}</span>
+              </span>
+              <span className="flex items-center gap-1.5 bg-white/10 backdrop-blur-xs px-2.5 py-1 rounded-lg border border-white/10">
+                <span>{pitchDisplayName} Pitch</span>
+              </span>
+              <span className="flex items-center gap-1.5 bg-white/10 backdrop-blur-xs px-2.5 py-1 rounded-lg border border-white/10">
+                <span>{weatherDisplayName}</span>
+              </span>
+            </div>
+          </div>
+
+          {/* Quick Action Button to Sync / Direct Pavilion */}
+          <div className="flex items-center gap-2.5 self-start sm:self-center shrink-0">
+            <button
+              type="button"
+              onClick={() => setActiveTab('sync')}
+              className="bg-white/15 hover:bg-white/25 active:bg-white/30 text-white border border-white/25 px-4 py-2.5 rounded-xl font-mono text-xs font-semibold transition-all duration-150 flex items-center gap-2 cursor-pointer shadow-sm backdrop-blur-xs"
+              title="Open Pavilion Direct Sync Hub"
+            >
+              <Upload className="w-4 h-4 text-blue-200" />
+              <span>Pavilion Sync</span>
+              <ChevronRight className="w-3.5 h-3.5 text-blue-200" />
+            </button>
+          </div>
         </div>
-        <h1 className="font-serif font-bold text-3xl sm:text-4xl text-slate-900 tracking-tight">
-          {clubDisplayName}
-        </h1>
-        <p className="text-xs sm:text-sm text-slate-500 font-normal">
-          {groundSubtitle}
-        </p>
       </div>
 
-      {/* 2x2 Metric Cards Grid */}
+      {/* 2x2 Metric Cards Grid with standard app palette and clickable drilldowns */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4">
         {/* Card 1: CLUB HEALTH */}
         <div 
           onClick={handleGradeDrilldown}
-          className="bg-[#f4f6f8] border border-slate-200/90 hover:border-slate-300 rounded-2xl p-4 sm:p-5 flex flex-col justify-between transition cursor-pointer group shadow-2xs"
-          title="Click to drill down with Coach Jarvis"
+          className="bg-white border border-slate-200/90 hover:border-blue-400 hover:shadow-md rounded-2xl p-4 sm:p-5 flex flex-col justify-between transition-all duration-150 cursor-pointer group shadow-2xs"
+          title="Click to drill down with Coach Jarvis diagnostics"
         >
-          <div className="text-[11px] sm:text-xs font-mono font-medium tracking-wider text-slate-500 uppercase">
-            CLUB HEALTH
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] sm:text-xs font-mono font-bold tracking-wider text-slate-500 uppercase">
+              CLUB HEALTH
+            </div>
+            <span className="text-[10px] font-mono font-semibold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 group-hover:bg-blue-600 group-hover:text-white transition">
+              <span>Diagnostics</span>
+              <ChevronRight className="w-3 h-3" />
+            </span>
           </div>
-          <div className="font-serif font-bold text-3xl sm:text-4xl lg:text-5xl text-slate-900 tracking-tight my-1.5 group-hover:text-blue-600 transition">
+          <div className="font-serif font-bold text-3xl sm:text-4xl lg:text-5xl text-slate-900 tracking-tight my-2 group-hover:text-blue-600 transition">
             {displayHealth}
           </div>
-          <div className="text-xs text-slate-500 font-normal">
-            weighted score / 100
+          <div className="text-xs text-slate-500 font-normal flex items-center justify-between">
+            <span>weighted score / 100</span>
+            <span className="font-mono font-bold text-slate-700">Grade {healthGrade.grade}</span>
           </div>
         </div>
 
-        {/* Card 2: CASH with Grade Pill */}
+        {/* Card 2: CASH with Financial Forecast Drilldown */}
         <div 
           onClick={() => setActiveTab('wage')}
-          className="bg-[#f4f6f8] border border-slate-200/90 hover:border-slate-300 rounded-2xl p-4 sm:p-5 flex flex-col justify-between relative transition cursor-pointer group shadow-2xs"
-          title="Click to view financial forecast"
+          className="bg-white border border-slate-200/90 hover:border-emerald-400 hover:shadow-md rounded-2xl p-4 sm:p-5 flex flex-col justify-between relative transition-all duration-150 cursor-pointer group shadow-2xs"
+          title="Click to drill down into Financial Forecast & Cash Flow"
         >
-          {/* Grade pill badge in top right */}
-          <div className="absolute top-3 right-3 sm:top-4 sm:right-4 border border-amber-300/80 bg-amber-50/80 rounded-xl px-2.5 py-1 text-center shadow-2xs">
-            <div className="font-serif font-bold text-amber-900 text-sm sm:text-base leading-tight">
-              {displayHealth}
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] sm:text-xs font-mono font-bold tracking-wider text-slate-500 uppercase">
+              CASH RESERVES
             </div>
-            <div className="text-[8px] font-mono font-bold tracking-wider text-amber-700 uppercase">
-              GRADE
-            </div>
+            <span className="text-[10px] font-mono font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 group-hover:bg-emerald-600 group-hover:text-white transition">
+              <span>Finances</span>
+              <ChevronRight className="w-3 h-3" />
+            </span>
           </div>
-
-          <div className="text-[11px] sm:text-xs font-mono font-medium tracking-wider text-slate-500 uppercase">
-            CASH
-          </div>
-          <div className="font-serif font-bold text-2xl sm:text-3xl lg:text-4xl text-slate-900 tracking-tight my-1.5 group-hover:text-blue-600 transition truncate pr-14">
+          <div className="font-serif font-bold text-2xl sm:text-3xl lg:text-4xl text-slate-900 tracking-tight my-2 group-hover:text-emerald-600 transition truncate">
             {displayCash}
           </div>
-          <div className="text-xs text-slate-500 font-normal">
-            {displaySurplus}
+          <div className="text-xs text-slate-500 font-normal flex items-center justify-between">
+            <span className={finDetails.surplus >= 0 ? 'text-emerald-600 font-semibold' : 'text-rose-600 font-semibold'}>
+              {displaySurplus}
+            </span>
+            <span className="text-[10px] font-mono font-bold uppercase text-slate-400">
+              {finDetails.health}
+            </span>
           </div>
         </div>
 
-        {/* Card 3: SQUAD */}
+        {/* Card 3: SQUAD with Roster Drilldown */}
         <div 
           onClick={() => setActiveTab('squad')}
-          className="bg-[#f4f6f8] border border-slate-200/90 hover:border-slate-300 rounded-2xl p-4 sm:p-5 flex flex-col justify-between transition cursor-pointer group shadow-2xs"
-          title="Click to view squad roster"
+          className="bg-white border border-slate-200/90 hover:border-indigo-400 hover:shadow-md rounded-2xl p-4 sm:p-5 flex flex-col justify-between transition-all duration-150 cursor-pointer group shadow-2xs"
+          title="Click to drill down into Squad Roster & Training"
         >
-          <div className="text-[11px] sm:text-xs font-mono font-medium tracking-wider text-slate-500 uppercase">
-            SQUAD
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] sm:text-xs font-mono font-bold tracking-wider text-slate-500 uppercase">
+              SQUAD ROSTER
+            </div>
+            <span className="text-[10px] font-mono font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 group-hover:bg-indigo-600 group-hover:text-white transition">
+              <span>Squad</span>
+              <ChevronRight className="w-3 h-3" />
+            </span>
           </div>
-          <div className="font-serif font-bold text-3xl sm:text-4xl lg:text-5xl text-slate-900 tracking-tight my-1.5 group-hover:text-blue-600 transition">
+          <div className="font-serif font-bold text-3xl sm:text-4xl lg:text-5xl text-slate-900 tracking-tight my-2 group-hover:text-indigo-600 transition">
             {displaySquadCount}
           </div>
-          <div className="text-xs text-slate-500 font-normal">
-            {displayAvgBtr}
+          <div className="text-xs text-slate-500 font-normal flex items-center justify-between">
+            <span>{displayAvgBtr}</span>
+            {squadDetails.netsAssigned > 0 && (
+              <span className="font-mono text-[10px] text-indigo-600 font-bold">
+                {squadDetails.netsAssigned} nets
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Card 4: CAPACITY */}
+        {/* Card 4: CAPACITY with Stadium Planner Drilldown */}
         <div 
           onClick={() => setActiveTab('stadium')}
-          className="bg-[#f4f6f8] border border-slate-200/90 hover:border-slate-300 rounded-2xl p-4 sm:p-5 flex flex-col justify-between transition cursor-pointer group shadow-2xs"
-          title="Click to view stadium expansion planner"
+          className="bg-white border border-slate-200/90 hover:border-amber-400 hover:shadow-md rounded-2xl p-4 sm:p-5 flex flex-col justify-between transition-all duration-150 cursor-pointer group shadow-2xs"
+          title="Click to drill down into Stadium Expansion Planner"
         >
-          <div className="text-[11px] sm:text-xs font-mono font-medium tracking-wider text-slate-500 uppercase">
-            CAPACITY
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] sm:text-xs font-mono font-bold tracking-wider text-slate-500 uppercase">
+              STADIUM CAPACITY
+            </div>
+            <span className="text-[10px] font-mono font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 group-hover:bg-amber-600 group-hover:text-white transition">
+              <span>Stadium</span>
+              <ChevronRight className="w-3 h-3" />
+            </span>
           </div>
-          <div className="font-serif font-bold text-2xl sm:text-3xl lg:text-4xl text-slate-900 tracking-tight my-1.5 group-hover:text-blue-600 transition">
+          <div className="font-serif font-bold text-2xl sm:text-3xl lg:text-4xl text-slate-900 tracking-tight my-2 group-hover:text-amber-700 transition">
             {displayCapacity}
           </div>
-          <div className="text-xs text-slate-500 font-normal">
-            {displayMembers}
+          <div className="text-xs text-slate-500 font-normal flex items-center justify-between">
+            <span>{displayMembers}</span>
+            <span className="text-[10px] font-mono text-slate-400 font-medium capitalize">
+              {stadiumDetails.status}
+            </span>
           </div>
         </div>
       </div>
 
       {/* "This week" Card */}
-      <div className="bg-[#f4f6f8] border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-2xs">
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-2xs">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-serif font-bold text-2xl text-slate-900">This week</h3>
           <button
@@ -600,12 +681,12 @@ Please analyze my club details and explain:
             <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
-        <div className="divide-y divide-slate-200/80">
+        <div className="divide-y divide-slate-100">
           {displayFixtures.map((game, idx) => (
             <div 
               key={idx}
               onClick={() => setActiveTab('lineup')}
-              className="flex items-center justify-between py-3.5 first:pt-1 last:pb-1 group hover:bg-slate-200/40 -mx-3 px-3 rounded-xl transition cursor-pointer"
+              className="flex items-center justify-between py-3.5 first:pt-1 last:pb-1 group hover:bg-slate-50 -mx-3 px-3 rounded-xl transition cursor-pointer"
             >
               <div>
                 <h4 className="font-serif font-bold text-base text-slate-900 group-hover:text-blue-600 transition">
