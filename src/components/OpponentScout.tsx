@@ -20,7 +20,8 @@ import {
   getExampleMatchDataById,
   parseFixtures,
   TEST_MATCHES,
-  parseBattrickPlayerDetails
+  parseBattrickPlayerDetails,
+  estimatePlayerSkills
 } from '../parser';
 import { 
   ShieldAlert, 
@@ -55,7 +56,8 @@ import {
   X,
   ArrowUp,
   ArrowDown,
-  ArrowUpDown
+  ArrowUpDown,
+  Gauge
 } from 'lucide-react';
 
 interface OpponentScoutProps {
@@ -100,6 +102,7 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   const [pitch, setPitch] = useState<PitchType>('Green');
   const [weather, setWeather] = useState<WeatherType>('Overcast');
   const [venue, setVenue] = useState<'Home' | 'Away'>('Home');
+  const [dossierMatchEffort, setDossierMatchEffort] = useState<'take it easy' | 'normal' | 'go for it!'>('go for it!');
 
   // 3. Opponent Squad Data
   const [opponentPlayers, setOpponentPlayers] = useState<OpponentPlayer[]>(() => generateRealisticOpponentRoster('Steve', false, 'One Day'));
@@ -222,6 +225,19 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   const [playerSyncError, setPlayerSyncError] = useState<string | null>(null);
   const [pastedPlayerText, setPastedPlayerText] = useState<string>('');
   const [isPlayerPasteOpen, setIsPlayerPasteOpen] = useState<boolean>(false);
+
+  // Interactive Hidden Skill Estimation state
+  const [estMatches, setEstMatches] = useState<number>(30);
+  const [estRuns, setEstRuns] = useState<number>(500);
+  const [estOvers, setEstOvers] = useState<number>(20);
+
+  useEffect(() => {
+    if (scoutedPlayer) {
+      setEstMatches(scoutedPlayer.careerStats?.matches ?? 30);
+      setEstRuns(scoutedPlayer.careerStats?.runs ?? 500);
+      setEstOvers(scoutedPlayer.careerStats?.overs ?? 20);
+    }
+  }, [scoutedPlayer]);
 
   const handleSyncPlayerLive = async () => {
     if (!scoutPlayerId.trim()) {
@@ -2101,6 +2117,95 @@ TACTICAL ORDERS:
 
           </div>
 
+          {/* Live Team Rating & Batstats Predictor */}
+          {dossier.players.length > 0 && (() => {
+            const ratingData = calculateBattrickMatchRatings(dossier.players, dossierMatchEffort);
+            return (
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-4">
+                  <div className="space-y-1">
+                    <h3 className="font-serif font-bold text-lg text-slate-900 flex items-center gap-2">
+                      <Gauge className="w-5 h-5 text-indigo-600 animate-pulse" />
+                      <span>Live Squad Rating & Batstats Predictor</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 font-mono">
+                      Calculate predicted team sector ratings and Batstats for the scouted XI.
+                    </p>
+                  </div>
+
+                  {/* Match Effort Selector Option */}
+                  <div className="flex items-center gap-1.5 bg-white border border-slate-200 p-1 rounded-xl shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setDossierMatchEffort('take it easy')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition cursor-pointer ${
+                        dossierMatchEffort === 'take it easy'
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Take It Easy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDossierMatchEffort('normal')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition cursor-pointer ${
+                        dossierMatchEffort === 'normal'
+                          ? 'bg-blue-50 text-blue-700 border border-blue-100'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Normal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDossierMatchEffort('go for it!')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition cursor-pointer ${
+                        dossierMatchEffort === 'go for it!'
+                          ? 'bg-rose-50 text-rose-700 border border-rose-100'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Go For It!
+                    </button>
+                  </div>
+                </div>
+
+                {/* Grid of predicted sectors */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3">
+                  <div className="bg-white border border-slate-200/50 p-3.5 rounded-xl text-center space-y-1 shadow-2xs">
+                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Top Order</span>
+                    <strong className="text-slate-950 text-sm font-serif block capitalize">{ratingData.topOrder}</strong>
+                  </div>
+                  <div className="bg-white border border-slate-200/50 p-3.5 rounded-xl text-center space-y-1 shadow-2xs">
+                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Middle Order</span>
+                    <strong className="text-slate-950 text-sm font-serif block capitalize">{ratingData.middleOrder}</strong>
+                  </div>
+                  <div className="bg-white border border-slate-200/50 p-3.5 rounded-xl text-center space-y-1 shadow-2xs">
+                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Lower Order</span>
+                    <strong className="text-slate-950 text-sm font-serif block capitalize">{ratingData.lowerOrder}</strong>
+                  </div>
+                  <div className="bg-white border border-slate-200/50 p-3.5 rounded-xl text-center space-y-1 shadow-2xs">
+                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Seam Bowling</span>
+                    <strong className="text-slate-950 text-sm font-serif block capitalize">{ratingData.seamBowling}</strong>
+                  </div>
+                  <div className="bg-white border border-slate-200/50 p-3.5 rounded-xl text-center space-y-1 shadow-2xs">
+                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Spin Bowling</span>
+                    <strong className="text-slate-950 text-sm font-serif block capitalize">{ratingData.spinBowling}</strong>
+                  </div>
+                  <div className="bg-white border border-slate-200/50 p-3.5 rounded-xl text-center space-y-1 shadow-2xs">
+                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Fielding</span>
+                    <strong className="text-slate-950 text-sm font-serif block capitalize">{ratingData.fielding}</strong>
+                  </div>
+                  <div className="bg-indigo-600 p-3.5 rounded-xl text-center space-y-1 shadow-xs col-span-2 sm:col-span-1">
+                    <span className="text-[10px] uppercase font-mono font-bold text-indigo-200 block">Batstats</span>
+                    <strong className="text-white text-base font-mono font-black block">{ratingData.batStats}</strong>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Opponent Scouted 11 Players Roster Table */}
           <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-2xs">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
@@ -2208,11 +2313,24 @@ TACTICAL ORDERS:
                       
                       // Classification logic based on user's definition: 
                       // "Grady is a bowler as his batting average is below 50 and his bowling average is below 30"
-                      let computedGrouping = p.role;
-                      if (batAvg < 50 && bowlAvg < 30 && bowlAvg > 0) {
-                        computedGrouping = 'Bowler';
-                      } else if (batAvg >= 50 && (bowlAvg === 0 || bowlAvg >= 30)) {
-                        computedGrouping = 'Batter';
+                      const hasHiddenSkills = p.batting === 0 && p.bowling === 0;
+                      const est = hasHiddenSkills ? estimatePlayerSkills(
+                        p.wage,
+                        p.btRating,
+                        p.careerStats?.runs ?? (p.role === 'Batter' ? 1200 : 80),
+                        p.careerStats?.overs ?? (p.role === 'Bowler' ? 140 : 0),
+                        p.careerStats?.matches ?? 32
+                      ) : null;
+
+                      // Classification logic based on user's definition: 
+                      // "Grady is a bowler as his batting average is below 50 and his bowling average is below 30"
+                      let computedGrouping = hasHiddenSkills ? est!.discipline : p.role;
+                      if (!hasHiddenSkills) {
+                        if (batAvg < 50 && bowlAvg < 30 && bowlAvg > 0) {
+                          computedGrouping = 'Bowler';
+                        } else if (batAvg >= 50 && (bowlAvg === 0 || bowlAvg >= 30)) {
+                          computedGrouping = 'Batter';
+                        }
                       }
 
                       // Badge Styling
@@ -2221,7 +2339,7 @@ TACTICAL ORDERS:
                         groupBadgeStyle = 'bg-blue-50 text-blue-700 border-blue-200';
                       } else if (computedGrouping === 'Batter') {
                         groupBadgeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                      } else if (computedGrouping === 'All-rounder') {
+                      } else if (computedGrouping === 'All-rounder' || computedGrouping === 'All-Rounder') {
                         groupBadgeStyle = 'bg-purple-50 text-purple-700 border-purple-200';
                       } else if (computedGrouping === 'Keeper') {
                         groupBadgeStyle = 'bg-amber-50 text-amber-700 border-amber-200';
@@ -2250,7 +2368,7 @@ TACTICAL ORDERS:
                         <td className="py-3 px-3">
                           <div className="flex flex-col gap-1 items-start">
                             <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${groupBadgeStyle}`}>
-                              {computedGrouping}
+                              {computedGrouping} {hasHiddenSkills ? '⭐' : ''}
                             </span>
                             <span className="text-[10px] font-mono text-slate-500">
                               Bat Avg: {batAvg > 0 ? batAvg : 'N/A'} • Bowl Avg: {bowlAvg > 0 ? bowlAvg : 'N/A'}
@@ -2259,7 +2377,7 @@ TACTICAL ORDERS:
                         </td>
                         <td className="py-3 px-3">
                           <span className="font-serif font-semibold text-xs text-slate-800 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
-                            {p.estimatedSkillLabel || 'Strong'}
+                            {hasHiddenSkills ? est!.primarySkill : (p.estimatedSkillLabel || 'Strong')}
                           </span>
                         </td>
                         <td className="py-3 px-3 font-mono font-semibold text-slate-800">
@@ -2269,23 +2387,35 @@ TACTICAL ORDERS:
                           £{p.wage.toLocaleString()}
                         </td>
                         <td className="py-3 px-3">
-                          <div className="flex flex-col gap-0.5 font-mono">
-                            <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-slate-400">Bat:</span>
-                              <span className={`font-bold ${p.batting >= 10 ? 'text-emerald-600' : p.batting <= 4 ? 'text-rose-600' : 'text-slate-800'}`}>
-                                {getSkillLabel('batting', p.batting)} ({p.batting})
-                              </span>
+                          {hasHiddenSkills ? (
+                            <div className="flex flex-col gap-0.5 font-mono text-[9px] leading-tight">
+                              <div className="text-emerald-700 font-extrabold">{est!.primarySkill}</div>
+                              <div className="text-amber-700 font-semibold">{est!.secondaries}</div>
+                              <span className="text-[8px] text-indigo-500 font-bold uppercase tracking-wider">(Estimated)</span>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-slate-400">Bowl:</span>
-                              <span className={`font-bold ${p.bowling >= 10 ? 'text-blue-600' : 'text-slate-500'}`}>
-                                {p.bowling >= 3 ? `${getSkillLabel('bowling', p.bowling)} (${p.bowling})` : '—'}
-                              </span>
+                          ) : (
+                            <div className="flex flex-col gap-0.5 font-mono">
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] text-slate-400">Bat:</span>
+                                <span className={`font-bold ${p.batting >= 10 ? 'text-emerald-600' : p.batting <= 4 ? 'text-rose-600' : 'text-slate-800'}`}>
+                                  {getSkillLabel('batting', p.batting)} ({p.batting})
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] text-slate-400">Bowl:</span>
+                                <span className={`font-bold ${p.bowling >= 10 ? 'text-blue-600' : 'text-slate-500'}`}>
+                                  {p.bowling >= 3 ? `${getSkillLabel('bowling', p.bowling)} (${p.bowling})` : '—'}
+                                </span>
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </td>
                         <td className="py-3 px-3 font-mono text-slate-600">
-                          {getSkillLabel('stamina', p.stamina)}
+                          {hasHiddenSkills ? (
+                            <span className="text-[10px] text-slate-400 italic font-bold">Estimated</span>
+                          ) : (
+                            getSkillLabel('stamina', p.stamina)
+                          )}
                         </td>
                         <td className="py-3 px-3">
                           {isTail ? (
@@ -2454,8 +2584,29 @@ TACTICAL ORDERS:
 
                 {/* Classification Badge */}
                 <div className="pt-2">
-                  <span className="text-xs font-bold block text-slate-500 mb-1.5 font-mono font-bold">Computed Class:</span>
+                  <span className="text-xs font-bold block text-slate-500 mb-1.5 font-mono">Computed Class:</span>
                   {(() => {
+                    const hasHidden = scoutedPlayer.skills.batting === 0 && scoutedPlayer.skills.bowling === 0;
+                    if (hasHidden) {
+                      const estimation = estimatePlayerSkills(
+                        scoutedPlayer.wage,
+                        scoutedPlayer.btRating,
+                        estRuns,
+                        estOvers,
+                        estMatches
+                      );
+                      return (
+                        <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-1">
+                          <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-200">
+                            {estimation.discipline} (Estimated)
+                          </span>
+                          <p className="text-[11px] text-slate-500 leading-relaxed pt-1 font-medium">
+                            Based on salary (£{scoutedPlayer.wage.toLocaleString()}) adjusted for {estimation.discipline} discipline.
+                          </p>
+                        </div>
+                      );
+                    }
+
                     const isBowler = scoutedPlayer.skills.bowling > scoutedPlayer.skills.batting && scoutedPlayer.skills.bowling >= 6;
                     const isBatter = scoutedPlayer.skills.batting > scoutedPlayer.skills.bowling && scoutedPlayer.skills.batting >= 6;
                     const isKeeper = scoutedPlayer.skills.keeping >= 5;
@@ -2495,40 +2646,172 @@ TACTICAL ORDERS:
                     );
                   })()}
                 </div>
+                
+                {/* Format-Specific Career Stats */}
+                {(scoutedPlayer.careerStats?.fc || scoutedPlayer.careerStats?.od || scoutedPlayer.careerStats?.t20) && (
+                  <div className="pt-2 mt-4 border-t border-slate-100">
+                    <span className="text-xs font-bold block text-slate-500 mb-2 font-mono">Format Stats:</span>
+                    <div className="space-y-2">
+                      {scoutedPlayer.careerStats?.fc && scoutedPlayer.careerStats.fc.matches > 0 && (
+                        <div className="bg-purple-50/50 border border-purple-100 p-2 rounded-xl flex justify-between items-center text-xs font-mono">
+                          <span className="font-bold text-purple-700 w-12 uppercase text-[10px]">FC</span>
+                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.fc.matches}</strong> M</span>
+                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.fc.runs}</strong> R</span>
+                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.fc.overs}</strong> O</span>
+                        </div>
+                      )}
+                      {scoutedPlayer.careerStats?.od && scoutedPlayer.careerStats.od.matches > 0 && (
+                        <div className="bg-blue-50/50 border border-blue-100 p-2 rounded-xl flex justify-between items-center text-xs font-mono">
+                          <span className="font-bold text-blue-700 w-12 uppercase text-[10px]">OD</span>
+                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.od.matches}</strong> M</span>
+                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.od.runs}</strong> R</span>
+                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.od.overs}</strong> O</span>
+                        </div>
+                      )}
+                      {scoutedPlayer.careerStats?.t20 && scoutedPlayer.careerStats.t20.matches > 0 && (
+                        <div className="bg-rose-50/50 border border-rose-100 p-2 rounded-xl flex justify-between items-center text-xs font-mono">
+                          <span className="font-bold text-rose-700 w-12 uppercase text-[10px]">BT20</span>
+                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.t20.matches}</strong> M</span>
+                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.t20.runs}</strong> R</span>
+                          <span className="text-slate-600"><strong className="text-slate-800">{scoutedPlayer.careerStats.t20.overs}</strong> O</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Column 2: Detailed Skills Grid */}
+              {/* Column 2: Detailed Skills Grid OR Interactive Hidden Skills Estimator */}
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xs flex flex-col justify-between">
                 <div>
-                  <h3 className="font-serif font-bold text-lg text-slate-900 border-b border-slate-100 pb-3 mb-4">
-                    Detailed Skill Matrix
-                  </h3>
-                  <div className="space-y-2.5 font-mono text-xs font-semibold">
-                    {[
-                      { key: 'batting', label: 'Batting', val: scoutedPlayer.skills.batting },
-                      { key: 'bowling', label: 'Bowling', val: scoutedPlayer.skills.bowling },
-                      { key: 'keeping', label: 'Keeping', val: scoutedPlayer.skills.keeping },
-                      { key: 'concentration', label: 'Concentration', val: scoutedPlayer.skills.concentration },
-                      { key: 'consistency', label: 'Consistency', val: scoutedPlayer.skills.consistency },
-                      { key: 'fielding', label: 'Fielding', val: scoutedPlayer.skills.fielding },
-                      { key: 'stamina', label: 'Stamina', val: scoutedPlayer.skills.stamina, isStamina: true },
-                    ].map((s) => {
-                      const levelName = getSkillLabel(s.isStamina ? 'stamina' : 'batting', s.val);
-                      return (
-                        <div key={s.key} className="flex items-center justify-between py-1 border-b border-slate-50">
-                          <span className="font-bold text-slate-600">{s.label}:</span>
-                          <div className="flex items-center gap-1.5">
-                            <span className={`font-bold ${s.val >= 10 ? 'text-emerald-600' : s.val <= 3 ? 'text-rose-600' : 'text-slate-800'}`}>
-                              {levelName}
-                            </span>
-                            <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded font-semibold font-mono">
-                              ({s.val})
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                    <h3 className="font-serif font-bold text-lg text-slate-900">
+                      {scoutedPlayer.skills.batting === 0 && scoutedPlayer.skills.bowling === 0 ? 'Skills Estimator' : 'Detailed Skill Matrix'}
+                    </h3>
+                    <span className="text-[10px] font-mono font-bold bg-indigo-50 border border-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full uppercase">
+                      {scoutedPlayer.skills.batting === 0 && scoutedPlayer.skills.bowling === 0 ? 'Hidden Skills' : 'Visible Skills'}
+                    </span>
                   </div>
+
+                  {scoutedPlayer.skills.batting === 0 && scoutedPlayer.skills.bowling === 0 ? (
+                    <div className="space-y-4">
+                      <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-1">
+                        <p className="text-[11px] text-indigo-900 leading-relaxed font-semibold">
+                          🔍 Hidden Player Skills Detected — Use career stats sliders below to tune estimate.
+                        </p>
+                      </div>
+
+                      {/* Interactive Stats Controls */}
+                      <div className="space-y-3 font-mono text-xs">
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-bold text-slate-500">Matches:</span>
+                            <span className="font-bold text-slate-900">{estMatches}</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={1}
+                            max={150}
+                            value={estMatches}
+                            onChange={(e) => setEstMatches(Number(e.target.value))}
+                            className="w-full h-1 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-bold text-slate-500">Runs Scored:</span>
+                            <span className="font-bold text-slate-900">{estRuns.toLocaleString()}</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={8000}
+                            step={50}
+                            value={estRuns}
+                            onChange={(e) => setEstRuns(Number(e.target.value))}
+                            className="w-full h-1 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-bold text-slate-500">Overs Bowled:</span>
+                            <span className="font-bold text-slate-900">{estOvers.toFixed(1)}</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={1000}
+                            step={5}
+                            value={estOvers}
+                            onChange={(e) => setEstOvers(Number(e.target.value))}
+                            className="w-full h-1 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Live Estimator Output Details */}
+                      {(() => {
+                        const estimation = estimatePlayerSkills(
+                          scoutedPlayer.wage,
+                          scoutedPlayer.btRating,
+                          estRuns,
+                          estOvers,
+                          estMatches
+                        );
+                        return (
+                          <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-3 space-y-2 font-mono text-xs">
+                            <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
+                              <span className="text-slate-400 font-bold">Estimated Class:</span>
+                              <span className="font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded">
+                                {estimation.discipline}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
+                              <span className="text-slate-400 font-bold">Estimated Primary:</span>
+                              <span className="font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded text-right">
+                                {estimation.primarySkill}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-400 font-bold">Secondaries:</span>
+                              <span className="font-extrabold text-amber-700 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded text-[10px] text-right">
+                                {estimation.secondaries}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5 font-mono text-xs font-semibold">
+                      {[
+                        { key: 'batting', label: 'Batting', val: scoutedPlayer.skills.batting },
+                        { key: 'bowling', label: 'Bowling', val: scoutedPlayer.skills.bowling },
+                        { key: 'keeping', label: 'Keeping', val: scoutedPlayer.skills.keeping },
+                        { key: 'concentration', label: 'Concentration', val: scoutedPlayer.skills.concentration },
+                        { key: 'consistency', label: 'Consistency', val: scoutedPlayer.skills.consistency },
+                        { key: 'fielding', label: 'Fielding', val: scoutedPlayer.skills.fielding },
+                        { key: 'stamina', label: 'Stamina', val: scoutedPlayer.skills.stamina, isStamina: true },
+                      ].map((s) => {
+                        const levelName = getSkillLabel(s.isStamina ? 'stamina' : 'batting', s.val);
+                        return (
+                          <div key={s.key} className="flex items-center justify-between py-1 border-b border-slate-50">
+                            <span className="font-bold text-slate-600">{s.label}:</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className={`font-bold ${s.val >= 10 ? 'text-emerald-600' : s.val <= 3 ? 'text-rose-600' : 'text-slate-800'}`}>
+                                {levelName}
+                              </span>
+                              <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded font-semibold font-mono">
+                                ({s.val})
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-slate-50 border border-slate-100 p-3 rounded-xl mt-4 font-mono text-[10px] text-slate-400 text-center font-bold">
@@ -2715,4 +2998,145 @@ TACTICAL ORDERS:
 
     </div>
   );
+}
+
+// =========================================================
+// BATTRICK MATCH ENGINE RATING & BATSTATS CALCULATOR
+// =========================================================
+
+const CALC_SKILL_MAP: Record<string, number> = {
+  "worthless": 1, "abysmal": 2, "woeful": 3, "feeble": 4, "mediocre": 5,
+  "competent": 6, "respectable": 7, "proficient": 8, "strong": 9, "superb": 10,
+  "quality": 11, "remarkable": 12, "wonderful": 13, "exquisite": 14,
+  "masterful": 15, "sensational": 16, "elite": 17, "miraculous": 18
+};
+
+const CALC_MULTIPLIERS = {
+  form: {
+    "worthless": 0.50, "abysmal": 0.65, "woeful": 0.75, "feeble": 0.85,
+    "mediocre": 0.95, "competent": 1.00, "respectable": 1.05, "proficient": 1.10,
+    "strong": 1.15, "superb": 1.25
+  } as Record<string, number>,
+  fitness: {
+    "sublime": 1.10, "invigorated": 1.05, "energetic": 1.00,
+    "fresh": 0.95, "lively": 0.90, "fair": 0.80
+  } as Record<string, number>,
+  effort: {
+    "take it easy": 0.85,
+    "normal": 1.00,
+    "go for it!": 1.20
+  } as Record<string, number>
+};
+
+function getCalcRatingLabel(score: number): string {
+  if (score >= 17.0) return "elite";
+  if (score >= 15.0) return "sensational";
+  if (score >= 13.5) return "masterful";
+  if (score >= 12.0) return "remarkable";
+  if (score >= 10.5) return "wonderful";
+  if (score >= 9.5)  return "superb";
+  if (score >= 8.5)  return "strong";
+  if (score >= 7.0)  return "respectable";
+  if (score >= 5.5)  return "proficient";
+  if (score >= 4.0)  return "competent";
+  if (score >= 3.0)  return "feeble";
+  if (score >= 2.0)  return "woeful";
+  return "abysmal";
+}
+
+function getCalcPlayerBattingWeight(player: any, matchEffort: string): number {
+  let bat = player.skills?.batting || player.batting || 0;
+  if (bat === 0 && player.estimatedSkillLevel) bat = player.estimatedSkillLevel;
+  else if (bat === 0) bat = 1;
+  
+  let conc = player.skills?.concentration || player.concentration || 0;
+  if (conc === 0 && player.estimatedSkillLevel) conc = Math.max(1, player.estimatedSkillLevel - 1);
+  else if (conc === 0) conc = 1;
+
+  const formStr = (player.battingFormLabel || player.skills?.battingForm || "respectable").toLowerCase().trim();
+  const form = CALC_MULTIPLIERS.form[formStr] || 1.0;
+  const fitStr = (player.fitnessLabel || player.skills?.fitness || "energetic").toLowerCase().trim();
+  const fit = CALC_MULTIPLIERS.fitness[fitStr] || 1.0;
+  const effort = CALC_MULTIPLIERS.effort[matchEffort] || 1.0;
+
+  const baseRating = (bat * 0.70) + (conc * 0.30);
+  return baseRating * form * fit * effort;
+}
+
+function getCalcPlayerBowlingWeight(player: any, matchEffort: string): number {
+  let bowl = player.skills?.bowling || player.bowling || 0;
+  if (bowl === 0 && player.estimatedSkillLevel) bowl = player.estimatedSkillLevel;
+  else if (bowl === 0) bowl = 1;
+
+  let cons = player.skills?.consistency || player.consistency || 0;
+  if (cons === 0 && player.estimatedSkillLevel) cons = Math.max(1, player.estimatedSkillLevel - 1);
+  else if (cons === 0) cons = 1;
+
+  const formStr = (player.bowlingFormLabel || player.skills?.bowlingForm || "respectable").toLowerCase().trim();
+  const form = CALC_MULTIPLIERS.form[formStr] || 1.0;
+  const fitStr = (player.fitnessLabel || player.skills?.fitness || "energetic").toLowerCase().trim();
+  const fit = CALC_MULTIPLIERS.fitness[fitStr] || 1.0;
+  const effort = CALC_MULTIPLIERS.effort[matchEffort] || 1.0;
+
+  const baseRating = (bowl * 0.70) + (cons * 0.30);
+  return baseRating * form * fit * effort;
+}
+
+export function calculateBattrickMatchRatings(squadLineup: any[], matchEffort: string = "go for it!") {
+  const isSpin = (type: string) => {
+    const t = (type || '').toLowerCase();
+    return t.includes('spin') || t.includes('break') || t.includes('orthodox') || t.includes('spinner');
+  };
+  const isSeam = (type: string) => {
+    const t = (type || '').toLowerCase();
+    return t.includes('fast') || t.includes('medium') || t.includes('seam') || t.includes('rf') || t.includes('fm') || t.includes('lf') || t.includes('lm') || t.includes('rm');
+  };
+
+  // We should only assess the top 11 players for the predictor
+  const startingXI = squadLineup.slice(0, 11);
+
+  const topOrderPlayers = startingXI.slice(0, 3);
+  const midOrderPlayers = startingXI.slice(3, 7);
+  const lowOrderPlayers = startingXI.slice(7, 11);
+
+  const topAvg = topOrderPlayers.length ? topOrderPlayers.reduce((a, p) => a + getCalcPlayerBattingWeight(p, matchEffort), 0) / topOrderPlayers.length : 1;
+  const midAvg = midOrderPlayers.length ? midOrderPlayers.reduce((a, p) => a + getCalcPlayerBattingWeight(p, matchEffort), 0) / midOrderPlayers.length : 1;
+  const lowAvg = lowOrderPlayers.length ? lowOrderPlayers.reduce((a, p) => a + getCalcPlayerBattingWeight(p, matchEffort), 0) / lowOrderPlayers.length : 1;
+
+  // We should ONLY count players assigned to bowl (if this information is missing, we check roles, but for now we look at the whole XI and grab bowlers)
+  const seamBowlers = startingXI.filter(p => isSeam(p.bowlingType) && (p.role === 'Bowler' || p.role === 'All-rounder' || p.primaryRoleClassifier === 'Bowler' || p.primaryRoleClassifier === 'All-Rounder' || startingXI.indexOf(p) >= 6));
+  const spinBowlers = startingXI.filter(p => isSpin(p.bowlingType) && (p.role === 'Bowler' || p.role === 'All-rounder' || p.primaryRoleClassifier === 'Bowler' || p.primaryRoleClassifier === 'All-Rounder' || startingXI.indexOf(p) >= 6));
+
+  const seamAvg = seamBowlers.length ? seamBowlers.reduce((a, p) => a + getCalcPlayerBowlingWeight(p, matchEffort), 0) / seamBowlers.length : 1;
+  const spinAvg = spinBowlers.length ? spinBowlers.reduce((a, p) => a + getCalcPlayerBowlingWeight(p, matchEffort), 0) / spinBowlers.length : 1;
+
+  const avgFielding = startingXI.length ? startingXI.reduce((a, p) => {
+    let f = p.skills?.fielding || p.fielding || 0;
+    if (f === 0 && p.estimatedSkillLevel) f = Math.max(1, p.estimatedSkillLevel - 2);
+    else if (f === 0) f = 1;
+    return a + f;
+  }, 0) / startingXI.length : 1;
+  
+  const avgExperience = startingXI.length ? startingXI.reduce((a, p) => {
+    let e = p.skills?.experience || p.experience || 0;
+    if (e === 0) e = 5; // decent baseline for unknown experience
+    return a + e;
+  }, 0) / startingXI.length : 1;
+
+  const effortMultiplier = CALC_MULTIPLIERS.effort[matchEffort] || 1.0;
+  
+  // Batstats formula adjustment for more realistic 100k-250k ratings
+  // Battrick batstats are roughly (sum of ratings) * some huge multiplier
+  const rawBatstats = ((topAvg * 11) + (midAvg * 11) + (lowAvg * 5) + (seamAvg * 8) + (spinAvg * 8) + (avgFielding * 4) + (avgExperience * 2)) * 1250 * effortMultiplier;
+
+  return {
+    matchEffortUsed: matchEffort,
+    topOrder: getCalcRatingLabel(topAvg),
+    middleOrder: getCalcRatingLabel(midAvg),
+    lowerOrder: getCalcRatingLabel(lowAvg),
+    seamBowling: getCalcRatingLabel(seamAvg),
+    spinBowling: getCalcRatingLabel(spinAvg),
+    fielding: getCalcRatingLabel(avgFielding),
+    batStats: Math.round(rawBatstats)
+  };
 }

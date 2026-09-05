@@ -106,6 +106,14 @@ export interface BattrickPlayer {
     fielding: number;
     stamina: number;
   };
+  careerStats?: {
+    matches: number;
+    runs: number;
+    overs: number;
+    fc?: { matches: number; runs: number; overs: number; };
+    od?: { matches: number; runs: number; overs: number; };
+    t20?: { matches: number; runs: number; overs: number; };
+  };
   history?: {
     date?: string;
     season: number;
@@ -281,6 +289,14 @@ export interface OpponentPlayer {
   teamId?: string;
   teamName?: string;
   playerId?: string;
+  careerStats?: {
+    matches: number;
+    runs: number;
+    overs: number;
+    fc?: { matches: number; runs: number; overs: number; };
+    od?: { matches: number; runs: number; overs: number; };
+    t20?: { matches: number; runs: number; overs: number; };
+  };
 }
 
 export interface OpponentVulnerability {
