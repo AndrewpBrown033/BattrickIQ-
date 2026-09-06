@@ -257,6 +257,14 @@ export interface LineupPlayer {
   fielding: number;
   stamina: number;
   experience: number;
+  /** Secondary skill (0-20) that boosts effective batting value: Batting + 0.25 x Concentration */
+  concentration?: number;
+  /** Secondary skill (0-20) that boosts effective bowling value: Bowling + 0.25 x Consistency */
+  consistency?: number;
+  /** Current form, 0-10 (Battrick convention). 10 = Sublime, 0 = Woeful. */
+  form?: number;
+  /** Current PFL / fitness, 0-10 (Battrick convention). 10 = Saturated, 0 = Shattered. */
+  fitness?: number;
   btRating?: number;
   bowlingType: string;
   order: number; // 1-11

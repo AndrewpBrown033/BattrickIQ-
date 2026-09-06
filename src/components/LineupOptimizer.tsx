@@ -3,17 +3,17 @@ import { SKILL_LEVELS, LineupPlayer, BattrickPlayer } from '../types';
 import { Users, Shield, Copy, Check, Info, ChevronDown, ChevronUp, RefreshCw, UserCheck } from 'lucide-react';
 
 const DEFAULT_LINEUP: LineupPlayer[] = [
-  { id: '1', name: 'A. Alistair', role: 'Batter', batting: 8, bowling: 0, keeping: 0, fielding: 5, stamina: 6, experience: 7, bowlingType: 'None', order: 1 },
-  { id: '2', name: 'B. Bradman', role: 'Batter', batting: 9, bowling: 0, keeping: 0, fielding: 5, stamina: 7, experience: 8, bowlingType: 'None', order: 2 },
-  { id: '3', name: 'C. Cowdrey', role: 'Batter', batting: 7, bowling: 0, keeping: 0, fielding: 5, stamina: 6, experience: 5, bowlingType: 'None', order: 3 },
-  { id: '4', name: 'D. Dexter', role: 'Batter', batting: 11, bowling: 1, keeping: 0, fielding: 5, stamina: 8, experience: 7, bowlingType: 'None', order: 4 },
-  { id: '5', name: 'E. Edrich', role: 'All-rounder', batting: 7, bowling: 12, keeping: 0, fielding: 5, stamina: 8, experience: 8, bowlingType: 'Fast', order: 5 },
-  { id: '6', name: 'F. Flintoff', role: 'All-rounder', batting: 8, bowling: 14, keeping: 0, fielding: 5, stamina: 9, experience: 9, bowlingType: 'Fast Medium', order: 6 },
-  { id: '7', name: 'G. Gilchrist', role: 'Keeper', batting: 5, bowling: 0, keeping: 9, fielding: 7, stamina: 7, experience: 5, bowlingType: 'None', order: 7 },
-  { id: '8', name: 'H. Hadlee', role: 'Bowler', batting: 3, bowling: 15, keeping: 0, fielding: 5, stamina: 8, experience: 12, bowlingType: 'Fast', order: 8 },
-  { id: '9', name: 'I. Imran', role: 'Bowler', batting: 5, bowling: 17, keeping: 0, fielding: 5, stamina: 11, experience: 13, bowlingType: 'Fast Medium', order: 9 },
-  { id: '10', name: 'J. Johnston', role: 'Bowler', batting: 1, bowling: 12, keeping: 0, fielding: 5, stamina: 7, experience: 5, bowlingType: 'Spin', order: 10 },
-  { id: '11', name: 'K. Kumble', role: 'Bowler', batting: 1, bowling: 14, keeping: 0, fielding: 5, stamina: 8, experience: 7, bowlingType: 'Spin', order: 11 },
+  { id: '1', name: 'A. Alistair', role: 'Batter', batting: 8, bowling: 0, keeping: 0, fielding: 5, stamina: 6, experience: 7, concentration: 8, consistency: 6, form: 7, fitness: 10, bowlingType: 'None', order: 1 },
+  { id: '2', name: 'B. Bradman', role: 'Batter', batting: 9, bowling: 0, keeping: 0, fielding: 5, stamina: 7, experience: 8, concentration: 10, consistency: 7, form: 8, fitness: 10, bowlingType: 'None', order: 2 },
+  { id: '3', name: 'C. Cowdrey', role: 'Batter', batting: 7, bowling: 0, keeping: 0, fielding: 5, stamina: 6, experience: 5, concentration: 7, consistency: 6, form: 7, fitness: 9, bowlingType: 'None', order: 3 },
+  { id: '4', name: 'D. Dexter', role: 'Batter', batting: 11, bowling: 1, keeping: 0, fielding: 5, stamina: 8, experience: 7, concentration: 9, consistency: 6, form: 8, fitness: 10, bowlingType: 'None', order: 4 },
+  { id: '5', name: 'E. Edrich', role: 'All-rounder', batting: 7, bowling: 12, keeping: 0, fielding: 5, stamina: 8, experience: 8, concentration: 8, consistency: 9, form: 7, fitness: 9, bowlingType: 'Fast', order: 5 },
+  { id: '6', name: 'F. Flintoff', role: 'All-rounder', batting: 8, bowling: 14, keeping: 0, fielding: 5, stamina: 9, experience: 9, concentration: 7, consistency: 10, form: 8, fitness: 9, bowlingType: 'Fast Medium', order: 6 },
+  { id: '7', name: 'G. Gilchrist', role: 'Keeper', batting: 5, bowling: 0, keeping: 9, fielding: 7, stamina: 7, experience: 5, concentration: 6, consistency: 6, form: 7, fitness: 10, bowlingType: 'None', order: 7 },
+  { id: '8', name: 'H. Hadlee', role: 'Bowler', batting: 3, bowling: 15, keeping: 0, fielding: 5, stamina: 8, experience: 12, concentration: 5, consistency: 11, form: 8, fitness: 9, bowlingType: 'Fast', order: 8 },
+  { id: '9', name: 'I. Imran', role: 'Bowler', batting: 5, bowling: 17, keeping: 0, fielding: 5, stamina: 11, experience: 13, concentration: 5, consistency: 13, form: 9, fitness: 10, bowlingType: 'Fast Medium', order: 9 },
+  { id: '10', name: 'J. Johnston', role: 'Bowler', batting: 1, bowling: 12, keeping: 0, fielding: 5, stamina: 7, experience: 5, concentration: 4, consistency: 9, form: 7, fitness: 9, bowlingType: 'Spin', order: 10 },
+  { id: '11', name: 'K. Kumble', role: 'Bowler', batting: 1, bowling: 14, keeping: 0, fielding: 5, stamina: 8, experience: 7, concentration: 4, consistency: 10, form: 8, fitness: 9, bowlingType: 'Spin', order: 11 },
 ];
 
 const PRESET_STRATEGIES = [
@@ -134,6 +134,10 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
         btRating: p.btRating,
         stamina: p.skills.stamina,
         experience: p.skills.experience,
+        concentration: p.skills.concentration,
+        consistency: p.skills.consistency,
+        form: p.form,
+        fitness: p.fitness,
         bowlingType: p.bowlingType,
         order: i + 1,
       });
@@ -154,6 +158,10 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
       btRating: b1.btRating,
       stamina: b1.skills.stamina,
       experience: b1.skills.experience,
+      concentration: b1.skills.concentration,
+      consistency: b1.skills.consistency,
+      form: b1.form,
+      fitness: b1.fitness,
       bowlingType: b1.bowlingType,
       order: 6,
     });
@@ -171,6 +179,10 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
     btRating: keeper.btRating,
     stamina: keeper.skills.stamina,
     experience: keeper.skills.experience,
+    concentration: keeper.skills.concentration,
+    consistency: keeper.skills.consistency,
+    form: keeper.form,
+    fitness: keeper.fitness,
     bowlingType: keeper.bowlingType,
     order: 7,
   });
@@ -190,6 +202,10 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
         btRating: p6.btRating,
         stamina: p6.skills.stamina,
         experience: p6.skills.experience,
+        concentration: p6.skills.concentration,
+        consistency: p6.skills.consistency,
+        form: p6.form,
+        fitness: p6.fitness,
         bowlingType: p6.bowlingType,
         order: 6,
       };
@@ -207,6 +223,10 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
         btRating: p8.btRating,
         stamina: p8.skills.stamina,
         experience: p8.skills.experience,
+        concentration: p8.skills.concentration,
+        consistency: p8.skills.consistency,
+        form: p8.form,
+        fitness: p8.fitness,
         bowlingType: p8.bowlingType,
         order: 8,
       });
@@ -225,6 +245,10 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
           btRating: b.btRating,
           stamina: b.skills.stamina,
           experience: b.skills.experience,
+          concentration: b.skills.concentration,
+          consistency: b.skills.consistency,
+          form: b.form,
+          fitness: b.fitness,
           bowlingType: b.bowlingType,
           order: i + 9,
         });
@@ -245,6 +269,10 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
           btRating: b.btRating,
           stamina: b.skills.stamina,
           experience: b.skills.experience,
+          concentration: b.skills.concentration,
+          consistency: b.skills.consistency,
+          form: b.form,
+          fitness: b.fitness,
           bowlingType: b.bowlingType,
           order: i + 7,
         });
@@ -292,6 +320,19 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
   const [importedPlayers, setImportedPlayers] = useState<BattrickPlayer[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [matchEffort, setMatchEffort] = useState<'TIE' | 'PAN' | 'GFI'>(() => {
+    try {
+      const saved = localStorage.getItem('bt_match_effort');
+      if (saved === 'TIE' || saved === 'PAN' || saved === 'GFI') return saved;
+    } catch {}
+    return 'PAN';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bt_match_effort', matchEffort);
+    } catch {}
+  }, [matchEffort]);
 
   // Load imported players from localStorage
   const loadImportedSquad = () => {
@@ -365,6 +406,10 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
           keeping: selected.skills.keeping,
           stamina: selected.skills.stamina,
           experience: selected.skills.experience,
+          concentration: selected.skills.concentration,
+          consistency: selected.skills.consistency,
+          form: selected.form,
+          fitness: selected.fitness,
           bowlingType: selected.bowlingType,
         };
       })
@@ -406,6 +451,10 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
           btRating: batters[i].btRating,
           stamina: batters[i].skills.stamina,
           experience: batters[i].skills.experience,
+          concentration: batters[i].skills.concentration,
+          consistency: batters[i].skills.consistency,
+          form: batters[i].form,
+          fitness: batters[i].fitness,
           bowlingType: batters[i].bowlingType,
           order: i + 1,
         });
@@ -424,6 +473,10 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
       btRating: primaryKeeper.btRating,
       stamina: primaryKeeper.skills.stamina,
       experience: primaryKeeper.skills.experience,
+      concentration: primaryKeeper.skills.concentration,
+      consistency: primaryKeeper.skills.consistency,
+      form: primaryKeeper.form,
+      fitness: primaryKeeper.fitness,
       bowlingType: primaryKeeper.bowlingType,
       order: 7,
     };
@@ -451,6 +504,10 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
           btRating: bPlayer.btRating,
           stamina: bPlayer.skills.stamina,
           experience: bPlayer.skills.experience,
+          concentration: bPlayer.skills.concentration,
+          consistency: bPlayer.skills.consistency,
+          form: bPlayer.form,
+          fitness: bPlayer.fitness,
           bowlingType: bPlayer.bowlingType,
           order: spotNum,
         });
@@ -482,61 +539,125 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
     setExpandedId(null);
   };
 
+  // --- Community-reverse-engineered Battrick match engine model ---
+  // The exact formula Battrick uses is not public; this mirrors the
+  // relationships the community has documented through years of data
+  // tracking. Treat every number below as a guided estimate, not an exact
+  // reproduction of the hidden engine.
+  const EFFORT_SKILL_MULTIPLIER: Record<'TIE' | 'PAN' | 'GFI', number> = {
+    TIE: 0.85,
+    PAN: 1.00,
+    GFI: 1.15,
+  };
+  const EFFORT_PFL_MULTIPLIER: Record<'TIE' | 'PAN' | 'GFI', number> = {
+    TIE: 0.70,
+    PAN: 1.00,
+    GFI: 1.50,
+  };
+
+  // Batting Value = Batting Skill + 0.25 x Concentration
+  const battingValue = (p: LineupPlayer) => p.batting + 0.25 * (p.concentration ?? 10);
+  // Bowling Value = Bowling Skill + 0.25 x Consistency
+  const bowlingValue = (p: LineupPlayer) => p.bowling + 0.25 * (p.consistency ?? 10);
+  // Form: Sublime (10) = 100%, Woeful (0) = up to a 20% penalty
+  const formModifier = (p: LineupPlayer) => 0.80 + (Math.min(10, Math.max(0, p.form ?? 8)) / 10) * 0.20;
+  // Fitness (PFL): Saturated (10) = 100%, Shattered (0) = less than half
+  const fitnessModifier = (p: LineupPlayer) => 0.45 + (Math.min(10, Math.max(0, p.fitness ?? 10)) / 10) * 0.55;
+
+  // Weighted sector rating: applies the position weighting to the batting
+  // value, then multiplies by the *weighted average* form/fitness modifier
+  // of the same players (so a tired or out-of-form star still drags the
+  // sector down proportionally to how much they're weighted in it).
+  const weightedSector = (weights: [LineupPlayer | undefined, number][]) => {
+    const totalWeight = weights.reduce((acc, [, w]) => acc + w, 0) || 1;
+    const base = weights.reduce((acc, [p, w]) => acc + (p ? battingValue(p) * w : 0), 0);
+    const form = weights.reduce((acc, [p, w]) => acc + (p ? formModifier(p) * w : formModifier({} as LineupPlayer) * w), 0) / totalWeight;
+    const fitness = weights.reduce((acc, [p, w]) => acc + (p ? fitnessModifier(p) * w : fitnessModifier({} as LineupPlayer) * w), 0) / totalWeight;
+    return { base, form, fitness };
+  };
+
   // Calculations for Battrick team ratings
   const calculateTeamRatings = () => {
-    const b1 = lineup[0]?.batting || 0;
-    const b2 = lineup[1]?.batting || 0;
-    const b3 = lineup[2]?.batting || 0;
-    const b4 = lineup[3]?.batting || 0;
-    const b5 = lineup[4]?.batting || 0;
-    const topOrderRaw = (b1 * 0.25) + (b2 * 0.25) + (b3 * 0.20) + (b4 * 0.18) + (b5 * 0.12);
+    const effortSkillMulti = EFFORT_SKILL_MULTIPLIER[matchEffort];
+    const p = (i: number) => lineup[i];
 
-    const b6 = lineup[5]?.batting || 0;
-    const b7 = lineup[6]?.batting || 0;
-    const b8 = lineup[7]?.batting || 0;
-    const middleOrderRaw = (b5 * 0.35) + (b6 * 0.35) + (b7 * 0.20) + (b8 * 0.10);
+    // Top Order: Batsmen 1-3 ~70% of the rating, 4-5 the remaining ~30%
+    const topOrderCalc = weightedSector([
+      [p(0), 0.25], [p(1), 0.25], [p(2), 0.20], [p(3), 0.18], [p(4), 0.12],
+    ]);
 
-    const b9 = lineup[8]?.batting || 0;
-    const b10 = lineup[9]?.batting || 0;
-    const b11 = lineup[10]?.batting || 0;
-    const lowerOrderRaw = (b9 * 0.45) + (b10 * 0.35) + (b11 * 0.20);
+    // Middle Order: heavily determined by Batsmen 4, 5, 6, 7
+    const middleOrderCalc = weightedSector([
+      [p(3), 0.15], [p(4), 0.30], [p(5), 0.30], [p(6), 0.25],
+    ]);
 
-    const seamBowlers = lineup.filter(p => ['Fast', 'Fast Medium', 'Medium'].includes(p.bowlingType));
-    let seamBowlingRaw = 0;
+    // Lower Order: Batsmen 8, 9, 10, 11 (usually the tail-end bowlers)
+    const lowerOrderCalc = weightedSector([
+      [p(7), 0.15], [p(8), 0.35], [p(9), 0.30], [p(10), 0.20],
+    ]);
+
+    // Main Bowlers, split into Seam and Spin: average bowling value of the
+    // players selected to bowl, modified by their own form/fitness.
+    const seamBowlers = lineup.filter(pl => ['Fast', 'Fast Medium', 'Medium'].includes(pl.bowlingType));
+    let seamBowlingRaw = 0, seamForm = 1, seamFitness = 1;
     if (seamBowlers.length > 0) {
-      const avgSeam = seamBowlers.reduce((acc, curr) => acc + curr.bowling, 0) / seamBowlers.length;
+      const avgSeam = seamBowlers.reduce((acc, curr) => acc + bowlingValue(curr), 0) / seamBowlers.length;
       seamBowlingRaw = avgSeam + (Math.min(3, seamBowlers.length) * 0.45);
+      seamForm = seamBowlers.reduce((acc, curr) => acc + formModifier(curr), 0) / seamBowlers.length;
+      seamFitness = seamBowlers.reduce((acc, curr) => acc + fitnessModifier(curr), 0) / seamBowlers.length;
     }
 
-    const spinBowlers = lineup.filter(p => p.bowlingType === 'Spin');
-    let spinBowlingRaw = 0;
+    const spinBowlers = lineup.filter(pl => pl.bowlingType === 'Spin');
+    let spinBowlingRaw = 0, spinForm = 1, spinFitness = 1;
     if (spinBowlers.length > 0) {
-      const avgSpin = spinBowlers.reduce((acc, curr) => acc + curr.bowling, 0) / spinBowlers.length;
+      const avgSpin = spinBowlers.reduce((acc, curr) => acc + bowlingValue(curr), 0) / spinBowlers.length;
       spinBowlingRaw = avgSpin + (Math.min(2, spinBowlers.length) * 0.55);
+      spinForm = spinBowlers.reduce((acc, curr) => acc + formModifier(curr), 0) / spinBowlers.length;
+      spinFitness = spinBowlers.reduce((acc, curr) => acc + fitnessModifier(curr), 0) / spinBowlers.length;
     }
 
-    const keeper = lineup.find(p => p.role === 'Keeper') || lineup[6];
-    const keepingRaw = (keeper?.keeping || 0) + (keeper?.experience || 0) * 0.16;
+    const keeper = lineup.find(pl => pl.role === 'Keeper') || lineup[6];
+    const keepingRaw = keeper ? (keeper.keeping + (keeper.experience * 0.16)) : 0;
+    const keeperForm = keeper ? formModifier(keeper) : 1;
+    const keeperFitness = keeper ? fitnessModifier(keeper) : 1;
 
-    const avgExperience = lineup.reduce((acc, curr) => acc + curr.experience, 0) / 11;
-    const avgFielding = lineup.reduce((acc, curr) => acc + (curr.fielding || 5), 0) / 11;
+    const avgExperience = lineup.length ? lineup.reduce((acc, curr) => acc + curr.experience, 0) / lineup.length : 0;
+    const avgFielding = lineup.length ? lineup.reduce((acc, curr) => acc + (curr.fielding || 5), 0) / lineup.length : 0;
     const fieldingRaw = avgFielding + (avgExperience * 0.1);
-    
-    const estimatedTotalBTR = lineup.reduce((acc, curr) => acc + (curr.btRating || 0), 0);
-    const avgStamina = lineup.reduce((acc, curr) => acc + curr.stamina, 0) / 11;
+    const avgFieldingForm = lineup.length ? lineup.reduce((acc, curr) => acc + formModifier(curr), 0) / lineup.length : 1;
+    const avgFieldingFitness = lineup.length ? lineup.reduce((acc, curr) => acc + fitnessModifier(curr), 0) / lineup.length : 1;
 
-    const staminaMulti = 0.94 + (avgStamina / 20) * 0.12;
+    const estimatedTotalBTR = lineup.reduce((acc, curr) => acc + (curr.btRating || 0), 0);
+
+    const clamp = (v: number) => Math.min(20, Math.max(0, v));
+
+    const topOrder = clamp(topOrderCalc.base * topOrderCalc.form * topOrderCalc.fitness * effortSkillMulti);
+    const middleOrder = clamp(middleOrderCalc.base * middleOrderCalc.form * middleOrderCalc.fitness * effortSkillMulti);
+    const lowerOrder = clamp(lowerOrderCalc.base * lowerOrderCalc.form * lowerOrderCalc.fitness * effortSkillMulti);
+    const seamBowling = clamp(seamBowlingRaw * seamForm * seamFitness * effortSkillMulti);
+    const spinBowling = clamp(spinBowlingRaw * spinForm * spinFitness * effortSkillMulti);
+    const wicketKeeping = clamp(keepingRaw * keeperForm * keeperFitness * effortSkillMulti);
+    const fielding = clamp(fieldingRaw * avgFieldingForm * avgFieldingFitness * effortSkillMulti);
+
+    // Rough Batstats estimate (Battrick's own single "batting output" figure,
+    // e.g. as shown on matchinfo.asp?action=summary). Derived from limited
+    // sample matches: (Top + Middle + Lower Order) x ~7 tracked closely
+    // across two very different real teams, so treat this as indicative,
+    // not authoritative.
+    const batStats = Math.round((topOrder + middleOrder + lowerOrder) * 7);
 
     return {
-      topOrder: Math.min(20, Math.max(0, topOrderRaw * staminaMulti)),
-      middleOrder: Math.min(20, Math.max(0, middleOrderRaw * staminaMulti)),
-      lowerOrder: Math.min(20, Math.max(0, lowerOrderRaw * staminaMulti)),
-      seamBowling: Math.min(20, Math.max(0, seamBowlingRaw * staminaMulti)),
-      spinBowling: Math.min(20, Math.max(0, spinBowlingRaw * staminaMulti)),
-      wicketKeeping: Math.min(20, Math.max(0, keepingRaw * staminaMulti)),
-      fielding: Math.min(20, Math.max(0, fieldingRaw * staminaMulti)),
+      topOrder,
+      middleOrder,
+      lowerOrder,
+      seamBowling,
+      spinBowling,
+      wicketKeeping,
+      fielding,
       estimatedBTR: estimatedTotalBTR,
       teamExperience: avgExperience,
+      batStats,
+      pflLossMultiplier: EFFORT_PFL_MULTIPLIER[matchEffort],
     };
   };
 
@@ -558,18 +679,62 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
     };
   };
 
+  // Shared row config + renderer for the Reporter's-Summary-style table, used
+  // both directly under the batting order list and in the full ratings
+  // panel, so the two stay visually and numerically consistent.
+  const summarySectorRows: [string, number][] = [
+    ['Top Order', ratings.topOrder],
+    ['Middle Order', ratings.middleOrder],
+    ['Lower Order', ratings.lowerOrder],
+    ['Seam Bowling', ratings.seamBowling],
+    ['Spin Bowling', ratings.spinBowling],
+    ['Fielding', ratings.fielding],
+  ];
+
+  const renderRatingRow = ([rowLabel, rawScore]: [string, number]) => {
+    const level = Math.min(20, Math.max(0, Math.round(rawScore)));
+    const label = SKILL_LEVELS[level] || 'useless';
+    const isEmpty = rowLabel === 'Spin Bowling' && rawScore <= 0;
+    return (
+      <tr key={rowLabel} className="border-b border-slate-50 last:border-0">
+        <td className="py-1.5 pr-3 font-semibold text-slate-500">{rowLabel}:</td>
+        <td className="py-1.5 text-right">
+          {isEmpty ? (
+            <span className="text-slate-400 italic">none</span>
+          ) : (
+            <span
+              title={`Level ${level}`}
+              className={`font-bold uppercase cursor-help ${getBattrickRatingLabel(rawScore).color.split(' ')[0]}`}
+            >
+              {label}
+            </span>
+          )}
+        </td>
+      </tr>
+    );
+  };
+
+  const EFFORT_OPTIONS: { key: 'TIE' | 'PAN' | 'GFI'; label: string; desc: string }[] = [
+    { key: 'TIE', label: 'Take It Easy', desc: '-15% performance, -30% fitness drain' },
+    { key: 'PAN', label: 'Play As Normal', desc: 'Baseline performance & fitness drain' },
+    { key: 'GFI', label: 'Go For It', desc: '+15% performance, +50% fitness drain' },
+  ];
+
   const copySquadToClipboard = () => {
     let text = `[BattrickIQ Team Lineup Strategy]\n`;
     lineup.forEach((p) => {
       text += `${p.order}. ${p.name} - ${p.role} (Bat: ${SKILL_LEVELS[p.batting]} | Bowl: ${p.bowlingType !== 'None' ? `${p.bowlingType} ${SKILL_LEVELS[p.bowling]}` : 'None'})\n`;
     });
+    text += `\nMatch Effort: ${EFFORT_OPTIONS.find(o => o.key === matchEffort)?.label}\n`;
     text += `\nEstimated Ratings:\n`;
     text += `- Top Order Batting: ${getBattrickRatingLabel(ratings.topOrder).full} (${ratings.topOrder.toFixed(1)})\n`;
     text += `- Middle Order Batting: ${getBattrickRatingLabel(ratings.middleOrder).full} (${ratings.middleOrder.toFixed(1)})\n`;
+    text += `- Lower Order Batting: ${getBattrickRatingLabel(ratings.lowerOrder).full} (${ratings.lowerOrder.toFixed(1)})\n`;
     text += `- Seam Bowling Rating: ${getBattrickRatingLabel(ratings.seamBowling).full} (${ratings.seamBowling.toFixed(1)})\n`;
     text += `- Spin Bowling Rating: ${getBattrickRatingLabel(ratings.spinBowling).full} (${ratings.spinBowling.toFixed(1)})\n`;
     text += `- Wicket Keeping: ${getBattrickRatingLabel(ratings.wicketKeeping).full} (${ratings.wicketKeeping.toFixed(1)})\n`;
     text += `- Fielding: ${getBattrickRatingLabel(ratings.fielding).full} (${ratings.fielding.toFixed(1)})\n`;
+    text += `- Est. Batstats: ${ratings.batStats}\n`;
     text += `- Estimated Lineup BTR: ${ratings.estimatedBTR > 0 ? ratings.estimatedBTR.toLocaleString() : "N/A"}\n`;
 
     navigator.clipboard.writeText(text);
@@ -902,45 +1067,54 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
           </h4>
           <table className="w-full text-xs">
             <tbody>
-              {([
-                ['Top Order', ratings.topOrder],
-                ['Middle Order', ratings.middleOrder],
-                ['Lower Order', ratings.lowerOrder],
-                ['Seam Bowling', ratings.seamBowling],
-                ['Spin Bowling', ratings.spinBowling],
-                ['Fielding', ratings.fielding],
-              ] as [string, number][]).map(([rowLabel, rawScore]) => {
-                const level = Math.min(20, Math.max(0, Math.round(rawScore)));
-                const label = SKILL_LEVELS[level] || 'useless';
-                const isEmpty = rowLabel === 'Spin Bowling' && rawScore <= 0;
-                return (
-                  <tr key={rowLabel} className="border-b border-slate-50 last:border-0">
-                    <td className="py-1.5 pr-3 font-semibold text-slate-500">{rowLabel}:</td>
-                    <td className="py-1.5 text-right">
-                      {isEmpty ? (
-                        <span className="text-slate-400 italic">none</span>
-                      ) : (
-                        <span
-                          title={`Level ${level}`}
-                          className={`font-bold uppercase cursor-help ${getBattrickRatingLabel(rawScore).color.split(' ')[0]}`}
-                        >
-                          {label}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {summarySectorRows.map(renderRatingRow)}
+              <tr>
+                <td className="py-1.5 pr-3 font-semibold text-slate-500">Batstats (est.):</td>
+                <td className="py-1.5 text-right font-mono font-bold text-slate-700">{ratings.batStats}</td>
+              </tr>
             </tbody>
           </table>
           <p className="mt-2.5 pt-2 border-t border-slate-100 text-[10px] text-slate-400 leading-relaxed">
-            Estimated from your current Match XI &mdash; hover a rating to see its exact Level, just like Battrick's own match reports.
+            Estimated from your current Match XI on <strong className="text-slate-500">{EFFORT_OPTIONS.find(o => o.key === matchEffort)?.label}</strong> &mdash; hover a rating to see its exact Level, just like Battrick's own match reports.
           </p>
         </div>
       </div>
 
       {/* Dynamic Team Ratings Output */}
       <div className="lg:col-span-5 flex flex-col gap-5">
+        {/* Match Effort toggle - a guard rail for every calculation below */}
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <h4 className="font-display font-bold text-xs text-slate-700 uppercase tracking-wider flex items-center gap-1.5 mb-2.5">
+            <Shield className="w-4 h-4 text-indigo-600" />
+            Match Effort
+          </h4>
+          <div className="grid grid-cols-3 gap-1.5 bg-slate-50 border border-slate-200 rounded-lg p-1">
+            {EFFORT_OPTIONS.map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                id={`btn-effort-${opt.key.toLowerCase()}`}
+                onClick={() => setMatchEffort(opt.key)}
+                title={opt.desc}
+                className={`px-2 py-1.5 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                  matchEffort === opt.key
+                    ? opt.key === 'GFI'
+                      ? 'bg-rose-600 text-white shadow-sm'
+                      : opt.key === 'TIE'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-500 hover:bg-white hover:text-slate-700'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] text-slate-400 leading-relaxed">
+            {EFFORT_OPTIONS.find(o => o.key === matchEffort)?.desc} &mdash; every rating below already reflects this setting.
+          </p>
+        </div>
+
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col gap-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h4 className="font-display font-bold text-xs text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
@@ -967,84 +1141,18 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
             </button>
           </div>
 
-          <div className="flex flex-col gap-3.5" id="computed-match-ratings">
-            {/* Top Order Batting */}
-            <div className="p-3.5 rounded-lg bg-slate-50/50 border border-slate-100 flex items-center justify-between shadow-inner">
-              <div>
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Top Order Batting</div>
-                <div className="text-[11px] text-slate-600 mt-0.5 font-medium">Batsman positions 1 to 5 strength</div>
-              </div>
-              <div className={`font-mono text-xs font-bold px-2.5 py-1 rounded border uppercase ${getBattrickRatingLabel(ratings.topOrder).color}`}>
-                {getBattrickRatingLabel(ratings.topOrder).full} <span className="text-[10px] opacity-75">({ratings.topOrder.toFixed(1)})</span>
-              </div>
-            </div>
+          <table className="w-full text-xs" id="computed-match-ratings">
+            <tbody>
+              {summarySectorRows.map(renderRatingRow)}
+              {renderRatingRow(['Wicket Keeping', ratings.wicketKeeping])}
+              <tr>
+                <td className="py-1.5 pr-3 font-semibold text-slate-500">Batstats (est.):</td>
+                <td className="py-1.5 text-right font-mono font-bold text-slate-700">{ratings.batStats}</td>
+              </tr>
+            </tbody>
+          </table>
 
-            {/* Middle Order Batting */}
-            <div className="p-3.5 rounded-lg bg-slate-50/50 border border-slate-100 flex items-center justify-between shadow-inner">
-              <div>
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Middle Order Batting</div>
-                <div className="text-[11px] text-slate-600 mt-0.5 font-medium">Strength in middle order overs 15-40</div>
-              </div>
-              <div className={`font-mono text-xs font-bold px-2.5 py-1 rounded border uppercase ${getBattrickRatingLabel(ratings.middleOrder).color}`}>
-                {getBattrickRatingLabel(ratings.middleOrder).full} <span className="text-[10px] opacity-75">({ratings.middleOrder.toFixed(1)})</span>
-              </div>
-            </div>
-
-            {/* Lower Order Batting */}
-            <div className="p-3.5 rounded-lg bg-slate-50/50 border border-slate-100 flex items-center justify-between shadow-inner">
-              <div>
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Lower Order Batting</div>
-                <div className="text-[11px] text-slate-600 mt-0.5 font-medium">Tail-end resistance & run rate pushes</div>
-              </div>
-              <div className={`font-mono text-xs font-bold px-2.5 py-1 rounded border uppercase ${getBattrickRatingLabel(ratings.lowerOrder).color}`}>
-                {getBattrickRatingLabel(ratings.lowerOrder).full} <span className="text-[10px] opacity-75">({ratings.lowerOrder.toFixed(1)})</span>
-              </div>
-            </div>
-
-            {/* Seam Bowling */}
-            <div className="p-3.5 rounded-lg bg-slate-50/50 border border-slate-100 flex items-center justify-between shadow-inner">
-              <div>
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Seam Bowling</div>
-                <div className="text-[11px] text-slate-600 mt-0.5 font-medium">Fast / Fast-Medium delivery ratings</div>
-              </div>
-              <div className={`font-mono text-xs font-bold px-2.5 py-1 rounded border uppercase ${getBattrickRatingLabel(ratings.seamBowling).color}`}>
-                {getBattrickRatingLabel(ratings.seamBowling).full} <span className="text-[10px] opacity-75">({ratings.seamBowling.toFixed(1)})</span>
-              </div>
-            </div>
-
-            {/* Spin Bowling */}
-            <div className="p-3.5 rounded-lg bg-slate-50/50 border border-slate-100 flex items-center justify-between shadow-inner">
-              <div>
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Spin Bowling</div>
-                <div className="text-[11px] text-slate-600 mt-0.5 font-medium">Spin & variable crack flight ratings</div>
-              </div>
-              <div className={`font-mono text-xs font-bold px-2.5 py-1 rounded border uppercase ${ratings.spinBowling > 0 ? getBattrickRatingLabel(ratings.spinBowling).color : 'text-slate-550 border-slate-200'}`}>
-                {ratings.spinBowling > 0 ? <>{getBattrickRatingLabel(ratings.spinBowling).full} <span className="text-[10px] opacity-75">({ratings.spinBowling.toFixed(1)})</span></> : 'none'}
-              </div>
-            </div>
-
-            {/* Wicket Keeping */}
-            <div className="p-3.5 rounded-lg bg-slate-50/50 border border-slate-100 flex items-center justify-between shadow-inner">
-              <div>
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Wicket Keeping</div>
-                <div className="text-[11px] text-slate-600 mt-0.5 font-medium">Gloves accuracy & fielding strength</div>
-              </div>
-              <div className={`font-mono text-xs font-bold px-2.5 py-1 rounded border uppercase ${getBattrickRatingLabel(ratings.wicketKeeping).color}`}>
-                {getBattrickRatingLabel(ratings.wicketKeeping).full} <span className="text-[10px] opacity-75">({ratings.wicketKeeping.toFixed(1)})</span>
-              </div>
-            </div>
-
-            {/* Fielding */}
-            <div className="p-3.5 rounded-lg bg-slate-50/50 border border-slate-100 flex items-center justify-between shadow-inner">
-              <div>
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Fielding</div>
-                <div className="text-[11px] text-slate-600 mt-0.5 font-medium">Ground fielding & catching ability</div>
-              </div>
-              <div className={`font-mono text-xs font-bold px-2.5 py-1 rounded border uppercase ${getBattrickRatingLabel(ratings.fielding).color}`}>
-                {getBattrickRatingLabel(ratings.fielding).full} <span className="text-[10px] opacity-75">({ratings.fielding.toFixed(1)})</span>
-              </div>
-            </div>
-
+          <div className="flex flex-col gap-3.5">
             {/* Estimated Battrick Rating (BTR) Score */}
             <div className="p-3.5 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-between shadow-inner">
               <div>
@@ -1053,6 +1161,17 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
               </div>
               <div className="font-mono text-sm font-bold px-3 py-1.5 bg-white text-indigo-700 rounded border border-indigo-300 shadow-sm">
                 {ratings.estimatedBTR > 0 ? ratings.estimatedBTR.toLocaleString() : 'N/A'}
+              </div>
+            </div>
+
+            {/* Estimated PFL / fitness drain for the current effort setting */}
+            <div className="p-3.5 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-between shadow-inner">
+              <div>
+                <div className="text-[10px] text-amber-600 uppercase tracking-wider font-bold">Est. Fitness Drain</div>
+                <div className="text-[11px] text-amber-700 mt-0.5 font-medium">PFL loss multiplier vs. baseline (PAN)</div>
+              </div>
+              <div className="font-mono text-sm font-bold px-3 py-1.5 bg-white text-amber-700 rounded border border-amber-300 shadow-sm">
+                {ratings.pflLossMultiplier.toFixed(2)}x
               </div>
             </div>
           </div>
