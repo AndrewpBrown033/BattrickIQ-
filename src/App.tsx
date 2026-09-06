@@ -640,7 +640,12 @@ export default function App() {
                     />
                   )}
                   {activeTab === 'lineup' && <LineupOptimizer setActiveTab={setActiveTab} />}
-                  {activeTab === 'scout' && <OpponentScout setActiveTab={setActiveTab} />}
+                  {activeTab === 'scout' && (
+                    <OpponentScout 
+                      setActiveTab={setActiveTab} 
+                      initialScoutTarget={scoutTarget} 
+                    />
+                  )}
                   {activeTab === 'league' && (
                     <LeagueStandings
                       setActiveTab={setActiveTab}

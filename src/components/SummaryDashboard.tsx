@@ -806,6 +806,10 @@ Please analyze my club details and explain:
                     type: game.type,
                     venue: game.venue
                   }));
+                  window.dispatchEvent(new CustomEvent('bt_scout_target_updated', {
+                    detail: { teamName: game.opponent, teamId: game.opponentTeamId }
+                  }));
+                  window.dispatchEvent(new Event('storage'));
                 }
                 setActiveTab('scout');
               }}

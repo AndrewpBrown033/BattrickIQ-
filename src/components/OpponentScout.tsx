@@ -24,7 +24,11 @@ import {
   parseBattrickPlayerDetails,
   estimatePlayerSkills,
   parseBattrickPage,
-  buildStrongestXI
+  buildStrongestXI,
+  getKnownTeamNameById,
+  getKnownTeamIdByName,
+  getAllKnownOpponentTeams,
+  KNOWN_OPPONENT_CLUBS
 } from '../parser';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
 import { 
@@ -64,6 +68,7 @@ import {
 
 interface OpponentScoutProps {
   setActiveTab: (tab: any) => void;
+  initialScoutTarget?: { teamName: string; teamId?: string; nonce?: number } | null;
 }
 
 const normalizeMatchFormat = (type?: string): MatchFormat => {
@@ -73,7 +78,7 @@ const normalizeMatchFormat = (type?: string): MatchFormat => {
   return 'One Day';
 };
 
-export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
+export default function OpponentScout({ setActiveTab, initialScoutTarget }: OpponentScoutProps) {
   // Shared Battrick session (authenticated once via the auth bar at the top of the app)
   const { username: battrickUsername, password: battrickPassword, requireAuth, logout: logoutBattrick, openPrompt: openBattrickPrompt } = useBattrickAuth();
 
@@ -101,18 +106,89 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   });
 
   // 2. Selected Opponent & Match Settings
-  const [opponentName, setOpponentName] = useState<string>('Steve');
-  const [opponentTeamId, setOpponentTeamId] = useState<string>('');
-  const [matchFormat, setMatchFormat] = useState<MatchFormat>('One Day');
+  const [opponentName, setOpponentName] = useState<string>(() => {
+    if (initialScoutTarget?.teamName) return initialScoutTarget.teamName.trim();
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('bt_scout_target_team') : null;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.teamName && parsed.teamName.trim()) return parsed.teamName.trim();
+      }
+    } catch {}
+    return 'Bluejays';
+  });
+
+  const [opponentTeamId, setOpponentTeamId] = useState<string>(() => {
+    if (initialScoutTarget?.teamId) return initialScoutTarget.teamId.trim();
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('bt_scout_target_team') : null;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.teamId) return parsed.teamId;
+        if (parsed.teamName) {
+          const matchedId = getKnownTeamIdByName(parsed.teamName);
+          if (matchedId) return matchedId;
+        }
+      }
+    } catch {}
+    const initialName = initialScoutTarget?.teamName || 'Bluejays';
+    return getKnownTeamIdByName(initialName) || '24514';
+  });
+
+  const [matchFormat, setMatchFormat] = useState<MatchFormat>(() => {
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('bt_scout_target_team') : null;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.type) return normalizeMatchFormat(parsed.type);
+      }
+    } catch {}
+    return 'One Day';
+  });
+
   const [pitch, setPitch] = useState<PitchType>('Green');
   const [weather, setWeather] = useState<WeatherType>('Overcast');
-  const [venue, setVenue] = useState<'Home' | 'Away'>('Home');
+  const [venue, setVenue] = useState<'Home' | 'Away'>(() => {
+    try {
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('bt_scout_target_team') : null;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.venue === 'Home' || parsed.venue === 'Away') return parsed.venue;
+      }
+    } catch {}
+    return 'Home';
+  });
   const [dossierMatchEffort, setDossierMatchEffort] = useState<'take it easy' | 'normal' | 'go for it!'>('go for it!');
 
   // 3. Opponent Squad Data
-  const [opponentPlayers, setOpponentPlayers] = useState<OpponentPlayer[]>(() => generateRealisticOpponentRoster('Steve', false, 'One Day'));
+  const [opponentPlayers, setOpponentPlayers] = useState<OpponentPlayer[]>(() => {
+    const initName = initialScoutTarget?.teamName?.trim() || (() => {
+      try {
+        const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('bt_scout_target_team') : null;
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.teamName?.trim()) return parsed.teamName.trim();
+        }
+      } catch {}
+      return 'Bluejays';
+    })();
+
+    const initId = initialScoutTarget?.teamId?.trim() || (() => {
+      try {
+        const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('bt_scout_target_team') : null;
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.teamId) return parsed.teamId;
+        }
+      } catch {}
+      return getKnownTeamIdByName(initName) || '24514';
+    })();
+
+    return generateRealisticOpponentRoster(initName, false, 'One Day', initId);
+  });
   
   // Sorting States for Tables
+  const [isEditingCustomName, setIsEditingCustomName] = useState<boolean>(false);
   const [lineupSortField, setLineupSortField] = useState<string>('order');
   const [lineupSortDirection, setLineupSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -336,6 +412,62 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
     }
   };
 
+  // Central handler to set and synchronize opponent team data and lineup
+  const applyOpponent = (name: string, teamId?: string, matchType?: string, newVenue?: 'Home' | 'Away', matchId?: string) => {
+    const cleanName = name.trim();
+    if (!cleanName) return;
+
+    // Check if teamId can be resolved from known registry or fixtures
+    let effectiveTeamId = teamId || '';
+    if (!effectiveTeamId) {
+      const fixtureMatch = fixtures.find(f => f.opponent.toLowerCase().trim() === cleanName.toLowerCase());
+      if (fixtureMatch?.opponentTeamId) {
+        effectiveTeamId = fixtureMatch.opponentTeamId;
+      } else {
+        effectiveTeamId = getKnownTeamIdByName(cleanName) || '';
+      }
+    }
+
+    // Check if teamName should be canonicalized from teamId if cleanName is generic
+    let effectiveName = cleanName;
+    if (effectiveTeamId) {
+      const known = getKnownTeamNameById(effectiveTeamId);
+      if (known && (cleanName.toLowerCase().includes('steve') || cleanName === 'Opposition XI' || cleanName === 'Selected Club')) {
+        effectiveName = known;
+      }
+    }
+
+    const matchedFixture = fixtures.find(f => f.opponent.toLowerCase().trim() === effectiveName.toLowerCase().trim());
+    const effectiveFormat = matchType ? normalizeMatchFormat(matchType) : matchedFixture ? normalizeMatchFormat(matchedFixture.type) : matchFormat;
+    const isBot = matchedFixture?.isBot ?? false;
+
+    setOpponentName(effectiveName);
+    setOpponentTeamId(effectiveTeamId);
+    setMatchFormat(effectiveFormat);
+    if (newVenue) setVenue(newVenue);
+    else if (matchedFixture?.venue) setVenue(matchedFixture.venue);
+    if (matchId) {
+      setMatchIdInput(matchId);
+      setActiveParsedMatch(getExampleMatchDataById(matchId, myTeamName, mySquad));
+    } else if (matchedFixture?.matchId) {
+      setMatchIdInput(matchedFixture.matchId);
+      setActiveParsedMatch(getExampleMatchDataById(matchedFixture.matchId, myTeamName, mySquad));
+    }
+
+    const roster = generateRealisticOpponentRoster(effectiveName, isBot, effectiveFormat, effectiveTeamId);
+    setOpponentPlayers(roster);
+
+    try {
+      localStorage.setItem('bt_scout_target_team', JSON.stringify({
+        teamName: effectiveName,
+        teamId: effectiveTeamId,
+        matchId: matchId || matchedFixture?.matchId || '',
+        type: effectiveFormat,
+        venue: newVenue || matchedFixture?.venue || venue
+      }));
+    } catch {}
+  };
+
   // Load user data on mount and listen to storage synchronization events
   const loadLocalData = () => {
     try {
@@ -385,28 +517,11 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
       }
 
       if (targetTeamName) {
-        setOpponentName(targetTeamName);
-        setOpponentTeamId(targetTeamId);
-        if (targetType) {
-          setMatchFormat(normalizeMatchFormat(targetType));
-        }
-        if (targetMatchId) {
-          activeMatchId = targetMatchId;
-          setMatchIdInput(targetMatchId);
-        }
+        applyOpponent(targetTeamName, targetTeamId, targetType, undefined, targetMatchId);
         setActiveSubTab('dossier');
-        setOpponentPlayers(generateRealisticOpponentRoster(targetTeamName, false, normalizeMatchFormat(targetType || 'One Day'), targetTeamId));
       } else if (loadedFixtures.length > 0) {
         const firstGame = loadedFixtures[0];
-        setOpponentName(firstGame.opponent);
-        setOpponentTeamId('');
-        setMatchFormat(normalizeMatchFormat(firstGame.type));
-        setVenue(firstGame.venue);
-        if (firstGame.matchId) {
-          activeMatchId = firstGame.matchId;
-          setMatchIdInput(firstGame.matchId);
-        }
-        setOpponentPlayers(generateRealisticOpponentRoster(firstGame.opponent, firstGame.isBot, normalizeMatchFormat(firstGame.type)));
+        applyOpponent(firstGame.opponent, firstGame.opponentTeamId, firstGame.type, firstGame.venue, firstGame.matchId);
       }
 
       // Ensure activeParsedMatch is loaded with the user's team name and squad
@@ -432,6 +547,38 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
     window.addEventListener('storage', loadLocalData);
     return () => window.removeEventListener('storage', loadLocalData);
   }, []);
+
+  // React to initialScoutTarget prop changes when navigating from other tabs
+  useEffect(() => {
+    if (initialScoutTarget?.teamName) {
+      applyOpponent(initialScoutTarget.teamName, initialScoutTarget.teamId);
+      setActiveSubTab('dossier');
+    }
+  }, [initialScoutTarget?.teamName, initialScoutTarget?.teamId, initialScoutTarget?.nonce]);
+
+  // Listen for custom in-window scout target updates
+  useEffect(() => {
+    const handleTargetUpdated = (e: any) => {
+      const detail = e.detail;
+      if (detail?.teamName) {
+        applyOpponent(detail.teamName, detail.teamId);
+        setActiveSubTab('dossier');
+        return;
+      }
+      try {
+        const saved = localStorage.getItem('bt_scout_target_team');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.teamName) {
+            applyOpponent(parsed.teamName, parsed.teamId, parsed.type, parsed.venue, parsed.matchId);
+            setActiveSubTab('dossier');
+          }
+        }
+      } catch {}
+    };
+    window.addEventListener('bt_scout_target_updated', handleTargetUpdated);
+    return () => window.removeEventListener('bt_scout_target_updated', handleTargetUpdated);
+  }, [fixtures]);
 
   // Compute My Squad average BTR
   const myAvgBtr = useMemo(() => {
@@ -479,16 +626,7 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
 
   // Handle fixture opponent selection
   const handleSelectFixtureOpponent = (key: string) => {
-    setOpponentName(key);
-    const matched = fixtures.find(f => f.opponent.toLowerCase() === key.toLowerCase());
-    if (matched) {
-      setMatchFormat(normalizeMatchFormat(matched.type));
-      setVenue(matched.venue);
-      if (matched.matchId) setMatchIdInput(matched.matchId);
-      setOpponentPlayers(generateRealisticOpponentRoster(matched.opponent, matched.isBot, normalizeMatchFormat(matched.type)));
-    } else {
-      setOpponentPlayers(generateRealisticOpponentRoster(key, false, matchFormat));
-    }
+    applyOpponent(key);
   };
 
   // Handle parsing match scorecard and summary text
@@ -1931,20 +2069,42 @@ TACTICAL ORDERS:
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs">
             <div className="flex flex-col sm:flex-row items-end gap-4">
               <div className="flex-1 w-full">
-                <label className="text-[11px] font-mono font-bold uppercase text-slate-500 block mb-1.5">
-                  Battrick Team ID
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[11px] font-mono font-bold uppercase text-slate-500 block">
+                    Battrick Team ID
+                  </label>
+                  {getKnownTeamNameById(opponentTeamId) && (
+                    <span className="text-[10px] font-mono text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      ✓ {getKnownTeamNameById(opponentTeamId)}
+                    </span>
+                  )}
+                </div>
                 <div className="relative">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={opponentTeamId}
                     onChange={(e) => {
-                      const val = e.target.value;
+                      const val = e.target.value.trim();
                       setOpponentTeamId(val);
-                      setOpponentPlayers(generateRealisticOpponentRoster(opponentName, false, matchFormat, val));
+                      const knownName = getKnownTeamNameById(val);
+                      const effectiveName = knownName || opponentName;
+                      if (knownName && knownName !== opponentName) {
+                        setOpponentName(knownName);
+                      }
+                      const roster = generateRealisticOpponentRoster(effectiveName, false, matchFormat, val);
+                      setOpponentPlayers(roster);
+                      try {
+                        localStorage.setItem('bt_scout_target_team', JSON.stringify({
+                          teamName: effectiveName,
+                          teamId: val,
+                          matchId: matchIdInput,
+                          type: matchFormat,
+                          venue
+                        }));
+                      } catch {}
                     }}
-                    placeholder="Enter Battrick Team ID (e.g. 24514)"
+                    placeholder="Enter Battrick Team ID (e.g. 24514, 5721)"
                     className="w-full pl-10 pr-3 py-2 text-xs font-mono font-bold border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-mono"
                   />
                 </div>
@@ -1980,11 +2140,44 @@ TACTICAL ORDERS:
               
               {/* Target Opponent */}
               <div className="lg:col-span-2">
-                <label className="text-[11px] font-mono font-bold uppercase text-slate-500 block mb-1.5">
-                  Opponent Team
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[11px] font-mono font-bold uppercase text-slate-500 block">
+                    Opponent Team
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingCustomName(!isEditingCustomName)}
+                    className="text-[10px] font-mono text-blue-600 hover:text-blue-800 font-bold hover:underline cursor-pointer"
+                  >
+                    {isEditingCustomName ? 'Choose from list' : 'Custom Name'}
+                  </button>
+                </div>
                 <div className="flex items-center gap-2">
-                  {fixtures.length > 0 ? (
+                  {isEditingCustomName ? (
+                    <div className="flex items-center gap-2 w-full">
+                      <input
+                        type="text"
+                        value={opponentName}
+                        onChange={(e) => {
+                          const name = e.target.value;
+                          setOpponentName(name);
+                          setOpponentPlayers(generateRealisticOpponentRoster(name, false, matchFormat, opponentTeamId));
+                        }}
+                        placeholder="Enter opponent club name..."
+                        className="w-full text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          applyOpponent(opponentName, opponentTeamId);
+                          setIsEditingCustomName(false);
+                        }}
+                        className="px-3 py-2 bg-blue-600 text-white text-xs font-mono font-bold rounded-xl hover:bg-blue-700 shrink-0 cursor-pointer"
+                      >
+                        Set
+                      </button>
+                    </div>
+                  ) : (
                     <select
                       value={opponentName}
                       onChange={(e) => {
@@ -1993,23 +2186,34 @@ TACTICAL ORDERS:
                       }}
                       className="w-full text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      {fixtures.map((f, idx) => (
-                        <option key={idx} value={f.opponent}>
-                          {f.opponent} ({f.venue} • {f.type})
-                        </option>
-                      ))}
+                      {/* If current opponentName is not in fixtures or known clubs, render it as Active Target */}
+                      {!fixtures.some(f => f.opponent.toLowerCase() === opponentName.toLowerCase()) && 
+                       !getAllKnownOpponentTeams().some(c => c.teamName.toLowerCase() === opponentName.toLowerCase()) && (
+                        <optgroup label="Active Target">
+                          <option value={opponentName}>
+                            {opponentName} {opponentTeamId ? `(ID: ${opponentTeamId})` : ''}
+                          </option>
+                        </optgroup>
+                      )}
+
+                      {fixtures.length > 0 && (
+                        <optgroup label="Upcoming Fixtures">
+                          {fixtures.map((f, idx) => (
+                            <option key={`fix-${idx}`} value={f.opponent}>
+                              {f.opponent} ({f.venue} • {f.type})
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      <optgroup label="League & Cup Opponents">
+                        {getAllKnownOpponentTeams().map((club, idx) => (
+                          <option key={`club-${idx}`} value={club.teamName}>
+                            {club.teamName} (ID: {club.teamId}{club.league ? ` • ${club.league}` : ''})
+                          </option>
+                        ))}
+                      </optgroup>
                     </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={opponentName}
-                      onChange={(e) => {
-                        const name = e.target.value;
-                        setOpponentName(name);
-                        setOpponentPlayers(generateRealisticOpponentRoster(name, false, matchFormat, opponentTeamId));
-                      }}
-                      className="w-full text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2"
-                    />
                   )}
                 </div>
               </div>

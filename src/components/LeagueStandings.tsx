@@ -264,6 +264,10 @@ export const LeagueStandings: React.FC<LeagueStandingsProps> = ({ setActiveTab, 
         teamName: team.teamName,
         teamId: team.teamId || ''
       }));
+      window.dispatchEvent(new CustomEvent('bt_scout_target_updated', {
+        detail: { teamName: team.teamName, teamId: team.teamId || '' }
+      }));
+      window.dispatchEvent(new Event('storage'));
     } catch {}
     if (onSelectScoutTeam) {
       onSelectScoutTeam(team.teamName, team.teamId);
