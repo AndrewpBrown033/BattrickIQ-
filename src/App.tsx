@@ -191,20 +191,119 @@ export default function App() {
   };
 
   const baseTabs = [
-    { id: 'summary' as TabType, step: '01', label: 'Club Summary', icon: <Activity className="w-4 h-4" />, desc: 'Overall Club Health', status: 'Overview' },
-    { id: 'squad' as TabType, step: '02', label: 'Squad & Pops', icon: <FolderOpen className="w-4 h-4" />, desc: 'Roster & Skill Pops', status: 'Ready' },
-    { id: 'lineup' as TabType, step: '03', label: 'Lineup XI', icon: <Users className="w-4 h-4" />, desc: 'Rating Optimizer', status: 'Draft' },
-    { id: 'scout' as TabType, step: '04', label: 'Opponent Scout', icon: <Swords className="w-4 h-4" />, desc: 'Tactical Analysis & Tail Vulnerabilities', status: 'Tactics' },
-    { id: 'league' as TabType, step: '05', label: 'League Ladders', icon: <Trophy className="w-4 h-4 text-amber-500" />, desc: 'First Class, One Day & BT20 Ladders', status: 'Standings' },
-    { id: 'wage' as TabType, step: '06', label: 'Financial Forecast', icon: <Calculator className="w-4 h-4" />, desc: 'Wages & Cashflow Projections', status: 'Config' },
-    { id: 'stadium' as TabType, step: '07', label: 'Stadium Plan', icon: <Landmark className="w-4 h-4" />, desc: 'Expansion Helper', status: 'Auto' },
-    { id: 'coach' as TabType, step: '08', label: 'Tactical AI', icon: <Bot className="w-4 h-4" />, desc: 'AI Tactical Advice', status: 'AI Ready' },
-    { id: 'sync' as TabType, step: '09', label: 'Roster Sync', icon: <RefreshCw className="w-4 h-4" />, desc: 'Paste Battrick Pages', status: 'Active' },
-    { id: 'rules' as TabType, step: '10', label: 'Club Setup', icon: <BookOpen className="w-4 h-4" />, desc: 'Profile & Tactical Rules', status: 'Setup' },
+    { 
+      id: 'summary' as TabType, 
+      step: '01', 
+      label: 'Club Summary', 
+      icon: <Activity className="w-4 h-4" />, 
+      desc: 'Overall Club Health', 
+      status: 'Overview',
+      badgeClass: 'bg-blue-100 text-blue-700',
+      activeClass: 'bg-blue-50/90 border-blue-200 text-blue-950',
+    },
+    { 
+      id: 'squad' as TabType, 
+      step: '02', 
+      label: 'Squad & Pops', 
+      icon: <FolderOpen className="w-4 h-4" />, 
+      desc: 'Roster & Skill Pops', 
+      status: 'Ready',
+      badgeClass: 'bg-purple-100 text-purple-700',
+      activeClass: 'bg-purple-50/90 border-purple-200 text-purple-950',
+    },
+    { 
+      id: 'lineup' as TabType, 
+      step: '03', 
+      label: 'Lineup XI', 
+      icon: <Users className="w-4 h-4" />, 
+      desc: 'Rating Optimizer', 
+      status: 'Draft',
+      badgeClass: 'bg-emerald-100 text-emerald-700',
+      activeClass: 'bg-emerald-50/90 border-emerald-200 text-emerald-950',
+    },
+    { 
+      id: 'scout' as TabType, 
+      step: '04', 
+      label: 'Opponent Scout', 
+      icon: <Swords className="w-4 h-4" />, 
+      desc: 'Tactical Analysis & Tail Vulnerabilities', 
+      status: 'Tactics',
+      badgeClass: 'bg-rose-100 text-rose-700',
+      activeClass: 'bg-rose-50/90 border-rose-200 text-rose-950',
+    },
+    { 
+      id: 'league' as TabType, 
+      step: '05', 
+      label: 'League Ladders', 
+      icon: <Trophy className="w-4 h-4" />, 
+      desc: 'First Class, One Day & BT20 Ladders', 
+      status: 'Standings',
+      badgeClass: 'bg-amber-100 text-amber-700',
+      activeClass: 'bg-amber-50/90 border-amber-200 text-amber-950',
+    },
+    { 
+      id: 'wage' as TabType, 
+      step: '06', 
+      label: 'Financial Forecast', 
+      icon: <Calculator className="w-4 h-4" />, 
+      desc: 'Wages & Cashflow Projections', 
+      status: 'Config',
+      badgeClass: 'bg-teal-100 text-teal-700',
+      activeClass: 'bg-teal-50/90 border-teal-200 text-teal-950',
+    },
+    { 
+      id: 'stadium' as TabType, 
+      step: '07', 
+      label: 'Stadium Plan', 
+      icon: <Landmark className="w-4 h-4" />, 
+      desc: 'Expansion Helper', 
+      status: 'Auto',
+      badgeClass: 'bg-cyan-100 text-cyan-700',
+      activeClass: 'bg-cyan-50/90 border-cyan-200 text-cyan-950',
+    },
+    { 
+      id: 'coach' as TabType, 
+      step: '08', 
+      label: 'Tactical AI', 
+      icon: <Bot className="w-4 h-4" />, 
+      desc: 'AI Tactical Advice', 
+      status: 'AI Ready',
+      badgeClass: 'bg-blue-100 text-blue-700',
+      activeClass: 'bg-blue-50/90 border-blue-200 text-blue-950',
+    },
+    { 
+      id: 'sync' as TabType, 
+      step: '09', 
+      label: 'Roster Sync', 
+      icon: <RefreshCw className="w-4 h-4" />, 
+      desc: 'Paste Battrick Pages', 
+      status: 'Active',
+      badgeClass: 'bg-indigo-100 text-indigo-700',
+      activeClass: 'bg-indigo-50/90 border-indigo-200 text-indigo-950',
+    },
+    { 
+      id: 'rules' as TabType, 
+      step: '10', 
+      label: 'Club Setup', 
+      icon: <BookOpen className="w-4 h-4" />, 
+      desc: 'Profile & Tactical Rules', 
+      status: 'Setup',
+      badgeClass: 'bg-emerald-100 text-emerald-700',
+      activeClass: 'bg-emerald-50/90 border-emerald-200 text-emerald-950',
+    },
   ];
 
   const tabs = user?.role === 'admin'
-    ? [...baseTabs, { id: 'admin' as TabType, step: '11', label: 'Admin Portal', icon: <Trophy className="w-4 h-4 text-indigo-600" />, desc: 'Usage & Team Switcher', status: 'Control' }]
+    ? [...baseTabs, { 
+        id: 'admin' as TabType, 
+        step: '11', 
+        label: 'Admin Portal', 
+        icon: <Trophy className="w-4 h-4 text-purple-700" />, 
+        desc: 'Usage & Team Switcher', 
+        status: 'Control',
+        badgeClass: 'bg-purple-100 text-purple-700',
+        activeClass: 'bg-purple-50/90 border-purple-200 text-purple-950',
+      }]
     : baseTabs;
 
 
@@ -424,30 +523,37 @@ export default function App() {
                 Strategic Navigation
               </span>
               
-              <nav className="flex flex-col gap-1">
+              <nav className="flex flex-col gap-1.5">
                 {tabs.map((tab) => {
                   const isActive = activeTab === tab.id;
                   return (
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`w-full text-left px-3.5 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-between group cursor-pointer ${
+                      className={`w-full text-left p-2 rounded-xl text-xs font-bold transition flex items-center justify-between group cursor-pointer border ${
                         isActive
-                          ? 'bg-blue-50 text-blue-700 border border-blue-100'
-                          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
+                          ? `${tab.activeClass} shadow-2xs`
+                          : 'bg-white/60 hover:bg-slate-50/90 border-transparent hover:border-slate-200/80 text-slate-700'
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className={`p-1 rounded transition-colors ${isActive ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'}`}>
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 shadow-2xs ${tab.badgeClass}`}>
                           {tab.icon}
                         </div>
-                        <span className="truncate">{tab.label}</span>
+                        <div className="min-w-0">
+                          <div className={`truncate leading-tight ${isActive ? 'text-slate-900 font-bold' : 'text-slate-700 font-semibold'}`}>
+                            {tab.label}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-normal truncate mt-0.5">
+                            {tab.desc}
+                          </div>
+                        </div>
                       </div>
-                      <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded transition-colors ${
+                      <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded shrink-0 ml-2 transition-colors ${
                         isDataSyncing
                           ? 'bg-amber-50 text-amber-700 border border-amber-200/90 font-bold flex items-center gap-1 animate-pulse'
                           : isActive 
-                            ? 'bg-blue-600/10 text-blue-700 font-bold' 
+                            ? 'bg-white/90 border border-slate-200 text-slate-800 font-bold shadow-2xs' 
                             : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200 group-hover:text-slate-600'
                       }`}>
                         {isDataSyncing ? (
@@ -591,84 +697,120 @@ export default function App() {
           <button
             type="button"
             onClick={() => { setActiveTab('summary'); setShowMobileMore(false); }}
-            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
+            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer border ${
               activeTab === 'summary' && !showMobileMore
-                ? 'bg-[#e8edf2] text-slate-900 font-semibold shadow-2xs'
-                : 'text-slate-500 hover:text-slate-900 font-medium'
+                ? 'bg-blue-50/90 text-blue-950 font-bold border-blue-200/80 shadow-2xs'
+                : 'border-transparent text-slate-600 hover:text-slate-900 font-medium'
             }`}
           >
-            <LayoutGrid className="w-5 h-5 mb-0.5" />
-            <span className="text-[11px] leading-tight">Overview</span>
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center mb-0.5 shrink-0 transition-transform ${
+              activeTab === 'summary' && !showMobileMore
+                ? 'bg-blue-100 text-blue-700 scale-105 shadow-2xs'
+                : 'bg-blue-50/80 text-blue-600'
+            }`}>
+              <LayoutGrid className="w-3.5 h-3.5" />
+            </div>
+            <span className="text-[10px] leading-tight">Overview</span>
           </button>
 
           {/* 2. Squad */}
           <button
             type="button"
             onClick={() => { setActiveTab('squad'); setShowMobileMore(false); }}
-            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
+            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer border ${
               (activeTab === 'squad' || activeTab === 'player-details') && !showMobileMore
-                ? 'bg-[#e8edf2] text-slate-900 font-semibold shadow-2xs'
-                : 'text-slate-500 hover:text-slate-900 font-medium'
+                ? 'bg-purple-50/90 text-purple-950 font-bold border-purple-200/80 shadow-2xs'
+                : 'border-transparent text-slate-600 hover:text-slate-900 font-medium'
             }`}
           >
-            <Users className="w-5 h-5 mb-0.5" />
-            <span className="text-[11px] leading-tight">Squad</span>
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center mb-0.5 shrink-0 transition-transform ${
+              (activeTab === 'squad' || activeTab === 'player-details') && !showMobileMore
+                ? 'bg-purple-100 text-purple-700 scale-105 shadow-2xs'
+                : 'bg-purple-50/80 text-purple-600'
+            }`}>
+              <Users className="w-3.5 h-3.5" />
+            </div>
+            <span className="text-[10px] leading-tight">Squad</span>
           </button>
 
           {/* 3. Match XI */}
           <button
             type="button"
             onClick={() => { setActiveTab('lineup'); setShowMobileMore(false); }}
-            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
+            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer border ${
               activeTab === 'lineup' && !showMobileMore
-                ? 'bg-[#e8edf2] text-slate-900 font-semibold shadow-2xs'
-                : 'text-slate-500 hover:text-slate-900 font-medium'
+                ? 'bg-emerald-50/90 text-emerald-950 font-bold border-emerald-200/80 shadow-2xs'
+                : 'border-transparent text-slate-600 hover:text-slate-900 font-medium'
             }`}
           >
-            <Activity className="w-5 h-5 mb-0.5" />
-            <span className="text-[11px] leading-tight whitespace-nowrap">Match XI</span>
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center mb-0.5 shrink-0 transition-transform ${
+              activeTab === 'lineup' && !showMobileMore
+                ? 'bg-emerald-100 text-emerald-700 scale-105 shadow-2xs'
+                : 'bg-emerald-50/80 text-emerald-600'
+            }`}>
+              <Activity className="w-3.5 h-3.5" />
+            </div>
+            <span className="text-[10px] leading-tight whitespace-nowrap">Match XI</span>
           </button>
 
           {/* 4. Finances */}
           <button
             type="button"
             onClick={() => { setActiveTab('wage'); setShowMobileMore(false); }}
-            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
+            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer border ${
               activeTab === 'wage' && !showMobileMore
-                ? 'bg-[#e8edf2] text-slate-900 font-semibold shadow-2xs'
-                : 'text-slate-500 hover:text-slate-900 font-medium'
+                ? 'bg-teal-50/90 text-teal-950 font-bold border-teal-200/80 shadow-2xs'
+                : 'border-transparent text-slate-600 hover:text-slate-900 font-medium'
             }`}
           >
-            <Wallet className="w-5 h-5 mb-0.5" />
-            <span className="text-[11px] leading-tight">Finances</span>
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center mb-0.5 shrink-0 transition-transform ${
+              activeTab === 'wage' && !showMobileMore
+                ? 'bg-teal-100 text-teal-700 scale-105 shadow-2xs'
+                : 'bg-teal-50/80 text-teal-600'
+            }`}>
+              <Wallet className="w-3.5 h-3.5" />
+            </div>
+            <span className="text-[10px] leading-tight">Finances</span>
           </button>
 
           {/* 5. Ground */}
           <button
             type="button"
             onClick={() => { setActiveTab('stadium'); setShowMobileMore(false); }}
-            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
+            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer border ${
               activeTab === 'stadium' && !showMobileMore
-                ? 'bg-[#e8edf2] text-slate-900 font-semibold shadow-2xs'
-                : 'text-slate-500 hover:text-slate-900 font-medium'
+                ? 'bg-cyan-50/90 text-cyan-950 font-bold border-cyan-200/80 shadow-2xs'
+                : 'border-transparent text-slate-600 hover:text-slate-900 font-medium'
             }`}
           >
-            <Landmark className="w-5 h-5 mb-0.5" />
-            <span className="text-[11px] leading-tight">Ground</span>
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center mb-0.5 shrink-0 transition-transform ${
+              activeTab === 'stadium' && !showMobileMore
+                ? 'bg-cyan-100 text-cyan-700 scale-105 shadow-2xs'
+                : 'bg-cyan-50/80 text-cyan-600'
+            }`}>
+              <Landmark className="w-3.5 h-3.5" />
+            </div>
+            <span className="text-[10px] leading-tight">Ground</span>
           </button>
 
           {/* 6. More */}
           <button
             type="button"
             onClick={() => setShowMobileMore(prev => !prev)}
-            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
+            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer border ${
               showMobileMore || ['coach', 'sync', 'rules', 'admin', 'scout', 'league'].includes(activeTab)
-                ? 'bg-[#e8edf2] text-slate-900 font-semibold shadow-2xs'
-                : 'text-slate-500 hover:text-slate-900 font-medium'
+                ? 'bg-indigo-50/90 text-indigo-950 font-bold border-indigo-200/80 shadow-2xs'
+                : 'border-transparent text-slate-600 hover:text-slate-900 font-medium'
             }`}
           >
-            <MoreHorizontal className="w-5 h-5 mb-0.5" />
-            <span className="text-[11px] leading-tight">More</span>
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center mb-0.5 shrink-0 transition-transform ${
+              showMobileMore || ['coach', 'sync', 'rules', 'admin', 'scout', 'league'].includes(activeTab)
+                ? 'bg-indigo-100 text-indigo-700 scale-105 shadow-2xs'
+                : 'bg-indigo-50/80 text-indigo-600'
+            }`}>
+              <MoreHorizontal className="w-3.5 h-3.5" />
+            </div>
+            <span className="text-[10px] leading-tight">More</span>
           </button>
         </div>
       </div>

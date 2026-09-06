@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, Award, TrendingUp, Coins, ShieldCheck, Landmark, HeartPulse, Brain, Calculator, AlertTriangle, Info } from 'lucide-react';
+import { BookOpen, Award, TrendingUp, Coins, ShieldCheck, Landmark, HeartPulse, Brain, Calculator, AlertTriangle, Info, Shield, Target, Zap, Activity } from 'lucide-react';
 import AuthController from './AuthController';
 
 export default function BusinessRules() {
@@ -454,6 +454,150 @@ export default function BusinessRules() {
 
           <div className="mt-4 bg-sky-50 border border-sky-100 rounded-lg p-3 text-[11px] text-sky-800 leading-relaxed">
             💡 <strong>Training Tip:</strong> Assigning <strong>Stamina Nets</strong> increases a player's Stamina level, which directly increases their fitness recovery rate. Fitness levels naturally fluctuate week-by-week based on match playtime.
+          </div>
+        </div>
+      </div>
+
+      {/* Section 6: Match Engine, Sector Ratings & Lineup Optimizer Calculations */}
+      <div className="md:col-span-12 lg:col-span-12">
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+          <h4 className="font-display font-bold text-base text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
+            <Shield className="w-5 h-5 text-indigo-600" />
+            6. Match Engine, Sector Ratings & Lineup Optimizer Calculations
+          </h4>
+          <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+            These formulas represent the community-reverse-engineered Battrick match engine used in the <strong>Lineup Optimizer</strong>. They calculate exact sector strengths, tactical order effects, secondary skill contributions, and overall Batstats output.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            {/* Match Effort Dynamics */}
+            <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-indigo-700 font-bold text-xs uppercase tracking-wider mb-2">
+                  <Zap className="w-4 h-4 text-indigo-600" />
+                  Match Effort (Tactics)
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed mb-3">
+                  Match orders govern team performance and post-match physical fatigue (PFL drain):
+                </p>
+                <div className="space-y-2 text-[11px]">
+                  <div className="p-2 rounded bg-emerald-50 border border-emerald-200 text-emerald-950 font-mono">
+                    <span className="font-bold text-emerald-800 block text-xs">TIE (Take It Easy)</span>
+                    Skill Output: <strong>0.85x (-15%)</strong><br />
+                    PFL Drain: <strong>0.70x (-30%)</strong>
+                  </div>
+                  <div className="p-2 rounded bg-indigo-50 border border-indigo-200 text-indigo-950 font-mono">
+                    <span className="font-bold text-indigo-800 block text-xs">PAN (Play As Normal)</span>
+                    Skill Output: <strong>1.00x (Baseline)</strong><br />
+                    PFL Drain: <strong>1.00x (Baseline)</strong>
+                  </div>
+                  <div className="p-2 rounded bg-rose-50 border border-rose-200 text-rose-950 font-mono">
+                    <span className="font-bold text-rose-800 block text-xs">GFI (Go For It)</span>
+                    Skill Output: <strong>1.15x (+15%)</strong><br />
+                    PFL Drain: <strong>1.50x (+50%)</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Individual Effective Values */}
+            <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-indigo-700 font-bold text-xs uppercase tracking-wider mb-2">
+                  <Target className="w-4 h-4 text-indigo-600" />
+                  Effective Player Values
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed mb-3">
+                  Secondary skills boost core output; Form and Fitness modulate active contribution:
+                </p>
+                <div className="space-y-2 text-[11px] font-mono">
+                  <div className="p-2.5 rounded bg-white border border-slate-200">
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Batting Value</span>
+                    <span className="font-bold text-indigo-700">Batting + 0.25 × Concentration</span>
+                  </div>
+                  <div className="p-2.5 rounded bg-white border border-slate-200">
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Bowling Value</span>
+                    <span className="font-bold text-indigo-700">Bowling + 0.25 × Consistency</span>
+                  </div>
+                  <div className="p-2.5 rounded bg-white border border-slate-200">
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Form Multiplier</span>
+                    <span className="font-bold text-slate-800">0.80 + (Form / 10) × 0.20</span>
+                    <span className="block text-[10px] text-slate-500 font-sans mt-0.5">Sublime (10) = 1.00x | Woeful (0) = 0.80x</span>
+                  </div>
+                  <div className="p-2.5 rounded bg-white border border-slate-200">
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Fitness (PFL) Multiplier</span>
+                    <span className="font-bold text-slate-800">0.45 + (PFL / 10) × 0.55</span>
+                    <span className="block text-[10px] text-slate-500 font-sans mt-0.5">Saturated (10) = 1.00x | Shattered (0) = 0.45x</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Sector Weightings */}
+            <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-indigo-700 font-bold text-xs uppercase tracking-wider mb-2">
+                  <Activity className="w-4 h-4 text-indigo-600" />
+                  Order & Sector Weightings
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed mb-3">
+                  Match sectors aggregate player values across specific batting and bowling orders:
+                </p>
+                <div className="space-y-2 text-[10px] font-mono">
+                  <div className="p-2 rounded bg-white border border-slate-200">
+                    <span className="text-slate-800 font-bold block">Top Order Batting (Pos 1–5):</span>
+                    <span className="text-indigo-600">25% (1) + 25% (2) + 20% (3) + 18% (4) + 12% (5)</span>
+                  </div>
+                  <div className="p-2 rounded bg-white border border-slate-200">
+                    <span className="text-slate-800 font-bold block">Middle Order Batting (Pos 4–7):</span>
+                    <span className="text-indigo-600">15% (4) + 30% (5) + 30% (6) + 25% (7)</span>
+                  </div>
+                  <div className="p-2 rounded bg-white border border-slate-200">
+                    <span className="text-slate-800 font-bold block">Lower Order Batting (Pos 8–11):</span>
+                    <span className="text-indigo-600">15% (8) + 35% (9) + 30% (10) + 20% (11)</span>
+                  </div>
+                  <div className="p-2 rounded bg-white border border-slate-200">
+                    <span className="text-slate-800 font-bold block">Bowling Depth Bonus:</span>
+                    <span className="text-slate-600 block">Seam: Avg Bowling + min(3, N) × 0.45</span>
+                    <span className="text-slate-600 block">Spin: Avg Bowling + min(2, N) × 0.55</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Keeping, Fielding & Batstats */}
+            <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-indigo-700 font-bold text-xs uppercase tracking-wider mb-2">
+                  <Calculator className="w-4 h-4 text-indigo-600" />
+                  Batstats & Defense
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed mb-3">
+                  Wicket keeping, ground fielding, and the summary aggregate Batstats score:
+                </p>
+                <div className="space-y-2 text-[10px] font-mono">
+                  <div className="p-2 rounded bg-white border border-slate-200">
+                    <span className="text-slate-800 font-bold block">Wicket Keeping Rating:</span>
+                    <span className="text-indigo-700">Keeping + (Experience × 0.16)</span>
+                    <span className="text-slate-500 font-sans block text-[9px] mt-0.5">Modulated by keeper Form & Fitness</span>
+                  </div>
+                  <div className="p-2 rounded bg-white border border-slate-200">
+                    <span className="text-slate-800 font-bold block">Fielding Rating:</span>
+                    <span className="text-indigo-700">Avg Fielding + (Avg Exp × 0.10)</span>
+                    <span className="text-slate-500 font-sans block text-[9px] mt-0.5">Squad-wide fielding & experience blend</span>
+                  </div>
+                  <div className="p-2.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-950">
+                    <span className="text-emerald-800 font-bold block text-xs">Estimated Batstats Formula:</span>
+                    <span className="text-emerald-900 font-bold block text-xs mt-0.5">round((Top + Mid + Low) × 7)</span>
+                    <span className="text-emerald-700 font-sans block text-[9px] mt-0.5">Mirrors Battrick's official single-figure match report batting output.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-indigo-50/60 border border-indigo-150 rounded-xl p-4 text-xs text-indigo-900 leading-relaxed">
+            <strong>💡 Match Rating Interpretation:</strong> Raw sector values (0 to 20) map directly onto Battrick's standard 20-level hierarchy from <em>worthless (1)</em> to <em>elite (20)</em>. For instance, a Top Order rating of 8.0 maps to <strong>Strong</strong>, while 12.0 is <strong>Remarkable</strong>. Every level is modulated in real time by your selected <strong>Match Effort</strong> (TIE / PAN / GFI).
           </div>
         </div>
       </div>

@@ -735,7 +735,6 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
     text += `- Wicket Keeping: ${getBattrickRatingLabel(ratings.wicketKeeping).full} (${ratings.wicketKeeping.toFixed(1)})\n`;
     text += `- Fielding: ${getBattrickRatingLabel(ratings.fielding).full} (${ratings.fielding.toFixed(1)})\n`;
     text += `- Est. Batstats: ${ratings.batStats}\n`;
-    text += `- Estimated Lineup BTR: ${ratings.estimatedBTR > 0 ? ratings.estimatedBTR.toLocaleString() : "N/A"}\n`;
 
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -1055,29 +1054,6 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
             );
           })}
         </div>
-
-        {/* Estimated Match Summary - mirrors Battrick's own Reporter's Summary
-            (matchinfo.asp?action=summary): Top/Middle/Lower Order, Seam/Spin
-            Bowling and Fielding, each shown as a label with the exact numeric
-            Level available on hover, just like the real page. */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <h4 className="font-display font-bold text-xs text-slate-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2.5 mb-2.5">
-            <Shield className="w-4 h-4 text-indigo-600" />
-            Estimated Match Summary
-          </h4>
-          <table className="w-full text-xs">
-            <tbody>
-              {summarySectorRows.map(renderRatingRow)}
-              <tr>
-                <td className="py-1.5 pr-3 font-semibold text-slate-500">Batstats (est.):</td>
-                <td className="py-1.5 text-right font-mono font-bold text-slate-700">{ratings.batStats}</td>
-              </tr>
-            </tbody>
-          </table>
-          <p className="mt-2.5 pt-2 border-t border-slate-100 text-[10px] text-slate-400 leading-relaxed">
-            Estimated from your current Match XI on <strong className="text-slate-500">{EFFORT_OPTIONS.find(o => o.key === matchEffort)?.label}</strong> &mdash; hover a rating to see its exact Level, just like Battrick's own match reports.
-          </p>
-        </div>
       </div>
 
       {/* Dynamic Team Ratings Output */}
@@ -1145,22 +1121,18 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
             <tbody>
               {summarySectorRows.map(renderRatingRow)}
               {renderRatingRow(['Wicket Keeping', ratings.wicketKeeping])}
-              <tr>
-                <td className="py-1.5 pr-3 font-semibold text-slate-500">Batstats (est.):</td>
-                <td className="py-1.5 text-right font-mono font-bold text-slate-700">{ratings.batStats}</td>
-              </tr>
             </tbody>
           </table>
 
           <div className="flex flex-col gap-3.5">
-            {/* Estimated Battrick Rating (BTR) Score */}
-            <div className="p-3.5 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-between shadow-inner">
+            {/* Estimated Batstats output */}
+            <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-between shadow-inner">
               <div>
-                <div className="text-[10px] text-indigo-500 uppercase tracking-wider font-bold">Estimated Lineup BTR</div>
-                <div className="text-[11px] text-indigo-700 mt-0.5 font-medium">Total Battrick Rating score for XI</div>
+                <div className="text-[10px] text-emerald-700 uppercase tracking-wider font-bold">Est. Batstats</div>
+                <div className="text-[11px] text-emerald-800 mt-0.5 font-medium">Aggregated batting order strength score</div>
               </div>
-              <div className="font-mono text-sm font-bold px-3 py-1.5 bg-white text-indigo-700 rounded border border-indigo-300 shadow-sm">
-                {ratings.estimatedBTR > 0 ? ratings.estimatedBTR.toLocaleString() : 'N/A'}
+              <div className="font-mono text-sm font-bold px-3 py-1.5 bg-white text-emerald-700 rounded border border-emerald-300 shadow-sm">
+                {ratings.batStats}
               </div>
             </div>
 
@@ -1172,26 +1144,6 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
               </div>
               <div className="font-mono text-sm font-bold px-3 py-1.5 bg-white text-amber-700 rounded border border-amber-300 shadow-sm">
                 {ratings.pflLossMultiplier.toFixed(2)}x
-              </div>
-            </div>
-          </div>
-
-          {/* Aggregate Averages info footer */}
-          <div className="mt-2 pt-3 border-t border-slate-100 grid grid-cols-2 gap-4 text-center">
-            <div>
-              <div className="text-[10px] text-slate-400 uppercase font-semibold">Avg Experience</div>
-              <div className="font-mono text-xs font-semibold text-slate-700 mt-0.5">
-                {ratings.teamExperience.toFixed(1)} ({SKILL_LEVELS[Math.round(ratings.teamExperience)]})
-              </div>
-            </div>
-            <div>
-              <div className="text-[10px] text-slate-400 uppercase font-semibold">Avg Stamina</div>
-              <div className="font-mono text-xs font-semibold text-slate-700 mt-0.5">
-                {lineup.reduce((acc, curr) => acc + curr.stamina, 0) / 11 < 5.0 ? (
-                  <span className="text-amber-600 font-semibold">Low (⚠️ Decay Risk)</span>
-                ) : (
-                  'Stable'
-                )}
               </div>
             </div>
           </div>
