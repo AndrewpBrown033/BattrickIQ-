@@ -12,6 +12,7 @@ import LoginPage from './components/LoginPage';
 import AdminDashboard from './components/AdminDashboard';
 import PlayerDetails from './components/PlayerDetails';
 import OpponentScout from './components/OpponentScout';
+import BattrickAuthBar from './components/BattrickAuthBar';
 import { LeagueStandings } from './components/LeagueStandings';
 import { onCustomAuthStateChanged, customSignOut, getCustomUser, CustomUser } from './lib/customAuth';
 import { Award, Calculator, Users, FolderOpen, Heart, RefreshCw, Landmark, Bot, BookOpen, Trophy, Clock, ShieldAlert, LogOut, Eye, Activity, History, LayoutGrid, Wallet, MoreHorizontal, X, ChevronUp, Swords } from 'lucide-react';
@@ -365,6 +366,9 @@ export default function App() {
         </div>
       </header>
 
+      {/* Battrick Global Authentication Bar & Modal Prompt */}
+      <BattrickAuthBar />
+
       {/* SaaS Admin Inspecting Banner */}
       {adminViewingEmail && (
         <div className="bg-amber-500 text-white font-mono text-xs px-4 py-2.5 flex items-center justify-between gap-4 shadow-md sticky top-15 z-40">
@@ -530,7 +534,7 @@ export default function App() {
                     />
                   )}
                   {activeTab === 'lineup' && <LineupOptimizer setActiveTab={setActiveTab} />}
-                  {activeTab === 'scout' && <OpponentScout setActiveTab={setActiveTab} scoutTarget={scoutTarget} />}
+                  {activeTab === 'scout' && <OpponentScout setActiveTab={setActiveTab} />}
                   {activeTab === 'league' && (
                     <LeagueStandings
                       setActiveTab={setActiveTab}
