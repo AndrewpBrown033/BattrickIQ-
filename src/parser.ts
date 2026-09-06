@@ -3939,11 +3939,11 @@ export function parseLeagueTable(content: string, defaultType?: 'First Class' | 
         const firstCol = cells[0].text;
         const pos = parseInt(firstCol.replace('#', ''), 10);
         if (!isNaN(pos) && pos >= 1 && pos <= 20) {
-          // Team Name column is usually index 1
-          const teamCell = cells[1];
+          const teamCell = cells[1] || cells[0];
           const teamName = teamCell.text || 'Unknown Team';
           let teamId = '';
-          const teamIdMatch = teamCell.link.match(/teamID=(\d+)/i) || teamCell.html.match(/teamID=(\d+)/i);
+          const rowHtml = row.innerHTML || '';
+          const teamIdMatch = teamCell.link.match(/teamID=(\d+)/i) || teamCell.html.match(/teamID=(\d+)/i) || rowHtml.match(/teamID=(\d+)/i);
           if (teamIdMatch) teamId = teamIdMatch[1];
 
           // Played, Won, Tied, Lost, Points, NRR

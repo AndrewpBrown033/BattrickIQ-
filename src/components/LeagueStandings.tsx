@@ -613,6 +613,11 @@ export const LeagueStandings: React.FC<LeagueStandingsProps> = ({ setActiveTab, 
                     <td className="py-3 px-4 font-semibold text-slate-900">
                       <div className="flex items-center gap-2">
                         <span>{team.teamName}</span>
+                        {team.teamId && (
+                          <span className="text-slate-400 font-mono text-[11px] font-normal">
+                            (ID: {team.teamId})
+                          </span>
+                        )}
                         {team.isMyTeam && (
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-600 text-white uppercase tracking-wider">
                             My Team
