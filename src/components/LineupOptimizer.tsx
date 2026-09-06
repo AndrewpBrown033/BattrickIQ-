@@ -132,8 +132,6 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
         keeping: p.skills.keeping,
         fielding: p.skills.fielding || 5,
         btRating: p.btRating,
-        fielding: p.skills.fielding || 5,
-        btRating: p.btRating,
         stamina: p.skills.stamina,
         experience: p.skills.experience,
         bowlingType: p.bowlingType,
@@ -404,6 +402,8 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
           batting: batters[i].skills.batting,
           bowling: batters[i].skills.bowling,
           keeping: batters[i].skills.keeping,
+          fielding: batters[i].skills.fielding || 5,
+          btRating: batters[i].btRating,
           stamina: batters[i].skills.stamina,
           experience: batters[i].skills.experience,
           bowlingType: batters[i].bowlingType,
@@ -420,6 +420,8 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
       batting: primaryKeeper.skills.batting,
       bowling: primaryKeeper.skills.bowling,
       keeping: primaryKeeper.skills.keeping,
+      fielding: primaryKeeper.skills.fielding || 5,
+      btRating: primaryKeeper.btRating,
       stamina: primaryKeeper.skills.stamina,
       experience: primaryKeeper.skills.experience,
       bowlingType: primaryKeeper.bowlingType,
@@ -445,6 +447,8 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
           batting: bPlayer.skills.batting,
           bowling: bPlayer.skills.bowling,
           keeping: bPlayer.skills.keeping,
+          fielding: bPlayer.skills.fielding || 5,
+          btRating: bPlayer.btRating,
           stamina: bPlayer.skills.stamina,
           experience: bPlayer.skills.experience,
           bowlingType: bPlayer.bowlingType,
@@ -885,6 +889,53 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
               </div>
             );
           })}
+        </div>
+
+        {/* Estimated Match Summary - mirrors Battrick's own Reporter's Summary
+            (matchinfo.asp?action=summary): Top/Middle/Lower Order, Seam/Spin
+            Bowling and Fielding, each shown as a label with the exact numeric
+            Level available on hover, just like the real page. */}
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <h4 className="font-display font-bold text-xs text-slate-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2.5 mb-2.5">
+            <Shield className="w-4 h-4 text-indigo-600" />
+            Estimated Match Summary
+          </h4>
+          <table className="w-full text-xs">
+            <tbody>
+              {([
+                ['Top Order', ratings.topOrder],
+                ['Middle Order', ratings.middleOrder],
+                ['Lower Order', ratings.lowerOrder],
+                ['Seam Bowling', ratings.seamBowling],
+                ['Spin Bowling', ratings.spinBowling],
+                ['Fielding', ratings.fielding],
+              ] as [string, number][]).map(([rowLabel, rawScore]) => {
+                const level = Math.min(20, Math.max(0, Math.round(rawScore)));
+                const label = SKILL_LEVELS[level] || 'useless';
+                const isEmpty = rowLabel === 'Spin Bowling' && rawScore <= 0;
+                return (
+                  <tr key={rowLabel} className="border-b border-slate-50 last:border-0">
+                    <td className="py-1.5 pr-3 font-semibold text-slate-500">{rowLabel}:</td>
+                    <td className="py-1.5 text-right">
+                      {isEmpty ? (
+                        <span className="text-slate-400 italic">none</span>
+                      ) : (
+                        <span
+                          title={`Level ${level}`}
+                          className={`font-bold uppercase cursor-help ${getBattrickRatingLabel(rawScore).color.split(' ')[0]}`}
+                        >
+                          {label}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="mt-2.5 pt-2 border-t border-slate-100 text-[10px] text-slate-400 leading-relaxed">
+            Estimated from your current Match XI &mdash; hover a rating to see its exact Level, just like Battrick's own match reports.
+          </p>
         </div>
       </div>
 
