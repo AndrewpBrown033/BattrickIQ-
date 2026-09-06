@@ -4032,6 +4032,115 @@ export function parseOpponentSquad(content: string, overrideTeamName?: string, o
     }
   }
 
+  // 4. Fallback for raw text copied and pasted from Battrick's squad page (without HTML tags)
+  if (players.length === 0) {
+    const rawLines = content.split('\n');
+    const playerHeaderRegex = /([A-Za-z0-9'\-. ]+?)\s*-\s*(\d+)\s*(?:yo|years old)[^,]*,\s*BT\s*(?:\(Battrick\)\s*)?Rating\s*=\s*([0-9,]+)[^,]*,\s*Wage\s*=\s*(?:&#163;|£)?([0-9,]+)/i;
+    
+    let currentParsed: any = null;
+
+    for (const rawLine of rawLines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+
+      const headerMatch = line.match(playerHeaderRegex);
+      if (headerMatch) {
+        if (currentParsed) {
+          players.push(currentParsed);
+        }
+        const name = headerMatch[1].trim();
+        const age = parseInt(headerMatch[2], 10);
+        const btRating = parseInt(headerMatch[3].replace(/,/g, ''), 10);
+        const wage = parseInt(headerMatch[4].replace(/,/g, ''), 10);
+        const fakeId = `p_${Math.abs(name.split('').reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0))}`;
+        const { estimatedSkillLabel, estimatedSkillLevel } = estimateSkillFromWageAndBTR(wage, btRating, 'Batter');
+
+        currentParsed = {
+          id: fakeId,
+          playerId: fakeId,
+          name,
+          age,
+          wage,
+          btRating,
+          bowlingType: 'None',
+          role: 'Batter' as const,
+          battingAverage: 45.0,
+          bowlingAverage: 0,
+          keeping: 1,
+          battingHand: 'RH',
+          battingStyle: 'cautious',
+          bowlingHand: 'R',
+          bowlingStyle: '',
+          bowlingAggression: '',
+          battingFormLabel: 'proficient',
+          bowlingFormLabel: 'respectable',
+          fitnessLabel: 'invigorated',
+          estimatedSkillLabel,
+          estimatedSkillLevel,
+          primaryRoleClassifier: 'Batter' as const,
+          teamName: overrideTeamName || 'Rival Club',
+          teamId: overrideTeamId || '',
+          form: 8,
+          fitness: 8,
+          skills: {
+            batting: estimatedSkillLevel,
+            bowling: 2,
+            keeping: 1,
+            stamina: 7,
+            leadership: 2,
+            experience: 8,
+            concentration: estimatedSkillLevel,
+            consistency: estimatedSkillLevel,
+            fielding: 6
+          },
+          nets: { batting: 0, bowling: 0, keeping: 0, fielding: 0, stamina: 0 }
+        };
+        continue;
+      }
+
+      if (currentParsed) {
+        // Parse batting & bowling style
+        if (line.includes('batter') || line.includes('bowler')) {
+          const batHandMatch = line.match(/\b(LH|RH)\s*batter/i);
+          if (batHandMatch) currentParsed.battingHand = batHandMatch[1].toUpperCase();
+
+          const batStyleMatch = line.match(/\b(defensive|cautious|steady|attacking|destructive)\b/i);
+          if (batStyleMatch) currentParsed.battingStyle = batStyleMatch[1].toLowerCase();
+
+          const bowlMatch = line.match(/\b(LF|LFM|LM|LB|LBG|OB|RF|RFM|RM|SLC|SLW)\s*(?:finger spin\s*)?bowler/i);
+          if (bowlMatch) {
+            currentParsed.bowlingType = bowlMatch[1].toUpperCase();
+            currentParsed.bowlingHand = currentParsed.bowlingType.startsWith('L') ? 'L' : 'R';
+            currentParsed.bowlingStyle = currentParsed.bowlingType;
+            if (currentParsed.wage > 15000 && currentParsed.btRating > 30000) {
+              currentParsed.role = 'All-rounder';
+              currentParsed.primaryRoleClassifier = 'All-Rounder';
+              currentParsed.skills.bowling = currentParsed.estimatedSkillLevel;
+              currentParsed.bowlingAverage = 26.5;
+            } else {
+              currentParsed.role = 'Bowler';
+              currentParsed.primaryRoleClassifier = 'Bowler';
+              currentParsed.skills.bowling = currentParsed.estimatedSkillLevel;
+              currentParsed.skills.batting = Math.max(1, currentParsed.estimatedSkillLevel - 5);
+              currentParsed.bowlingAverage = 22.0;
+              currentParsed.battingAverage = 12.0;
+            }
+          }
+
+          if (/wicketkeeper|keeper/i.test(line)) {
+            currentParsed.role = 'Keeper';
+            currentParsed.primaryRoleClassifier = 'Wicketkeeper';
+            currentParsed.keeping = Math.max(8, currentParsed.estimatedSkillLevel);
+            currentParsed.skills.keeping = currentParsed.keeping;
+          }
+        }
+      }
+    }
+    if (currentParsed) {
+      players.push(currentParsed);
+    }
+  }
+
   return players;
 }
 

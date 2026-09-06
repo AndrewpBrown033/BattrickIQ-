@@ -63,7 +63,9 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
-  Gauge
+  Trash2,
+  Gauge,
+  Users
 } from 'lucide-react';
 
 interface OpponentScoutProps {
@@ -76,6 +78,66 @@ const normalizeMatchFormat = (type?: string): MatchFormat => {
   if (type.toLowerCase().includes('first class')) return 'First Class';
   if (type.toLowerCase().includes('twenty20') || type.toLowerCase().includes('t20')) return 'Twenty20';
   return 'One Day';
+};
+
+// Helper to map parsed BattrickPlayer[] into standard OpponentPlayer[] format
+export const mapParsedToOpponentPlayers = (parsedPlayers: BattrickPlayer[]): OpponentPlayer[] => {
+  return parsedPlayers.map((p, idx) => {
+    const batVal = p.skills.batting;
+    const bowlVal = p.skills.bowling;
+    const isKeeper = p.primaryRoleClassifier === 'Wicketkeeper';
+    const batAvg = (p as any).battingAverage !== undefined ? (p as any).battingAverage : (p.role === 'Batter' || p.role === 'Keeper' ? 52.4 : 12.4);
+    const bowlAvg = (p as any).bowlingAverage !== undefined ? (p as any).bowlingAverage : (p.role === 'Bowler' ? 24.8 : 0);
+
+    return {
+      id: p.id,
+      name: p.name,
+      age: p.age,
+      wage: p.wage,
+      btRating: p.btRating,
+      role: p.role as any,
+      bowlingType: p.bowlingType || 'None',
+      batting: batVal,
+      bowling: bowlVal,
+      keeping: p.skills.keeping,
+      stamina: p.skills.stamina,
+      experience: p.skills.experience,
+      concentration: p.skills.concentration,
+      consistency: p.skills.consistency,
+      fielding: p.skills.fielding,
+      order: idx + 1,
+      battingHand: p.battingHand,
+      battingStyle: p.battingStyle,
+      bowlingHand: p.bowlingHand,
+      bowlingStyle: p.bowlingStyle,
+      bowlingAggression: p.bowlingAggression,
+      battingFormLabel: p.battingFormLabel,
+      bowlingFormLabel: p.bowlingFormLabel,
+      fitnessLabel: p.fitnessLabel,
+      estimatedSkillLabel: p.estimatedSkillLabel,
+      estimatedSkillLevel: p.estimatedSkillLevel,
+      primaryRoleClassifier: p.primaryRoleClassifier,
+      battingAverage: batAvg,
+      bowlingAverage: bowlAvg
+    };
+  });
+};
+
+// Helper to look up cached authentic squad in localStorage
+export const getStoredOpponentSquad = (teamId?: string, teamName?: string): { roster: OpponentPlayer[]; isAuthentic: boolean } => {
+  if (typeof localStorage === 'undefined') return { roster: [], isAuthentic: false };
+  try {
+    const idKey = teamId?.trim() ? localStorage.getItem(`bt_scout_squad_${teamId.trim()}`) : null;
+    const nameKey = teamName?.trim() ? localStorage.getItem(`bt_scout_squad_${teamName.trim().toLowerCase()}`) : null;
+    const raw = idKey || nameKey;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return { roster: parsed, isAuthentic: true };
+      }
+    }
+  } catch {}
+  return { roster: [], isAuthentic: false };
 };
 
 export default function OpponentScout({ setActiveTab, initialScoutTarget }: OpponentScoutProps) {
@@ -160,6 +222,34 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
   });
   const [dossierMatchEffort, setDossierMatchEffort] = useState<'take it easy' | 'normal' | 'go for it!'>('go for it!');
 
+  // Authentic Roster Tracking
+  const [isAuthenticRoster, setIsAuthenticRoster] = useState<boolean>(() => {
+    const initName = initialScoutTarget?.teamName?.trim() || (() => {
+      try {
+        const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('bt_scout_target_team') : null;
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.teamName?.trim()) return parsed.teamName.trim();
+        }
+      } catch {}
+      return 'Bluejays';
+    })();
+
+    const initId = initialScoutTarget?.teamId?.trim() || (() => {
+      try {
+        const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('bt_scout_target_team') : null;
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.teamId) return parsed.teamId;
+        }
+      } catch {}
+      return getKnownTeamIdByName(initName) || '24514';
+    })();
+
+    const { isAuthentic } = getStoredOpponentSquad(initId, initName);
+    return isAuthentic;
+  });
+
   // 3. Opponent Squad Data
   const [opponentPlayers, setOpponentPlayers] = useState<OpponentPlayer[]>(() => {
     const initName = initialScoutTarget?.teamName?.trim() || (() => {
@@ -184,7 +274,11 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
       return getKnownTeamIdByName(initName) || '24514';
     })();
 
-    return generateRealisticOpponentRoster(initName, false, 'One Day', initId);
+    const { roster, isAuthentic } = getStoredOpponentSquad(initId, initName);
+    if (isAuthentic && roster.length > 0) {
+      return roster;
+    }
+    return [];
   });
   
   // Sorting States for Tables
@@ -439,7 +533,6 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
 
     const matchedFixture = fixtures.find(f => f.opponent.toLowerCase().trim() === effectiveName.toLowerCase().trim());
     const effectiveFormat = matchType ? normalizeMatchFormat(matchType) : matchedFixture ? normalizeMatchFormat(matchedFixture.type) : matchFormat;
-    const isBot = matchedFixture?.isBot ?? false;
 
     setOpponentName(effectiveName);
     setOpponentTeamId(effectiveTeamId);
@@ -454,8 +547,20 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
       setActiveParsedMatch(getExampleMatchDataById(matchedFixture.matchId, myTeamName, mySquad));
     }
 
-    const roster = generateRealisticOpponentRoster(effectiveName, isBot, effectiveFormat, effectiveTeamId);
-    setOpponentPlayers(roster);
+    // Check if an authentic squad was previously saved for this team
+    const { roster, isAuthentic } = getStoredOpponentSquad(effectiveTeamId, effectiveName);
+    if (isAuthentic && roster.length > 0) {
+      setOpponentPlayers(roster);
+      setIsAuthenticRoster(true);
+    } else {
+      setOpponentPlayers([]);
+      setIsAuthenticRoster(false);
+
+      // If authenticated and Team ID is available, automatically trigger live sync!
+      if (effectiveTeamId && battrickUsername && battrickPassword) {
+        handleSyncOpponentSquadLive(effectiveTeamId, effectiveName);
+      }
+    }
 
     try {
       localStorage.setItem('bt_scout_target_team', JSON.stringify({
@@ -466,6 +571,25 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
         venue: newVenue || matchedFixture?.venue || venue
       }));
     } catch {}
+  };
+
+  // Clear all scouted opponent squads and target cache
+  const handleClearScoutCache = () => {
+    try {
+      localStorage.removeItem('bt_scout_target_team');
+      localStorage.removeItem('bt_scout_squad_last');
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('bt_scout_squad_') || k.startsWith('bt_opponent_squad_'))) {
+          localStorage.removeItem(k);
+        }
+      }
+    } catch {}
+    setOpponentPlayers([]);
+    setIsAuthenticRoster(false);
+    setSquadSyncStatus('✓ Opponent scouting cache cleared. Ready to fetch real players from team.');
+    setSquadSyncError(null);
+    setTimeout(() => setSquadSyncStatus(null), 5000);
   };
 
   // Load user data on mount and listen to storage synchronization events
@@ -595,13 +719,35 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
   // Handle parsing pasted opponent squad text
   const handleParseOpponent = () => {
     if (!pastedText.trim()) return;
-    const parsed = parseOpponentSquad(pastedText, opponentName);
+    const detectedTeamName = extractOpponentTeamNameFromSquadHtml(pastedText);
+    const effectiveName = detectedTeamName || opponentName;
+    if (detectedTeamName && detectedTeamName !== opponentName) {
+      setOpponentName(detectedTeamName);
+    }
+    let parsed = parseOpponentSquad(pastedText, effectiveName, opponentTeamId);
+    if (parsed.length === 0) {
+      const fallbackPage = parseBattrickPage(pastedText, 'squad');
+      if (fallbackPage && fallbackPage.players && fallbackPage.players.length > 0) {
+        parsed = fallbackPage.players;
+      }
+    }
     if (parsed.length > 0) {
-      setOpponentPlayers(parsed);
+      const mapped = mapParsedToOpponentPlayers(parsed);
+      setOpponentPlayers(mapped);
+      setIsAuthenticRoster(true);
       setIsInputOpen(false);
       setPastedText('');
+      try {
+        if (opponentTeamId) {
+          localStorage.setItem(`bt_scout_squad_${opponentTeamId}`, JSON.stringify(mapped));
+        }
+        localStorage.setItem(`bt_scout_squad_${effectiveName.toLowerCase()}`, JSON.stringify(mapped));
+        localStorage.setItem('bt_scout_squad_last', JSON.stringify(mapped));
+      } catch {}
+      setSquadSyncStatus(`✓ Successfully parsed & loaded ${mapped.length} authentic players for ${effectiveName}!`);
+      setTimeout(() => setSquadSyncStatus(null), 5000);
     } else {
-      alert('Could not detect valid Battrick player statistics. Please copy the text directly from the squad or scorecard page.');
+      alert('Could not detect valid Battrick player statistics. Please copy the text or HTML directly from the squad page (squad.asp).');
     }
   };
 
@@ -616,9 +762,7 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
       setIsFixturesPasteOpen(false);
       setPastedFixturesText('');
       const first = parsed[0];
-      setOpponentName(first.opponent);
-      setMatchFormat(normalizeMatchFormat(first.type));
-      setOpponentPlayers(generateRealisticOpponentRoster(first.opponent, first.isBot, normalizeMatchFormat(first.type)));
+      applyOpponent(first.opponent, first.opponentTeamId, normalizeMatchFormat(first.type), first.venue, first.matchId);
     } else {
       alert('Could not detect fixture items. Please paste the HTML snippet or text from your Upcoming Matches page.');
     }
@@ -663,22 +807,7 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
 
   // Quick scout action directly from fixture list
   const handleScoutFixtureOpponent = (game: BattrickGame) => {
-    setOpponentName(game.opponent);
-    setOpponentTeamId(game.opponentTeamId || '');
-    setMatchFormat(normalizeMatchFormat(game.type));
-    setVenue(game.venue);
-
-    if (game.matchId) {
-      setMatchIdInput(game.matchId);
-    }
-    setOpponentPlayers(generateRealisticOpponentRoster(game.opponent, game.isBot, normalizeMatchFormat(game.type), game.opponentTeamId));
-    localStorage.setItem('bt_scout_target_team', JSON.stringify({
-      teamName: game.opponent,
-      teamId: game.opponentTeamId || '',
-      matchId: game.matchId,
-      type: game.type,
-      venue: game.venue
-    }));
+    applyOpponent(game.opponent, game.opponentTeamId, normalizeMatchFormat(game.type), game.venue, game.matchId);
     setActiveSubTab('dossier');
   };
 
@@ -831,19 +960,28 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
     }
   };
 
-  const handleSyncOpponentSquadLive = async () => {
-    const targetTeamId = opponentTeamId.trim();
+  const handleSyncOpponentSquadLive = async (explicitTeamId?: string, explicitTeamName?: string) => {
+    const targetTeamId = (explicitTeamId || opponentTeamId).trim();
     if (!targetTeamId) {
-      setSquadSyncError('Opponent Team ID is required for live sync. Please manually enter the Team ID (e.g. 14112) in the input field above.');
+      setSquadSyncError('Opponent Team ID is required for live sync. Please enter the Team ID (e.g. 14112) in the input field above.');
       return;
     }
     if (!requireAuth('fetch a live opponent squad')) {
       return;
     }
     
+    // Clear any stale roster immediately
     setOpponentPlayers([]);
+    setIsAuthenticRoster(false);
+    try {
+      localStorage.removeItem(`bt_scout_squad_${targetTeamId}`);
+      if (explicitTeamName) localStorage.removeItem(`bt_scout_squad_${explicitTeamName.toLowerCase()}`);
+      if (opponentName) localStorage.removeItem(`bt_scout_squad_${opponentName.toLowerCase()}`);
+      localStorage.removeItem('bt_scout_squad_last');
+    } catch {}
+
     setIsSyncingSquad(true);
-    setSquadSyncStatus(`Connecting to Battrick server and fetching Squad ID ${targetTeamId}...`);
+    setSquadSyncStatus(`Connecting to Battrick server and fetching live Squad for Team #${targetTeamId}...`);
     setSquadSyncError(null);
 
     // Notify app-wide sync indicator
@@ -887,11 +1025,9 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
         throw new Error("Battrick returned empty response for squad list.");
       }
 
-      // Try to read the real club name off the synced page. If Battrick's squad
-      // page structure doesn't match any known pattern, fall back to whatever
-      // name is already in the Opponent Team field so behavior doesn't regress.
+      // Try to read the real club name off the synced page
       const detectedTeamName = extractOpponentTeamNameFromSquadHtml(data.html);
-      const effectiveOpponentName = detectedTeamName || opponentName;
+      const effectiveOpponentName = detectedTeamName || explicitTeamName || opponentName;
       if (detectedTeamName && detectedTeamName !== opponentName) {
         setOpponentName(detectedTeamName);
       }
@@ -907,54 +1043,22 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
       }
 
       if (parsedPlayers.length === 0) {
-        throw new Error("Failed to extract any player statistics. Please verify the Opponent Team ID is correct.");
+        throw new Error("Failed to extract any player statistics. Please verify the Opponent Team ID is correct or copy-paste the squad HTML.");
       }
 
       // Map parsed BattrickPlayer[] to OpponentPlayer[]
-      const mappedPlayers: OpponentPlayer[] = parsedPlayers.map((p, idx) => {
-        const batVal = p.skills.batting;
-        const bowlVal = p.skills.bowling;
-        const isKeeper = p.primaryRoleClassifier === 'Wicketkeeper';
-        
-        // Use realistic averages or fallback averages
-        const batAvg = (p as any).battingAverage !== undefined ? (p as any).battingAverage : (p.role === 'Batter' || p.role === 'Keeper' ? 52.4 : 12.4);
-        const bowlAvg = (p as any).bowlingAverage !== undefined ? (p as any).bowlingAverage : (p.role === 'Bowler' ? 24.8 : 0);
-
-        return {
-          id: p.id,
-          name: p.name,
-          age: p.age,
-          wage: p.wage,
-          btRating: p.btRating,
-          role: p.role as any,
-          bowlingType: p.bowlingType || 'None',
-          batting: batVal,
-          bowling: bowlVal,
-          keeping: p.skills.keeping,
-          stamina: p.skills.stamina,
-          experience: p.skills.experience,
-          concentration: p.skills.concentration,
-          consistency: p.skills.consistency,
-          fielding: p.skills.fielding,
-          order: idx + 1,
-          battingHand: p.battingHand,
-          battingStyle: p.battingStyle,
-          bowlingHand: p.bowlingHand,
-          bowlingStyle: p.bowlingStyle,
-          bowlingAggression: p.bowlingAggression,
-          battingFormLabel: p.battingFormLabel,
-          bowlingFormLabel: p.bowlingFormLabel,
-          fitnessLabel: p.fitnessLabel,
-          estimatedSkillLabel: p.estimatedSkillLabel,
-          estimatedSkillLevel: p.estimatedSkillLevel,
-          primaryRoleClassifier: p.primaryRoleClassifier,
-          battingAverage: batAvg,
-          bowlingAverage: bowlAvg
-        };
-      });
+      const mappedPlayers = mapParsedToOpponentPlayers(parsedPlayers);
 
       setOpponentPlayers(mappedPlayers);
-      setSquadSyncStatus(`✓ Successfully fetched & analyzed ${mappedPlayers.length} players for ${effectiveOpponentName} (ID: ${targetTeamId}) live from Battrick!`);
+      setIsAuthenticRoster(true);
+
+      try {
+        localStorage.setItem(`bt_scout_squad_${targetTeamId}`, JSON.stringify(mappedPlayers));
+        localStorage.setItem(`bt_scout_squad_${effectiveOpponentName.toLowerCase()}`, JSON.stringify(mappedPlayers));
+        localStorage.setItem('bt_scout_squad_last', JSON.stringify(mappedPlayers));
+      } catch {}
+
+      setSquadSyncStatus(`✓ Successfully fetched & loaded ${mappedPlayers.length} authentic players for ${effectiveOpponentName} (ID: ${targetTeamId}) live from Battrick!`);
     } catch (err: any) {
       console.warn('Squad live fetch error:', err);
       setSquadSyncError(
@@ -2067,17 +2171,28 @@ TACTICAL ORDERS:
 
           {/* Team Search Input Bar - Matches the style of the Player Scout input bar */}
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs">
-            <div className="flex flex-col sm:flex-row items-end gap-4">
+            <div className="flex flex-col sm:flex-row items-end gap-3">
               <div className="flex-1 w-full">
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-[11px] font-mono font-bold uppercase text-slate-500 block">
                     Battrick Team ID
                   </label>
-                  {getKnownTeamNameById(opponentTeamId) && (
-                    <span className="text-[10px] font-mono text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                      ✓ {getKnownTeamNameById(opponentTeamId)}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {getKnownTeamNameById(opponentTeamId) && (
+                      <span className="text-[10px] font-mono text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        ✓ {getKnownTeamNameById(opponentTeamId)}
+                      </span>
+                    )}
+                    {isAuthenticRoster ? (
+                      <span className="text-[10px] font-mono text-emerald-700 font-bold bg-emerald-100/70 px-2 py-0.5 rounded border border-emerald-300">
+                        Live Battrick Squad
+                      </span>
+                    ) : opponentPlayers.length > 0 ? (
+                      <span className="text-[10px] font-mono text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                        Simulated Roster
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="relative">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -2092,8 +2207,14 @@ TACTICAL ORDERS:
                       if (knownName && knownName !== opponentName) {
                         setOpponentName(knownName);
                       }
-                      const roster = generateRealisticOpponentRoster(effectiveName, false, matchFormat, val);
-                      setOpponentPlayers(roster);
+                      const { roster, isAuthentic } = getStoredOpponentSquad(val, effectiveName);
+                      if (isAuthentic && roster.length > 0) {
+                        setOpponentPlayers(roster);
+                        setIsAuthenticRoster(true);
+                      } else {
+                        setOpponentPlayers([]);
+                        setIsAuthenticRoster(false);
+                      }
                       try {
                         localStorage.setItem('bt_scout_target_team', JSON.stringify({
                           teamName: effectiveName,
@@ -2109,15 +2230,27 @@ TACTICAL ORDERS:
                   />
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={handleSyncOpponentSquadLive}
-                disabled={isSyncingSquad}
-                className="w-full sm:w-auto px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-mono font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSquad ? 'animate-spin' : ''}`} />
-                <span>{isSyncingSquad ? 'Syncing...' : '⚡ Sync Live Squad'}</span>
-              </button>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => handleSyncOpponentSquadLive(opponentTeamId, opponentName)}
+                  disabled={isSyncingSquad}
+                  className="flex-1 sm:flex-none px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-mono font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  title="Fetch live players for this Team ID directly from Battrick"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSquad ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingSquad ? 'Fetching...' : '⚡ Fetch Real Squad'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearScoutCache}
+                  className="px-3 py-2 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 hover:border-rose-200 font-mono font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
+                  title="Clear any cached squad data and start fresh"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Clear Cache</span>
+                </button>
+              </div>
             </div>
 
             {squadSyncStatus && (
@@ -2159,9 +2292,7 @@ TACTICAL ORDERS:
                         type="text"
                         value={opponentName}
                         onChange={(e) => {
-                          const name = e.target.value;
-                          setOpponentName(name);
-                          setOpponentPlayers(generateRealisticOpponentRoster(name, false, matchFormat, opponentTeamId));
+                          setOpponentName(e.target.value);
                         }}
                         placeholder="Enter opponent club name..."
                         className="w-full text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -2553,19 +2684,109 @@ TACTICAL ORDERS:
                     );
                   })()}
                   <span className="text-sm font-sans font-normal text-slate-500">({dossier.players.length} Players)</span>
+                  {isAuthenticRoster ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-300 px-2.5 py-0.5 rounded-md">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      <span>Live Squad</span>
+                    </span>
+                  ) : dossier.players.length > 0 ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2.5 py-0.5 rounded-md">
+                      <AlertTriangle className="w-3 h-3 text-amber-600" />
+                      <span>Simulated Roster</span>
+                    </span>
+                  ) : null}
                 </h3>
                 <p className="text-xs text-slate-500 font-mono">
-                  Click on the Team link or any Player name to open their live Battrick record.
+                  {isAuthenticRoster 
+                    ? 'Showing real players fetched directly from Battrick squad record.' 
+                    : 'Click Fetch Live Squad or paste squad HTML to load the exact players for this team.'}
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 shrink-0">
-                <span className="text-xs font-mono font-bold text-slate-500 bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl">
-                  Avg Wage: £{Math.round(dossier.players.reduce((acc, p) => acc + p.wage, 0) / (dossier.players.length || 1)).toLocaleString()}
-                </span>
+                {dossier.players.length > 0 && (
+                  <span className="text-xs font-mono font-bold text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
+                    Avg Wage: £{Math.round(dossier.players.reduce((acc, p) => acc + p.wage, 0) / (dossier.players.length || 1)).toLocaleString()}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => handleSyncOpponentSquadLive(opponentTeamId, dossier.clubName)}
+                  disabled={isSyncingSquad}
+                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-mono font-bold rounded-xl transition flex items-center gap-1 cursor-pointer"
+                  title="Re-fetch live players directly from Battrick"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSquad ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingSquad ? 'Syncing...' : 'Fetch Live'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearScoutCache}
+                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 text-xs font-mono font-medium rounded-xl transition flex items-center gap-1 cursor-pointer"
+                  title="Clear cached squad data"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Clear</span>
+                </button>
               </div>
             </div>
 
+            {dossier.players.length === 0 ? (
+              <div className="text-center py-12 px-6 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center mx-auto">
+                  <Users className="w-6 h-6" />
+                </div>
+                <div className="max-w-md mx-auto space-y-1">
+                  <h4 className="font-bold text-base text-slate-800">
+                    No Live Players Loaded for {dossier.clubName}
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    Fetch the authentic squad directly from Battrick using their Team ID, or paste their squad source code below.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSyncOpponentSquadLive(opponentTeamId, dossier.clubName)}
+                    disabled={isSyncingSquad}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-mono font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSquad ? 'animate-spin' : ''}`} />
+                    <span>{isSyncingSquad ? 'Fetching...' : '⚡ Fetch Real Squad from Battrick'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsInputOpen(true)}
+                    className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-mono font-semibold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Clipboard className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Paste Squad HTML</span>
+                  </button>
+                  {opponentTeamId && (
+                    <a
+                      href={`https://www.battrick.org/nl/squad.asp?teamID=${opponentTeamId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-mono font-semibold text-xs rounded-xl transition flex items-center gap-1.5"
+                    >
+                      <span>Open on Battrick</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const sim = generateRealisticOpponentRoster(dossier.clubName, false, matchFormat, opponentTeamId);
+                      setOpponentPlayers(sim);
+                      setIsAuthenticRoster(false);
+                    }}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-mono font-semibold text-xs rounded-xl transition cursor-pointer"
+                  >
+                    <span>Preview Simulated Template</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
@@ -2826,6 +3047,7 @@ TACTICAL ORDERS:
                 </tbody>
               </table>
             </div>
+            )}
           </div>
 
         </div>

@@ -569,11 +569,12 @@ async function startServer() {
       }
 
       const pageKey = (pageName || '').toString().toLowerCase().trim();
+      const reqTeamId = req.body.teamId || req.body.teamID || '';
 
       const pageUrlMap: Record<string, string> = {
-        squad: req.body.teamId ? `https://www.battrick.org/nl/squad.asp?teamID=${req.body.teamId}` : 'https://www.battrick.org/nl/squad.asp',
-        players: req.body.teamId ? `https://www.battrick.org/nl/squad.asp?teamID=${req.body.teamId}` : 'https://www.battrick.org/nl/squad.asp',
-        'squad.asp': req.body.teamId ? `https://www.battrick.org/nl/squad.asp?teamID=${req.body.teamId}` : 'https://www.battrick.org/nl/squad.asp',
+        squad: reqTeamId ? `https://www.battrick.org/nl/squad.asp?teamID=${reqTeamId}` : 'https://www.battrick.org/nl/squad.asp',
+        players: reqTeamId ? `https://www.battrick.org/nl/squad.asp?teamID=${reqTeamId}` : 'https://www.battrick.org/nl/squad.asp',
+        'squad.asp': reqTeamId ? `https://www.battrick.org/nl/squad.asp?teamID=${reqTeamId}` : 'https://www.battrick.org/nl/squad.asp',
 
         nets: 'https://www.battrick.org/nl/nets.asp',
         training: 'https://www.battrick.org/nl/nets.asp',
@@ -583,9 +584,9 @@ async function startServer() {
         finance: 'https://www.battrick.org/nl/finances.asp',
         'finances.asp': 'https://www.battrick.org/nl/finances.asp',
 
-        club: 'https://www.battrick.org/nl/club.asp',
+        club: reqTeamId ? `https://www.battrick.org/nl/club.asp?teamID=${reqTeamId}` : 'https://www.battrick.org/nl/club.asp',
         staff: 'https://www.battrick.org/nl/club.asp',
-        'club.asp': 'https://www.battrick.org/nl/club.asp',
+        'club.asp': reqTeamId ? `https://www.battrick.org/nl/club.asp?teamID=${reqTeamId}` : 'https://www.battrick.org/nl/club.asp',
 
         fixtures: 'https://www.battrick.org/nl/fixtures.asp',
         schedule: 'https://www.battrick.org/nl/fixtures.asp',
