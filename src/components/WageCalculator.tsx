@@ -1351,7 +1351,7 @@ export default function WageCalculator() {
               </div>
             </div>
 
-            <div className="overflow-x-auto max-h-[480px] overflow-y-auto border border-slate-100 rounded-lg">
+            <div className="overflow-x-auto border border-slate-100 rounded-lg">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-[10px] text-slate-500 uppercase tracking-wider font-mono font-bold sticky top-0 border-b border-slate-200 z-10">
                   <tr>

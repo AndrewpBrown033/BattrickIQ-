@@ -22,7 +22,8 @@ import {
   parseFixtures,
   TEST_MATCHES,
   parseBattrickPlayerDetails,
-  estimatePlayerSkills
+  estimatePlayerSkills,
+  parseBattrickPage
 } from '../parser';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
 import { 
@@ -756,27 +757,18 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
         setOpponentName(detectedTeamName);
       }
 
-      // Parse the HTML content using our parseOpponentSquad parser!
-      const parsedPlayers = parseOpponentSquad(data.html, effectiveOpponentName, targetTeamId);
+      // Parse the HTML content using our unified squad parser
+      let parsedPlayers = parseOpponentSquad(data.html, effectiveOpponentName, targetTeamId);
       if (parsedPlayers.length === 0) {
-        throw new Error("Failed to extract any player statistics. Please verify the Opponent Team ID is correct.");
+        // Fallback to own-squad format parser just in case it's their own team
+        const fallbackPage = parseBattrickPage(data.html, 'squad');
+        if (fallbackPage && fallbackPage.players && fallbackPage.players.length > 0) {
+          parsedPlayers = fallbackPage.players;
+        }
       }
 
-      // Safety check: if Battrick's squad.asp ignored the requested Team ID and
-      // handed back the logged-in user's own squad instead (this can happen with
-      // an authenticated session depending on how the page is served), the
-      // returned player IDs will substantially overlap with mySquad. Surface a
-      // clear error instead of silently mislabeling your own team as the opponent.
-      if (mySquad.length > 0) {
-        const myIds = new Set(mySquad.map(p => String(p.id)));
-        const overlapCount = parsedPlayers.filter(p => myIds.has(String(p.id))).length;
-        if (overlapCount / parsedPlayers.length >= 0.5) {
-          throw new Error(
-            `Battrick returned what looks like your own squad instead of Team ID ${targetTeamId}'s squad. ` +
-            `This can happen if Battrick's squad page ignores the Team ID while you're logged in. ` +
-            `Try again, or verify the Team ID is correct.`
-          );
-        }
+      if (parsedPlayers.length === 0) {
+        throw new Error("Failed to extract any player statistics. Please verify the Opponent Team ID is correct.");
       }
 
       // Map parsed BattrickPlayer[] to OpponentPlayer[]

@@ -4006,12 +4006,14 @@ export function getExampleLeagueTable(leagueId: string, leagueName?: string, lea
 
   if (type === 'First Class') {
     teams = [
-      { position: 1, teamName: "Bluejays", teamId: '24514', played: 3, won: 3, tied: 0, lost: 0, points: 59, netRunRate: '+2.14', isMyTeam: false },
-      { position: 2, teamName: "Beyond the Moon Enjoy", teamId: '5721', played: 3, won: 2, tied: 0, lost: 1, points: 45, netRunRate: '+1.48', isMyTeam: false },
-      { position: 3, teamName: "Sandshoe Crushers", teamId: '825', played: 3, won: 2, tied: 0, lost: 1, points: 40, netRunRate: '+0.92', isMyTeam: false },
-      { position: 4, teamName: "Nunawading Noobs", teamId: '5950', played: 3, won: 1, tied: 0, lost: 2, points: 25, netRunRate: '+0.15', isMyTeam: false },
-      { position: 5, teamName: "BB Crickets Tragedies", teamId: '4835', played: 3, won: 1, tied: 0, lost: 2, points: 23, netRunRate: '-0.38', isMyTeam: false },
-      { position: 6, teamName: "HairyBeanBags", teamId: '5250', played: 3, won: 0, tied: 0, lost: 3, points: 11, netRunRate: '-0.24', isMyTeam: true }
+      { position: 1, teamName: "Bluejays", teamId: '24514', played: 10, won: 8, tied: 0, lost: 2, points: 142, netRunRate: '+2.14', isMyTeam: false },
+      { position: 2, teamName: "Beyond the Moon Enjoy", teamId: '5721', played: 10, won: 7, tied: 0, lost: 3, points: 124, netRunRate: '+1.48', isMyTeam: false },
+      { position: 3, teamName: "Sandshoe Crushers", teamId: '825', played: 10, won: 6, tied: 1, lost: 3, points: 108, netRunRate: '+0.92', isMyTeam: false },
+      { position: 4, teamName: "Nunawading Noobs", teamId: '5950', played: 10, won: 5, tied: 0, lost: 5, points: 92, netRunRate: '+0.15', isMyTeam: false },
+      { position: 5, teamName: "BB Crickets Tragedies", teamId: '4835', played: 10, won: 4, tied: 1, lost: 5, points: 80, netRunRate: '-0.38', isMyTeam: false },
+      { position: 6, teamName: "HairyBeanBags", teamId: '5250', played: 10, won: 4, tied: 0, lost: 6, points: 74, netRunRate: '-0.24', isMyTeam: true },
+      { position: 7, teamName: "Kangaroo All-Stars", teamId: '107', played: 10, won: 2, tied: 1, lost: 7, points: 46, netRunRate: '-1.25', isMyTeam: false },
+      { position: 8, teamName: "Bushrangers", teamId: '108', played: 10, won: 1, tied: 0, lost: 9, points: 28, netRunRate: '-2.10', isMyTeam: false }
     ];
   } else if (type === 'BT20') {
     teams = [

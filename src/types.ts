@@ -254,8 +254,10 @@ export interface LineupPlayer {
   batting: number;
   bowling: number;
   keeping: number;
+  fielding: number;
   stamina: number;
   experience: number;
+  btRating?: number;
   bowlingType: string;
   order: number; // 1-11
 }

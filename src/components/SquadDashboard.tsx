@@ -246,7 +246,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
               )}
             </div>
           ) : viewMode === 'compact' ? (
-            <div className="max-h-[65vh] sm:max-h-[640px] overflow-y-auto divide-y divide-slate-150 rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="divide-y divide-slate-150 rounded-xl border border-slate-200 bg-white shadow-sm">
               {filteredSquad.map((player) => {
                 const pScore = getPlayerWeightedScore(player);
                 const changes = getWeeklyChanges(player);
@@ -322,7 +322,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
               })}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[65vh] sm:max-h-[640px] overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pr-1">
               {filteredSquad.map((player) => {
                 const pScore = getPlayerWeightedScore(player);
                 const changes = getWeeklyChanges(player);

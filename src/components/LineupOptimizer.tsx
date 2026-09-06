@@ -3,17 +3,17 @@ import { SKILL_LEVELS, LineupPlayer, BattrickPlayer } from '../types';
 import { Users, Shield, Copy, Check, Info, ChevronDown, ChevronUp, RefreshCw, UserCheck } from 'lucide-react';
 
 const DEFAULT_LINEUP: LineupPlayer[] = [
-  { id: '1', name: 'A. Alistair', role: 'Batter', batting: 8, bowling: 0, keeping: 0, stamina: 6, experience: 7, bowlingType: 'None', order: 1 },
-  { id: '2', name: 'B. Bradman', role: 'Batter', batting: 9, bowling: 0, keeping: 0, stamina: 7, experience: 8, bowlingType: 'None', order: 2 },
-  { id: '3', name: 'C. Cowdrey', role: 'Batter', batting: 7, bowling: 0, keeping: 0, stamina: 6, experience: 5, bowlingType: 'None', order: 3 },
-  { id: '4', name: 'D. Dexter', role: 'Batter', batting: 11, bowling: 1, keeping: 0, stamina: 8, experience: 7, bowlingType: 'None', order: 4 },
-  { id: '5', name: 'E. Edrich', role: 'All-rounder', batting: 7, bowling: 12, keeping: 0, stamina: 8, experience: 8, bowlingType: 'Fast', order: 5 },
-  { id: '6', name: 'F. Flintoff', role: 'All-rounder', batting: 8, bowling: 14, keeping: 0, stamina: 9, experience: 9, bowlingType: 'Fast Medium', order: 6 },
-  { id: '7', name: 'G. Gilchrist', role: 'Keeper', batting: 5, bowling: 0, keeping: 9, stamina: 7, experience: 5, bowlingType: 'None', order: 7 },
-  { id: '8', name: 'H. Hadlee', role: 'Bowler', batting: 3, bowling: 15, keeping: 0, stamina: 8, experience: 12, bowlingType: 'Fast', order: 8 },
-  { id: '9', name: 'I. Imran', role: 'Bowler', batting: 5, bowling: 17, keeping: 0, stamina: 11, experience: 13, bowlingType: 'Fast Medium', order: 9 },
-  { id: '10', name: 'J. Johnston', role: 'Bowler', batting: 1, bowling: 12, keeping: 0, stamina: 7, experience: 5, bowlingType: 'Spin', order: 10 },
-  { id: '11', name: 'K. Kumble', role: 'Bowler', batting: 1, bowling: 14, keeping: 0, stamina: 8, experience: 7, bowlingType: 'Spin', order: 11 },
+  { id: '1', name: 'A. Alistair', role: 'Batter', batting: 8, bowling: 0, keeping: 0, fielding: 5, stamina: 6, experience: 7, bowlingType: 'None', order: 1 },
+  { id: '2', name: 'B. Bradman', role: 'Batter', batting: 9, bowling: 0, keeping: 0, fielding: 5, stamina: 7, experience: 8, bowlingType: 'None', order: 2 },
+  { id: '3', name: 'C. Cowdrey', role: 'Batter', batting: 7, bowling: 0, keeping: 0, fielding: 5, stamina: 6, experience: 5, bowlingType: 'None', order: 3 },
+  { id: '4', name: 'D. Dexter', role: 'Batter', batting: 11, bowling: 1, keeping: 0, fielding: 5, stamina: 8, experience: 7, bowlingType: 'None', order: 4 },
+  { id: '5', name: 'E. Edrich', role: 'All-rounder', batting: 7, bowling: 12, keeping: 0, fielding: 5, stamina: 8, experience: 8, bowlingType: 'Fast', order: 5 },
+  { id: '6', name: 'F. Flintoff', role: 'All-rounder', batting: 8, bowling: 14, keeping: 0, fielding: 5, stamina: 9, experience: 9, bowlingType: 'Fast Medium', order: 6 },
+  { id: '7', name: 'G. Gilchrist', role: 'Keeper', batting: 5, bowling: 0, keeping: 9, fielding: 7, stamina: 7, experience: 5, bowlingType: 'None', order: 7 },
+  { id: '8', name: 'H. Hadlee', role: 'Bowler', batting: 3, bowling: 15, keeping: 0, fielding: 5, stamina: 8, experience: 12, bowlingType: 'Fast', order: 8 },
+  { id: '9', name: 'I. Imran', role: 'Bowler', batting: 5, bowling: 17, keeping: 0, fielding: 5, stamina: 11, experience: 13, bowlingType: 'Fast Medium', order: 9 },
+  { id: '10', name: 'J. Johnston', role: 'Bowler', batting: 1, bowling: 12, keeping: 0, fielding: 5, stamina: 7, experience: 5, bowlingType: 'Spin', order: 10 },
+  { id: '11', name: 'K. Kumble', role: 'Bowler', batting: 1, bowling: 14, keeping: 0, fielding: 5, stamina: 8, experience: 7, bowlingType: 'Spin', order: 11 },
 ];
 
 const PRESET_STRATEGIES = [
@@ -130,6 +130,10 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
         batting: p.skills.batting,
         bowling: p.skills.bowling,
         keeping: p.skills.keeping,
+        fielding: p.skills.fielding || 5,
+        btRating: p.btRating,
+        fielding: p.skills.fielding || 5,
+        btRating: p.btRating,
         stamina: p.skills.stamina,
         experience: p.skills.experience,
         bowlingType: p.bowlingType,
@@ -148,6 +152,8 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
       batting: b1.skills.batting,
       bowling: b1.skills.bowling,
       keeping: b1.skills.keeping,
+      fielding: b1.skills.fielding || 5,
+      btRating: b1.btRating,
       stamina: b1.skills.stamina,
       experience: b1.skills.experience,
       bowlingType: b1.bowlingType,
@@ -163,6 +169,8 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
     batting: keeper.skills.batting,
     bowling: keeper.skills.bowling,
     keeping: keeper.skills.keeping,
+    fielding: keeper.skills.fielding || 5,
+    btRating: keeper.btRating,
     stamina: keeper.skills.stamina,
     experience: keeper.skills.experience,
     bowlingType: keeper.bowlingType,
@@ -180,6 +188,8 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
         batting: p6.skills.batting,
         bowling: p6.skills.bowling,
         keeping: p6.skills.keeping,
+        fielding: p6.skills.fielding || 5,
+        btRating: p6.btRating,
         stamina: p6.skills.stamina,
         experience: p6.skills.experience,
         bowlingType: p6.bowlingType,
@@ -195,6 +205,8 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
         batting: p8.skills.batting,
         bowling: p8.skills.bowling,
         keeping: p8.skills.keeping,
+        fielding: p8.skills.fielding || 5,
+        btRating: p8.btRating,
         stamina: p8.skills.stamina,
         experience: p8.skills.experience,
         bowlingType: p8.bowlingType,
@@ -211,6 +223,8 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
           batting: b.skills.batting,
           bowling: b.skills.bowling,
           keeping: b.skills.keeping,
+          fielding: b.skills.fielding || 5,
+          btRating: b.btRating,
           stamina: b.skills.stamina,
           experience: b.skills.experience,
           bowlingType: b.bowlingType,
@@ -229,6 +243,8 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
           batting: b.skills.batting,
           bowling: b.skills.bowling,
           keeping: b.skills.keeping,
+          fielding: b.skills.fielding || 5,
+          btRating: b.btRating,
           stamina: b.skills.stamina,
           experience: b.skills.experience,
           bowlingType: b.bowlingType,
@@ -499,6 +515,10 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
     const keepingRaw = (keeper?.keeping || 0) + (keeper?.experience || 0) * 0.16;
 
     const avgExperience = lineup.reduce((acc, curr) => acc + curr.experience, 0) / 11;
+    const avgFielding = lineup.reduce((acc, curr) => acc + (curr.fielding || 5), 0) / 11;
+    const fieldingRaw = avgFielding + (avgExperience * 0.1);
+    
+    const estimatedTotalBTR = lineup.reduce((acc, curr) => acc + (curr.btRating || 0), 0);
     const avgStamina = lineup.reduce((acc, curr) => acc + curr.stamina, 0) / 11;
 
     const staminaMulti = 0.94 + (avgStamina / 20) * 0.12;
@@ -510,6 +530,8 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
       seamBowling: Math.min(20, Math.max(0, seamBowlingRaw * staminaMulti)),
       spinBowling: Math.min(20, Math.max(0, spinBowlingRaw * staminaMulti)),
       wicketKeeping: Math.min(20, Math.max(0, keepingRaw * staminaMulti)),
+      fielding: Math.min(20, Math.max(0, fieldingRaw * staminaMulti)),
+      estimatedBTR: estimatedTotalBTR,
       teamExperience: avgExperience,
     };
   };
@@ -538,11 +560,13 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
       text += `${p.order}. ${p.name} - ${p.role} (Bat: ${SKILL_LEVELS[p.batting]} | Bowl: ${p.bowlingType !== 'None' ? `${p.bowlingType} ${SKILL_LEVELS[p.bowling]}` : 'None'})\n`;
     });
     text += `\nEstimated Ratings:\n`;
-    text += `- Top Order Batting: ${getBattrickRatingLabel(ratings.topOrder).full}\n`;
-    text += `- Middle Order Batting: ${getBattrickRatingLabel(ratings.middleOrder).full}\n`;
-    text += `- Seam Bowling Rating: ${getBattrickRatingLabel(ratings.seamBowling).full}\n`;
-    text += `- Spin Bowling Rating: ${getBattrickRatingLabel(ratings.spinBowling).full}\n`;
-    text += `- Wicket Keeping: ${getBattrickRatingLabel(ratings.wicketKeeping).full}\n`;
+    text += `- Top Order Batting: ${getBattrickRatingLabel(ratings.topOrder).full} (${ratings.topOrder.toFixed(1)})\n`;
+    text += `- Middle Order Batting: ${getBattrickRatingLabel(ratings.middleOrder).full} (${ratings.middleOrder.toFixed(1)})\n`;
+    text += `- Seam Bowling Rating: ${getBattrickRatingLabel(ratings.seamBowling).full} (${ratings.seamBowling.toFixed(1)})\n`;
+    text += `- Spin Bowling Rating: ${getBattrickRatingLabel(ratings.spinBowling).full} (${ratings.spinBowling.toFixed(1)})\n`;
+    text += `- Wicket Keeping: ${getBattrickRatingLabel(ratings.wicketKeeping).full} (${ratings.wicketKeeping.toFixed(1)})\n`;
+    text += `- Fielding: ${getBattrickRatingLabel(ratings.fielding).full} (${ratings.fielding.toFixed(1)})\n`;
+    text += `- Estimated Lineup BTR: ${ratings.estimatedBTR > 0 ? ratings.estimatedBTR.toLocaleString() : "N/A"}\n`;
 
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -635,7 +659,7 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
           <span className="text-[10px] lowercase text-slate-400">Click a slot to customize or link imported player</span>
         </h4>
 
-        <div className="flex flex-col gap-2 max-h-[580px] overflow-y-auto pr-1">
+        <div className="flex flex-col gap-2 pr-1">
           {lineup.map((player) => {
             const isExpanded = expandedId === player.id;
             return (
@@ -654,16 +678,16 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
                   className="p-3 flex items-center justify-between cursor-pointer select-none"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="font-mono text-xs text-slate-400 w-5 text-right font-bold">
+                    <span className="font-mono text-xs text-slate-400 w-5 text-right font-bold"></span>
                       {player.order}
-                    </span>
+                    
                     <div>
                       <div className="text-xs font-bold text-slate-800 flex items-center gap-2">
                         {player.name}
                         {player.role === 'Keeper' && (
-                          <span className="px-1.5 py-0.2 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] rounded font-mono uppercase font-bold">
-                            Keeper
-                          </span>
+                            <span className="px-1.5 py-0.2 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] rounded font-mono uppercase font-bold">
+                              Keeper
+                            </span>
                         )}
                       </div>
                       <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5">
@@ -900,7 +924,7 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
                 <div className="text-[11px] text-slate-600 mt-0.5 font-medium">Batsman positions 1 to 5 strength</div>
               </div>
               <div className={`font-mono text-xs font-bold px-2.5 py-1 rounded border uppercase ${getBattrickRatingLabel(ratings.topOrder).color}`}>
-                {getBattrickRatingLabel(ratings.topOrder).full}
+                {getBattrickRatingLabel(ratings.topOrder).full} <span className="text-[10px] opacity-75">({ratings.topOrder.toFixed(1)})</span>
               </div>
             </div>
 
@@ -911,7 +935,7 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
                 <div className="text-[11px] text-slate-600 mt-0.5 font-medium">Strength in middle order overs 15-40</div>
               </div>
               <div className={`font-mono text-xs font-bold px-2.5 py-1 rounded border uppercase ${getBattrickRatingLabel(ratings.middleOrder).color}`}>
-                {getBattrickRatingLabel(ratings.middleOrder).full}
+                {getBattrickRatingLabel(ratings.middleOrder).full} <span className="text-[10px] opacity-75">({ratings.middleOrder.toFixed(1)})</span>
               </div>
             </div>
 
@@ -922,7 +946,7 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
                 <div className="text-[11px] text-slate-600 mt-0.5 font-medium">Tail-end resistance & run rate pushes</div>
               </div>
               <div className={`font-mono text-xs font-bold px-2.5 py-1 rounded border uppercase ${getBattrickRatingLabel(ratings.lowerOrder).color}`}>
-                {getBattrickRatingLabel(ratings.lowerOrder).full}
+                {getBattrickRatingLabel(ratings.lowerOrder).full} <span className="text-[10px] opacity-75">({ratings.lowerOrder.toFixed(1)})</span>
               </div>
             </div>
 
@@ -933,7 +957,7 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
                 <div className="text-[11px] text-slate-600 mt-0.5 font-medium">Fast / Fast-Medium delivery ratings</div>
               </div>
               <div className={`font-mono text-xs font-bold px-2.5 py-1 rounded border uppercase ${getBattrickRatingLabel(ratings.seamBowling).color}`}>
-                {getBattrickRatingLabel(ratings.seamBowling).full}
+                {getBattrickRatingLabel(ratings.seamBowling).full} <span className="text-[10px] opacity-75">({ratings.seamBowling.toFixed(1)})</span>
               </div>
             </div>
 
@@ -944,7 +968,7 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
                 <div className="text-[11px] text-slate-600 mt-0.5 font-medium">Spin & variable crack flight ratings</div>
               </div>
               <div className={`font-mono text-xs font-bold px-2.5 py-1 rounded border uppercase ${ratings.spinBowling > 0 ? getBattrickRatingLabel(ratings.spinBowling).color : 'text-slate-550 border-slate-200'}`}>
-                {ratings.spinBowling > 0 ? getBattrickRatingLabel(ratings.spinBowling).full : 'none'}
+                {ratings.spinBowling > 0 ? <>{getBattrickRatingLabel(ratings.spinBowling).full} <span className="text-[10px] opacity-75">({ratings.spinBowling.toFixed(1)})</span></> : 'none'}
               </div>
             </div>
 
@@ -955,7 +979,29 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
                 <div className="text-[11px] text-slate-600 mt-0.5 font-medium">Gloves accuracy & fielding strength</div>
               </div>
               <div className={`font-mono text-xs font-bold px-2.5 py-1 rounded border uppercase ${getBattrickRatingLabel(ratings.wicketKeeping).color}`}>
-                {getBattrickRatingLabel(ratings.wicketKeeping).full}
+                {getBattrickRatingLabel(ratings.wicketKeeping).full} <span className="text-[10px] opacity-75">({ratings.wicketKeeping.toFixed(1)})</span>
+              </div>
+            </div>
+
+            {/* Fielding */}
+            <div className="p-3.5 rounded-lg bg-slate-50/50 border border-slate-100 flex items-center justify-between shadow-inner">
+              <div>
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Fielding</div>
+                <div className="text-[11px] text-slate-600 mt-0.5 font-medium">Ground fielding & catching ability</div>
+              </div>
+              <div className={`font-mono text-xs font-bold px-2.5 py-1 rounded border uppercase ${getBattrickRatingLabel(ratings.fielding).color}`}>
+                {getBattrickRatingLabel(ratings.fielding).full} <span className="text-[10px] opacity-75">({ratings.fielding.toFixed(1)})</span>
+              </div>
+            </div>
+
+            {/* Estimated Battrick Rating (BTR) Score */}
+            <div className="p-3.5 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-between shadow-inner">
+              <div>
+                <div className="text-[10px] text-indigo-500 uppercase tracking-wider font-bold">Estimated Lineup BTR</div>
+                <div className="text-[11px] text-indigo-700 mt-0.5 font-medium">Total Battrick Rating score for XI</div>
+              </div>
+              <div className="font-mono text-sm font-bold px-3 py-1.5 bg-white text-indigo-700 rounded border border-indigo-300 shadow-sm">
+                {ratings.estimatedBTR > 0 ? ratings.estimatedBTR.toLocaleString() : 'N/A'}
               </div>
             </div>
           </div>
@@ -985,7 +1031,7 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
         <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex gap-3 text-xs leading-relaxed text-slate-600 shadow-sm">
           <Info className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
           <div>
-            <span className="text-indigo-800 font-bold">Tactic Tip:</span> Battrick team ratings are heavily influenced by player fitness and confidence levels on matchday. Use this calculator as an optimized blueprint for planning your training and selecting the most competitive order.
+            <span className="text-indigo-800 font-bold">Tactic Tip: Battrick team ratings are heavily influenced by player fitness and confidence levels on matchday. Use this calculator as an optimized blueprint for planning your training and selecting the most competitive order.</span>
           </div>
         </div>
       </div>
