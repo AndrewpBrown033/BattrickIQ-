@@ -23,7 +23,8 @@ import {
   TEST_MATCHES,
   parseBattrickPlayerDetails,
   estimatePlayerSkills,
-  parseBattrickPage
+  parseBattrickPage,
+  buildStrongestXI
 } from '../parser';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
 import { 
@@ -2203,35 +2204,116 @@ TACTICAL ORDERS:
                   </div>
                 </div>
 
-                {/* Grid of predicted sectors */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3">
-                  <div className="bg-white border border-slate-200/50 p-3.5 rounded-xl text-center space-y-1 shadow-2xs">
-                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Top Order</span>
-                    <strong className="text-slate-950 text-sm font-serif block capitalize">{ratingData.topOrder}</strong>
+                {/* Grid of predicted sectors (7 Core Battrick Sectors) */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                  <div className="bg-white border border-slate-200/80 p-3 rounded-xl text-center space-y-1 shadow-2xs">
+                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block tracking-wider">Top Order</span>
+                    <strong className="text-slate-900 text-xs sm:text-sm font-semibold block capitalize truncate" title={ratingData.topOrder}>
+                      {ratingData.topOrder}
+                    </strong>
+                    <span className="text-[10px] font-mono text-slate-500 font-semibold block">
+                      {ratingData.topOrderScore} / 20
+                    </span>
                   </div>
-                  <div className="bg-white border border-slate-200/50 p-3.5 rounded-xl text-center space-y-1 shadow-2xs">
-                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Middle Order</span>
-                    <strong className="text-slate-950 text-sm font-serif block capitalize">{ratingData.middleOrder}</strong>
+
+                  <div className="bg-white border border-slate-200/80 p-3 rounded-xl text-center space-y-1 shadow-2xs">
+                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block tracking-wider">Middle Order</span>
+                    <strong className="text-slate-900 text-xs sm:text-sm font-semibold block capitalize truncate" title={ratingData.middleOrder}>
+                      {ratingData.middleOrder}
+                    </strong>
+                    <span className="text-[10px] font-mono text-slate-500 font-semibold block">
+                      {ratingData.middleOrderScore} / 20
+                    </span>
                   </div>
-                  <div className="bg-white border border-slate-200/50 p-3.5 rounded-xl text-center space-y-1 shadow-2xs">
-                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Lower Order</span>
-                    <strong className="text-slate-950 text-sm font-serif block capitalize">{ratingData.lowerOrder}</strong>
+
+                  <div className="bg-white border border-slate-200/80 p-3 rounded-xl text-center space-y-1 shadow-2xs">
+                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block tracking-wider">Lower Order</span>
+                    <strong className="text-slate-900 text-xs sm:text-sm font-semibold block capitalize truncate" title={ratingData.lowerOrder}>
+                      {ratingData.lowerOrder}
+                    </strong>
+                    <span className="text-[10px] font-mono text-slate-500 font-semibold block">
+                      {ratingData.lowerOrderScore} / 20
+                    </span>
                   </div>
-                  <div className="bg-white border border-slate-200/50 p-3.5 rounded-xl text-center space-y-1 shadow-2xs">
-                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Seam Bowling</span>
-                    <strong className="text-slate-950 text-sm font-serif block capitalize">{ratingData.seamBowling}</strong>
+
+                  <div className="bg-white border border-slate-200/80 p-3 rounded-xl text-center space-y-1 shadow-2xs">
+                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block tracking-wider">Seam Bowling</span>
+                    <strong className="text-slate-900 text-xs sm:text-sm font-semibold block capitalize truncate" title={ratingData.seamBowling}>
+                      {ratingData.seamBowling}
+                    </strong>
+                    <span className="text-[10px] font-mono text-slate-500 font-semibold block">
+                      {ratingData.seamBowlingScore} / 20
+                    </span>
                   </div>
-                  <div className="bg-white border border-slate-200/50 p-3.5 rounded-xl text-center space-y-1 shadow-2xs">
-                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Spin Bowling</span>
-                    <strong className="text-slate-950 text-sm font-serif block capitalize">{ratingData.spinBowling}</strong>
+
+                  <div className="bg-white border border-slate-200/80 p-3 rounded-xl text-center space-y-1 shadow-2xs">
+                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block tracking-wider">Spin Bowling</span>
+                    <strong className="text-slate-900 text-xs sm:text-sm font-semibold block capitalize truncate" title={ratingData.spinBowling}>
+                      {ratingData.spinBowling}
+                    </strong>
+                    <span className="text-[10px] font-mono text-slate-500 font-semibold block">
+                      {ratingData.spinBowlingScore} / 20
+                    </span>
                   </div>
-                  <div className="bg-white border border-slate-200/50 p-3.5 rounded-xl text-center space-y-1 shadow-2xs">
-                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Fielding</span>
-                    <strong className="text-slate-950 text-sm font-serif block capitalize">{ratingData.fielding}</strong>
+
+                  <div className="bg-white border border-slate-200/80 p-3 rounded-xl text-center space-y-1 shadow-2xs">
+                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block tracking-wider">Wicket Keeping</span>
+                    <strong className="text-slate-900 text-xs sm:text-sm font-semibold block capitalize truncate" title={ratingData.wicketKeeping}>
+                      {ratingData.wicketKeeping}
+                    </strong>
+                    <span className="text-[10px] font-mono text-slate-500 font-semibold block">
+                      {ratingData.wicketKeepingScore} / 20
+                    </span>
                   </div>
-                  <div className="bg-indigo-600 p-3.5 rounded-xl text-center space-y-1 shadow-xs col-span-2 sm:col-span-1">
-                    <span className="text-[10px] uppercase font-mono font-bold text-indigo-200 block">Batstats</span>
-                    <strong className="text-white text-base font-mono font-black block">{ratingData.batStats}</strong>
+
+                  <div className="bg-white border border-slate-200/80 p-3 rounded-xl text-center space-y-1 shadow-2xs">
+                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block tracking-wider">Fielding</span>
+                    <strong className="text-slate-900 text-xs sm:text-sm font-semibold block capitalize truncate" title={ratingData.fielding}>
+                      {ratingData.fielding}
+                    </strong>
+                    <span className="text-[10px] font-mono text-slate-500 font-semibold block">
+                      {ratingData.fieldingScore} / 20
+                    </span>
+                  </div>
+                </div>
+
+                {/* Wrapped Summaries: Est. Batstats and Est. Fitness Drain */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
+                  {/* Estimated Batstats (Authoritative New Formula) */}
+                  <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-inner">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-emerald-700 uppercase tracking-wider font-bold">Est. Batstats (Scouted XI)</span>
+                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-emerald-100/80 text-emerald-800 border border-emerald-300">
+                          round((Top + Mid + Low) × 7)
+                        </span>
+                      </div>
+                      <div className="text-xs text-emerald-900 font-medium leading-relaxed">
+                        Aggregated batting order strength score derived from the scouted XI sector ratings:
+                        <div className="font-mono text-[11px] text-emerald-800 mt-0.5">
+                          ({ratingData.topOrderScore} + {ratingData.middleOrderScore} + {ratingData.lowerOrderScore}) = {(ratingData.topOrderScore + ratingData.middleOrderScore + ratingData.lowerOrderScore).toFixed(1)} × 7 = {((ratingData.topOrderScore + ratingData.middleOrderScore + ratingData.lowerOrderScore) * 7).toFixed(1)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="font-mono text-2xl font-black px-4 py-2 bg-white text-emerald-700 rounded-xl border border-emerald-300 shadow-sm text-center shrink-0">
+                      {ratingData.batStats}
+                    </div>
+                  </div>
+
+                  {/* Estimated PFL / Fitness Drain for the current effort setting */}
+                  <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-inner">
+                    <div className="space-y-1">
+                      <div className="text-[10px] text-amber-700 uppercase tracking-wider font-bold">Est. Fitness Drain</div>
+                      <div className="text-xs text-amber-900 font-medium">
+                        PFL loss multiplier vs. baseline (PAN) based on selected match effort:
+                        <div className="font-mono text-[11px] text-amber-800 mt-0.5 capitalize">
+                          Effort: {dossierMatchEffort}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="font-mono text-xl font-bold px-4 py-2 bg-white text-amber-700 rounded-xl border border-amber-300 shadow-sm text-center shrink-0">
+                      {ratingData.pflLossMultiplier.toFixed(2)}x
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2428,7 +2510,18 @@ TACTICAL ORDERS:
                             </tr>
                           )}
                           <tr className={`hover:bg-slate-50/80 transition ${isTail ? 'bg-rose-50/20' : ''}`}>
-                          <td className="py-3 px-3 font-mono font-bold text-slate-400">{p.originalIndex + 1}</td>
+                          <td className="py-3 px-3 font-mono font-bold text-slate-400">
+                            <div className="flex flex-col items-start gap-0.5">
+                              <span>{p.originalIndex + 1}</span>
+                              {p.originalIndex < 3 ? (
+                                <span className="text-[9px] font-sans font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1 rounded">Top</span>
+                              ) : p.originalIndex < 7 ? (
+                                <span className="text-[9px] font-sans font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1 rounded">Mid</span>
+                              ) : p.originalIndex < 11 ? (
+                                <span className="text-[9px] font-sans font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1 rounded">Low</span>
+                              ) : null}
+                            </div>
+                          </td>
                         <td className="py-3 px-3">
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex flex-col gap-0.5">
@@ -2997,139 +3090,338 @@ TACTICAL ORDERS:
 // BATTRICK MATCH ENGINE RATING & BATSTATS CALCULATOR
 // =========================================================
 
-const CALC_SKILL_MAP: Record<string, number> = {
-  "worthless": 1, "abysmal": 2, "woeful": 3, "feeble": 4, "mediocre": 5,
-  "competent": 6, "respectable": 7, "proficient": 8, "strong": 9, "superb": 10,
-  "quality": 11, "remarkable": 12, "wonderful": 13, "exquisite": 14,
-  "masterful": 15, "sensational": 16, "elite": 17, "miraculous": 18
+// =============================================================
+// BATTRICK MATCH ENGINE RATING & BATSTATS CALCULATOR (OFFICIAL/OPTIMIZER FORMULA)
+// =============================================================
+
+const EFFORT_SKILL_MULTIPLIER: Record<string, number> = {
+  'take it easy': 0.85,
+  'TIE': 0.85,
+  'normal': 1.00,
+  'PAN': 1.00,
+  'go for it!': 1.15,
+  'GFI': 1.15,
 };
 
-const CALC_MULTIPLIERS = {
-  form: {
-    "worthless": 0.50, "abysmal": 0.65, "woeful": 0.75, "feeble": 0.85,
-    "mediocre": 0.95, "competent": 1.00, "respectable": 1.05, "proficient": 1.10,
-    "strong": 1.15, "superb": 1.25
-  } as Record<string, number>,
-  fitness: {
-    "sublime": 1.10, "invigorated": 1.05, "energetic": 1.00,
-    "fresh": 0.95, "lively": 0.90, "fair": 0.80
-  } as Record<string, number>,
-  effort: {
-    "take it easy": 0.85,
-    "normal": 1.00,
-    "go for it!": 1.20
-  } as Record<string, number>
+const EFFORT_PFL_MULTIPLIER: Record<string, number> = {
+  'take it easy': 0.70,
+  'TIE': 0.70,
+  'normal': 1.00,
+  'PAN': 1.00,
+  'go for it!': 1.60,
+  'GFI': 1.60,
 };
 
-function getCalcRatingLabel(score: number): string {
-  if (score >= 17.0) return "elite";
-  if (score >= 15.0) return "sensational";
-  if (score >= 13.5) return "masterful";
-  if (score >= 12.0) return "remarkable";
-  if (score >= 10.5) return "wonderful";
-  if (score >= 9.5)  return "superb";
-  if (score >= 8.5)  return "strong";
-  if (score >= 7.0)  return "respectable";
-  if (score >= 5.5)  return "proficient";
-  if (score >= 4.0)  return "competent";
-  if (score >= 3.0)  return "feeble";
-  if (score >= 2.0)  return "woeful";
-  return "abysmal";
+export interface EffectiveScoutPlayer {
+  id: string;
+  name: string;
+  batting: number;
+  concentration: number;
+  bowling: number;
+  consistency: number;
+  keeping: number;
+  fielding: number;
+  experience: number;
+  form: number;
+  fitness: number;
+  bowlingType: string;
+  role: string;
+  btRating: number;
 }
 
-function getCalcPlayerBattingWeight(player: any, matchEffort: string): number {
-  let bat = player.skills?.batting || player.batting || 0;
-  if (bat === 0 && player.estimatedSkillLevel) bat = player.estimatedSkillLevel;
-  else if (bat === 0) bat = 1;
-  
-  let conc = player.skills?.concentration || player.concentration || 0;
-  if (conc === 0 && player.estimatedSkillLevel) conc = Math.max(1, player.estimatedSkillLevel - 1);
-  else if (conc === 0) conc = 1;
+export function toEffectiveScoutPlayer(p: any): EffectiveScoutPlayer {
+  const isBowler = p.primaryRoleClassifier === 'Bowler' || p.role === 'Bowler';
+  const isKeeper = p.primaryRoleClassifier === 'Wicketkeeper' || p.primaryRoleClassifier === 'Keeper' || p.role === 'Keeper';
+  const isAllRounder = p.primaryRoleClassifier === 'All-Rounder' || p.primaryRoleClassifier === 'All-rounder' || p.role === 'All-rounder';
+  const isBatter = p.primaryRoleClassifier === 'Batter' || p.role === 'Batter';
 
-  const formStr = (player.battingFormLabel || player.skills?.battingForm || "respectable").toLowerCase().trim();
-  const form = CALC_MULTIPLIERS.form[formStr] || 1.0;
-  const fitStr = (player.fitnessLabel || player.skills?.fitness || "energetic").toLowerCase().trim();
-  const fit = CALC_MULTIPLIERS.fitness[fitStr] || 1.0;
-  const effort = CALC_MULTIPLIERS.effort[matchEffort] || 1.0;
+  const estLevel = p.estimatedSkillLevel || 6;
 
-  const baseRating = (bat * 0.70) + (conc * 0.30);
-  return baseRating * form * fit * effort;
+  // Batting
+  let batting = p.batting || p.skills?.batting || 0;
+  if (batting === 0) {
+    if (isBatter) batting = estLevel;
+    else if (isAllRounder) batting = Math.max(1, estLevel - 1);
+    else if (isKeeper) batting = Math.max(1, estLevel - 1);
+    else if (isBowler) batting = Math.max(1, Math.round(estLevel * 0.25));
+    else batting = Math.max(1, estLevel - 2);
+  }
+
+  // Concentration
+  let concentration = p.concentration || p.skills?.concentration || 0;
+  if (concentration === 0) {
+    concentration = Math.max(1, batting - 1);
+  }
+
+  // Bowling
+  let bowling = p.bowling || p.skills?.bowling || 0;
+  if (bowling === 0) {
+    if (isBowler) bowling = estLevel;
+    else if (isAllRounder) bowling = Math.max(1, estLevel - 1);
+    else if (isBatter || isKeeper) bowling = 1;
+    else bowling = Math.max(1, estLevel - 3);
+  }
+
+  // Consistency
+  let consistency = p.consistency || p.skills?.consistency || 0;
+  if (consistency === 0) {
+    consistency = Math.max(1, bowling - 1);
+  }
+
+  // Keeping
+  let keeping = p.keeping || p.skills?.keeping || 0;
+  if (keeping === 0) {
+    if (isKeeper) keeping = Math.max(6, estLevel);
+    else keeping = 1;
+  }
+
+  // Fielding
+  let fielding = p.fielding || p.skills?.fielding || 0;
+  if (fielding === 0) {
+    fielding = Math.max(3, Math.min(10, Math.round(estLevel * 0.7)));
+  }
+
+  // Experience
+  let experience = p.experience || p.skills?.experience || 0;
+  if (experience === 0) {
+    const age = p.age || 23;
+    experience = Math.max(1, Math.min(18, Math.round((age - 17) * 0.8)));
+  }
+
+  // Form (1-10)
+  let form = 8;
+  if (typeof p.form === 'number' && p.form > 0) {
+    form = p.form;
+  } else {
+    const fStr = (p.battingFormLabel || p.bowlingFormLabel || p.skills?.battingForm || p.formLabel || 'proficient').toLowerCase().trim();
+    const formMap: Record<string, number> = {
+      sublime: 10, strong: 9, proficient: 8, respectable: 7, competent: 6,
+      mediocre: 5, feeble: 4, woeful: 3, abysmal: 2, worthless: 1
+    };
+    form = formMap[fStr] ?? 8;
+  }
+
+  // Fitness (1-10)
+  let fitness = 9;
+  if (typeof p.fitness === 'number' && p.fitness > 0) {
+    fitness = p.fitness;
+  } else {
+    const fitStr = (p.fitnessLabel || p.skills?.fitness || 'energetic').toLowerCase().trim();
+    const fitMap: Record<string, number> = {
+      saturated: 10, sublime: 10, invigorated: 9, energetic: 8, fresh: 7,
+      lively: 6, fair: 5, tired: 4, weary: 3, exhausted: 2, shattered: 1
+    };
+    fitness = fitMap[fitStr] ?? 9;
+  }
+
+  return {
+    id: p.id || '',
+    name: p.name || 'Unknown',
+    batting,
+    concentration,
+    bowling,
+    consistency,
+    keeping,
+    fielding,
+    experience,
+    form,
+    fitness,
+    bowlingType: p.bowlingType || 'None',
+    role: p.role || (isKeeper ? 'Keeper' : isBowler ? 'Bowler' : isBatter ? 'Batter' : 'All-rounder'),
+    btRating: p.btRating || 0,
+  };
 }
 
-function getCalcPlayerBowlingWeight(player: any, matchEffort: string): number {
-  let bowl = player.skills?.bowling || player.bowling || 0;
-  if (bowl === 0 && player.estimatedSkillLevel) bowl = player.estimatedSkillLevel;
-  else if (bowl === 0) bowl = 1;
+export function getBattrickSectorRatingLabel(score: number) {
+  const floorIndex = Math.floor(score);
+  const clampedIndex = Math.min(20, Math.max(0, floorIndex));
+  const label = SKILL_LEVELS[clampedIndex] || 'useless';
+  const decimal = score - floorIndex;
 
-  let cons = player.skills?.consistency || player.consistency || 0;
-  if (cons === 0 && player.estimatedSkillLevel) cons = Math.max(1, player.estimatedSkillLevel - 1);
-  else if (cons === 0) cons = 1;
+  let sub = ' (medium)';
+  if (decimal < 0.35) sub = ' (low)';
+  else if (decimal >= 0.65) sub = ' (high)';
 
-  const formStr = (player.bowlingFormLabel || player.skills?.bowlingForm || "respectable").toLowerCase().trim();
-  const form = CALC_MULTIPLIERS.form[formStr] || 1.0;
-  const fitStr = (player.fitnessLabel || player.skills?.fitness || "energetic").toLowerCase().trim();
-  const fit = CALC_MULTIPLIERS.fitness[fitStr] || 1.0;
-  const effort = CALC_MULTIPLIERS.effort[matchEffort] || 1.0;
-
-  const baseRating = (bowl * 0.70) + (cons * 0.30);
-  return baseRating * form * fit * effort;
+  return {
+    full: `${label}${sub}`,
+    label,
+    sub,
+    color: clampedIndex >= 12 
+      ? 'text-emerald-700 border-emerald-200 bg-emerald-50' 
+      : clampedIndex >= 7 
+        ? 'text-indigo-700 border-indigo-200 bg-indigo-50/50' 
+        : clampedIndex >= 4 
+          ? 'text-amber-700 border-amber-200 bg-amber-50/50' 
+          : 'text-slate-600 border-slate-200 bg-slate-50',
+  };
 }
 
-export function calculateBattrickMatchRatings(squadLineup: any[], matchEffort: string = "go for it!") {
+export function calculateBattrickMatchRatings(squadLineup: OpponentPlayer[] | any[], matchEffort: string = "go for it!") {
   const isSpin = (type: string) => {
     const t = (type || '').toLowerCase();
-    return t.includes('spin') || t.includes('break') || t.includes('orthodox') || t.includes('spinner');
+    return t.includes('spin') || t.includes('break') || t.includes('orthodox') || t.includes('spinner') || 
+      ['ob', 'lb', 'slc', 'slw', 'rh', 'lh'].includes(t);
   };
   const isSeam = (type: string) => {
     const t = (type || '').toLowerCase();
-    return t.includes('fast') || t.includes('medium') || t.includes('seam') || t.includes('rf') || t.includes('fm') || t.includes('lf') || t.includes('lm') || t.includes('rm');
+    return t.includes('fast') || t.includes('medium') || t.includes('seam') || 
+      ['rf', 'rmf', 'rfm', 'rm', 'lf', 'lmf', 'lfm', 'lm'].includes(t);
   };
 
-  // We should only assess the top 11 players for the predictor
-  const startingXI = squadLineup.slice(0, 11);
+  if (!squadLineup || squadLineup.length === 0) {
+    return {
+      matchEffortUsed: matchEffort,
+      topOrder: 'useless (low)',
+      topOrderScore: 0,
+      topOrderLabel: getBattrickSectorRatingLabel(0),
+      middleOrder: 'useless (low)',
+      middleOrderScore: 0,
+      middleOrderLabel: getBattrickSectorRatingLabel(0),
+      lowerOrder: 'useless (low)',
+      lowerOrderScore: 0,
+      lowerOrderLabel: getBattrickSectorRatingLabel(0),
+      seamBowling: 'none',
+      seamBowlingScore: 0,
+      seamBowlingLabel: getBattrickSectorRatingLabel(0),
+      spinBowling: 'none',
+      spinBowlingScore: 0,
+      spinBowlingLabel: getBattrickSectorRatingLabel(0),
+      wicketKeeping: 'useless (low)',
+      wicketKeepingScore: 0,
+      wicketKeepingLabel: getBattrickSectorRatingLabel(0),
+      fielding: 'useless (low)',
+      fieldingScore: 0,
+      fieldingLabel: getBattrickSectorRatingLabel(0),
+      batStats: 0,
+      pflLossMultiplier: 1.0,
+      estimatedBTR: 0,
+      teamExperience: 0
+    };
+  }
 
-  const topOrderPlayers = startingXI.slice(0, 3);
-  const midOrderPlayers = startingXI.slice(3, 7);
-  const lowOrderPlayers = startingXI.slice(7, 11);
+  // If more than 11 players, order them into strongest XI
+  const orderedXI = squadLineup.length > 11 ? buildStrongestXI(squadLineup).slice(0, 11) : squadLineup.slice(0, 11);
+  const xi = orderedXI.map(toEffectiveScoutPlayer);
 
-  const topAvg = topOrderPlayers.length ? topOrderPlayers.reduce((a, p) => a + getCalcPlayerBattingWeight(p, matchEffort), 0) / topOrderPlayers.length : 1;
-  const midAvg = midOrderPlayers.length ? midOrderPlayers.reduce((a, p) => a + getCalcPlayerBattingWeight(p, matchEffort), 0) / midOrderPlayers.length : 1;
-  const lowAvg = lowOrderPlayers.length ? lowOrderPlayers.reduce((a, p) => a + getCalcPlayerBattingWeight(p, matchEffort), 0) / lowOrderPlayers.length : 1;
+  const battingValue = (p: EffectiveScoutPlayer) => p.batting + 0.25 * p.concentration;
+  const bowlingValue = (p: EffectiveScoutPlayer) => p.bowling + 0.25 * p.consistency;
+  const formModifier = (p: EffectiveScoutPlayer) => 0.80 + (Math.min(10, Math.max(0, p.form)) / 10) * 0.20;
+  const fitnessModifier = (p: EffectiveScoutPlayer) => 0.45 + (Math.min(10, Math.max(0, p.fitness)) / 10) * 0.55;
 
-  // We should ONLY count players assigned to bowl (if this information is missing, we check roles, but for now we look at the whole XI and grab bowlers)
-  const seamBowlers = startingXI.filter(p => isSeam(p.bowlingType) && (p.role === 'Bowler' || p.role === 'All-rounder' || p.primaryRoleClassifier === 'Bowler' || p.primaryRoleClassifier === 'All-Rounder' || startingXI.indexOf(p) >= 6));
-  const spinBowlers = startingXI.filter(p => isSpin(p.bowlingType) && (p.role === 'Bowler' || p.role === 'All-rounder' || p.primaryRoleClassifier === 'Bowler' || p.primaryRoleClassifier === 'All-Rounder' || startingXI.indexOf(p) >= 6));
+  const weightedSector = (weights: [EffectiveScoutPlayer | undefined, number][]) => {
+    const totalWeight = weights.reduce((acc, [, w]) => acc + w, 0) || 1;
+    const base = weights.reduce((acc, [p, w]) => acc + (p ? battingValue(p) * w : 0), 0);
+    const form = weights.reduce((acc, [p, w]) => acc + (p ? formModifier(p) * w : 1 * w), 0) / totalWeight;
+    const fitness = weights.reduce((acc, [p, w]) => acc + (p ? fitnessModifier(p) * w : 1 * w), 0) / totalWeight;
+    return { base, form, fitness };
+  };
 
-  const seamAvg = seamBowlers.length ? seamBowlers.reduce((a, p) => a + getCalcPlayerBowlingWeight(p, matchEffort), 0) / seamBowlers.length : 1;
-  const spinAvg = spinBowlers.length ? spinBowlers.reduce((a, p) => a + getCalcPlayerBowlingWeight(p, matchEffort), 0) / spinBowlers.length : 1;
+  const effortSkillMulti = EFFORT_SKILL_MULTIPLIER[matchEffort] ?? 1.00;
+  const p = (i: number) => xi[i];
 
-  const avgFielding = startingXI.length ? startingXI.reduce((a, p) => {
-    let f = p.skills?.fielding || p.fielding || 0;
-    if (f === 0 && p.estimatedSkillLevel) f = Math.max(1, p.estimatedSkillLevel - 2);
-    else if (f === 0) f = 1;
-    return a + f;
-  }, 0) / startingXI.length : 1;
-  
-  const avgExperience = startingXI.length ? startingXI.reduce((a, p) => {
-    let e = p.skills?.experience || p.experience || 0;
-    if (e === 0) e = 5; // decent baseline for unknown experience
-    return a + e;
-  }, 0) / startingXI.length : 1;
+  // Top Order: Batsmen 1-3 ~70% of the rating, 4-5 the remaining ~30%
+  const topOrderCalc = weightedSector([
+    [p(0), 0.25], [p(1), 0.25], [p(2), 0.20], [p(3), 0.18], [p(4), 0.12],
+  ]);
 
-  const effortMultiplier = CALC_MULTIPLIERS.effort[matchEffort] || 1.0;
-  
-  // Batstats formula adjustment for more realistic 100k-250k ratings
-  // Battrick batstats are roughly (sum of ratings) * some huge multiplier
-  const rawBatstats = ((topAvg * 11) + (midAvg * 11) + (lowAvg * 5) + (seamAvg * 8) + (spinAvg * 8) + (avgFielding * 4) + (avgExperience * 2)) * 1250 * effortMultiplier;
+  // Middle Order: heavily determined by Batsmen 4, 5, 6, 7
+  const middleOrderCalc = weightedSector([
+    [p(3), 0.15], [p(4), 0.30], [p(5), 0.30], [p(6), 0.25],
+  ]);
+
+  // Lower Order: Batsmen 8, 9, 10, 11 (tail-end bowlers)
+  const lowerOrderCalc = weightedSector([
+    [p(7), 0.15], [p(8), 0.35], [p(9), 0.30], [p(10), 0.20],
+  ]);
+
+  // Main Bowlers: Seam and Spin
+  const seamBowlers = xi.filter(pl => isSeam(pl.bowlingType) && (pl.bowling > 2 || pl.role === 'Bowler' || pl.role === 'All-rounder' || xi.indexOf(pl) >= 6));
+  let seamBowlingRaw = 0, seamForm = 1, seamFitness = 1;
+  if (seamBowlers.length > 0) {
+    const avgSeam = seamBowlers.reduce((acc, curr) => acc + bowlingValue(curr), 0) / seamBowlers.length;
+    seamBowlingRaw = avgSeam + (Math.min(3, seamBowlers.length) * 0.45);
+    seamForm = seamBowlers.reduce((acc, curr) => acc + formModifier(curr), 0) / seamBowlers.length;
+    seamFitness = seamBowlers.reduce((acc, curr) => acc + fitnessModifier(curr), 0) / seamBowlers.length;
+  }
+
+  const spinBowlers = xi.filter(pl => isSpin(pl.bowlingType) && (pl.bowling > 2 || pl.role === 'Bowler' || pl.role === 'All-rounder' || xi.indexOf(pl) >= 6));
+  let spinBowlingRaw = 0, spinForm = 1, spinFitness = 1;
+  if (spinBowlers.length > 0) {
+    const avgSpin = spinBowlers.reduce((acc, curr) => acc + bowlingValue(curr), 0) / spinBowlers.length;
+    spinBowlingRaw = avgSpin + (Math.min(2, spinBowlers.length) * 0.55);
+    spinForm = spinBowlers.reduce((acc, curr) => acc + formModifier(curr), 0) / spinBowlers.length;
+    spinFitness = spinBowlers.reduce((acc, curr) => acc + fitnessModifier(curr), 0) / spinBowlers.length;
+  }
+
+  // Wicket Keeper
+  const keeper = xi.find(pl => pl.role === 'Keeper') || xi[6];
+  const keepingRaw = keeper ? (keeper.keeping + (keeper.experience * 0.16)) : 0;
+  const keeperForm = keeper ? formModifier(keeper) : 1;
+  const keeperFitness = keeper ? fitnessModifier(keeper) : 1;
+
+  // Fielding & Experience
+  const avgExperience = xi.length ? xi.reduce((acc, curr) => acc + curr.experience, 0) / xi.length : 5;
+  const avgFielding = xi.length ? xi.reduce((acc, curr) => acc + curr.fielding, 0) / xi.length : 5;
+  const fieldingRaw = avgFielding + (avgExperience * 0.1);
+  const avgFieldingForm = xi.length ? xi.reduce((acc, curr) => acc + formModifier(curr), 0) / xi.length : 1;
+  const avgFieldingFitness = xi.length ? xi.reduce((acc, curr) => acc + fitnessModifier(curr), 0) / xi.length : 1;
+
+  const clamp = (v: number) => Math.min(20, Math.max(0, v));
+
+  const topOrder = clamp(topOrderCalc.base * topOrderCalc.form * topOrderCalc.fitness * effortSkillMulti);
+  const middleOrder = clamp(middleOrderCalc.base * middleOrderCalc.form * middleOrderCalc.fitness * effortSkillMulti);
+  const lowerOrder = clamp(lowerOrderCalc.base * lowerOrderCalc.form * lowerOrderCalc.fitness * effortSkillMulti);
+  const seamBowling = clamp(seamBowlingRaw * seamForm * seamFitness * effortSkillMulti);
+  const spinBowling = clamp(spinBowlingRaw * spinForm * spinFitness * effortSkillMulti);
+  const wicketKeeping = clamp(keepingRaw * keeperForm * keeperFitness * effortSkillMulti);
+  const fielding = clamp(fieldingRaw * avgFieldingForm * avgFieldingFitness * effortSkillMulti);
+
+  // Authoritative community reverse-engineered Battrick match engine Batstats output:
+  // Math.round((Top Order + Middle Order + Lower Order) * 7)
+  const batStats = Math.round((topOrder + middleOrder + lowerOrder) * 7);
+
+  const estimatedTotalBTR = xi.reduce((acc, curr) => acc + (curr.btRating || 0), 0);
 
   return {
     matchEffortUsed: matchEffort,
-    topOrder: getCalcRatingLabel(topAvg),
-    middleOrder: getCalcRatingLabel(midAvg),
-    lowerOrder: getCalcRatingLabel(lowAvg),
-    seamBowling: getCalcRatingLabel(seamAvg),
-    spinBowling: getCalcRatingLabel(spinAvg),
-    fielding: getCalcRatingLabel(avgFielding),
-    batStats: Math.round(rawBatstats)
+    topOrder: getBattrickSectorRatingLabel(topOrder).full,
+    topOrderScore: Number(topOrder.toFixed(1)),
+    topOrderRaw: topOrder,
+    topOrderLabel: getBattrickSectorRatingLabel(topOrder),
+
+    middleOrder: getBattrickSectorRatingLabel(middleOrder).full,
+    middleOrderScore: Number(middleOrder.toFixed(1)),
+    middleOrderRaw: middleOrder,
+    middleOrderLabel: getBattrickSectorRatingLabel(middleOrder),
+
+    lowerOrder: getBattrickSectorRatingLabel(lowerOrder).full,
+    lowerOrderScore: Number(lowerOrder.toFixed(1)),
+    lowerOrderRaw: lowerOrder,
+    lowerOrderLabel: getBattrickSectorRatingLabel(lowerOrder),
+
+    seamBowling: seamBowling > 0 ? getBattrickSectorRatingLabel(seamBowling).full : 'none',
+    seamBowlingScore: Number(seamBowling.toFixed(1)),
+    seamBowlingRaw: seamBowling,
+    seamBowlingLabel: getBattrickSectorRatingLabel(seamBowling),
+
+    spinBowling: spinBowling > 0 ? getBattrickSectorRatingLabel(spinBowling).full : 'none',
+    spinBowlingScore: Number(spinBowling.toFixed(1)),
+    spinBowlingRaw: spinBowling,
+    spinBowlingLabel: getBattrickSectorRatingLabel(spinBowling),
+
+    wicketKeeping: getBattrickSectorRatingLabel(wicketKeeping).full,
+    wicketKeepingScore: Number(wicketKeeping.toFixed(1)),
+    wicketKeepingRaw: wicketKeeping,
+    wicketKeepingLabel: getBattrickSectorRatingLabel(wicketKeeping),
+
+    fielding: getBattrickSectorRatingLabel(fielding).full,
+    fieldingScore: Number(fielding.toFixed(1)),
+    fieldingRaw: fielding,
+    fieldingLabel: getBattrickSectorRatingLabel(fielding),
+
+    batStats,
+    pflLossMultiplier: EFFORT_PFL_MULTIPLIER[matchEffort] ?? 1.0,
+    estimatedBTR: estimatedTotalBTR,
+    teamExperience: avgExperience,
   };
 }
