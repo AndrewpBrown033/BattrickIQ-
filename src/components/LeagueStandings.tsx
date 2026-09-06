@@ -132,10 +132,16 @@ export const LeagueStandings: React.FC<LeagueStandingsProps> = ({ setActiveTab, 
       setFirstClassTable(localStorage.getItem('bt_league_fc') ? JSON.parse(localStorage.getItem('bt_league_fc')!) : getExampleLeagueTable('2749', 'V.7', 'First Class'));
 
       const odSaved = localStorage.getItem('bt_league_od');
-      setOneDayTable(odSaved ? JSON.parse(odSaved) : getExampleLeagueTable('212', 'IV.2', 'One Day'));
+      if (odSaved && (odSaved.includes('"teamId":"101"') || odSaved.includes('"teamId":"132175"'))) {
+        localStorage.removeItem('bt_league_od');
+      }
+      setOneDayTable(localStorage.getItem('bt_league_od') ? JSON.parse(localStorage.getItem('bt_league_od')!) : getExampleLeagueTable('212', 'IV.2', 'One Day'));
 
       const t20Saved = localStorage.getItem('bt_league_t20');
-      setBt20Table(t20Saved ? JSON.parse(t20Saved) : getExampleLeagueTable('7532', 'IV.51', 'BT20'));
+      if (t20Saved && (t20Saved.includes('"teamId":"101"') || t20Saved.includes('"teamId":"132175"'))) {
+        localStorage.removeItem('bt_league_t20');
+      }
+      setBt20Table(localStorage.getItem('bt_league_t20') ? JSON.parse(localStorage.getItem('bt_league_t20')!) : getExampleLeagueTable('7532', 'IV.51', 'BT20'));
     } catch (e) {
       console.error('Error loading local league standings:', e);
     }

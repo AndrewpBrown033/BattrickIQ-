@@ -4015,26 +4015,26 @@ export function getExampleLeagueTable(leagueId: string, leagueName?: string, lea
     ];
   } else if (type === 'BT20') {
     teams = [
-      { position: 1, teamName: "Cyclone Strikers", teamId: '201', played: 12, won: 10, tied: 0, lost: 2, points: 40, netRunRate: '+2.45', isMyTeam: false },
-      { position: 2, teamName: "Gold Coast Titans", teamId: '202', played: 12, won: 9, tied: 0, lost: 3, points: 36, netRunRate: '+1.82', isMyTeam: false },
-      { position: 3, teamName: "Sandshoe CC", teamId: '102', played: 12, won: 8, tied: 0, lost: 4, points: 32, netRunRate: '+1.10', isMyTeam: false },
-      { position: 4, teamName: "Steve's XI", teamId: '101', played: 12, won: 7, tied: 0, lost: 5, points: 28, netRunRate: '+0.42', isMyTeam: false },
-      { position: 5, teamName: "Outback Express", teamId: '105', played: 12, won: 5, tied: 0, lost: 7, points: 20, netRunRate: '-0.55', isMyTeam: false },
-      { position: 6, teamName: "Bulolo Strikers", teamId: '103', played: 12, won: 4, tied: 0, lost: 8, points: 16, netRunRate: '-0.98', isMyTeam: false },
-      { position: 7, teamName: "HairyBeanBags", teamId: '132175', played: 12, won: 3, tied: 0, lost: 9, points: 12, netRunRate: '-1.45', isMyTeam: true },
-      { position: 8, teamName: "Cobar Colts", teamId: '208', played: 12, won: 2, tied: 0, lost: 10, points: 8, netRunRate: '-2.80', isMyTeam: false }
+      { position: 1, teamName: "Cyclone Strikers", teamId: '7501', played: 12, won: 10, tied: 0, lost: 2, points: 40, netRunRate: '+2.45', isMyTeam: false },
+      { position: 2, teamName: "Gold Coast Titans", teamId: '7502', played: 12, won: 9, tied: 0, lost: 3, points: 36, netRunRate: '+1.82', isMyTeam: false },
+      { position: 3, teamName: "Sandshoe Crushers", teamId: '825', played: 12, won: 8, tied: 0, lost: 4, points: 32, netRunRate: '+1.10', isMyTeam: false },
+      { position: 4, teamName: "Bluejays", teamId: '24514', played: 12, won: 7, tied: 0, lost: 5, points: 28, netRunRate: '+0.42', isMyTeam: false },
+      { position: 5, teamName: "BB Crickets Tragedies", teamId: '4835', played: 12, won: 5, tied: 0, lost: 7, points: 20, netRunRate: '-0.55', isMyTeam: false },
+      { position: 6, teamName: "Beyond the Moon Enjoy", teamId: '5721', played: 12, won: 4, tied: 0, lost: 8, points: 16, netRunRate: '-0.98', isMyTeam: false },
+      { position: 7, teamName: "HairyBeanBags", teamId: '5250', played: 12, won: 3, tied: 0, lost: 9, points: 12, netRunRate: '-1.45', isMyTeam: true },
+      { position: 8, teamName: "Nunawading Noobs", teamId: '5950', played: 12, won: 2, tied: 0, lost: 10, points: 8, netRunRate: '-2.80', isMyTeam: false }
     ];
   } else {
     // One Day
     teams = [
-      { position: 1, teamName: "Brisbane Blasters", teamId: '104', played: 10, won: 9, tied: 0, lost: 1, points: 36, netRunRate: '+1.92', isMyTeam: false },
-      { position: 2, teamName: "HairyBeanBags", teamId: '132175', played: 10, won: 8, tied: 0, lost: 2, points: 32, netRunRate: '+1.35', isMyTeam: true },
-      { position: 3, teamName: "Steve's XI", teamId: '101', played: 10, won: 7, tied: 0, lost: 3, points: 28, netRunRate: '+0.88', isMyTeam: false },
-      { position: 4, teamName: "Sandshoe CC", teamId: '102', played: 10, won: 5, tied: 0, lost: 5, points: 20, netRunRate: '+0.12', isMyTeam: false },
-      { position: 5, teamName: "Gold Coast Titans", teamId: '202', played: 10, won: 4, tied: 0, lost: 6, points: 16, netRunRate: '-0.42', isMyTeam: false },
-      { position: 6, teamName: "Outback Express", teamId: '105', played: 10, won: 4, tied: 0, lost: 6, points: 16, netRunRate: '-0.75', isMyTeam: false },
-      { position: 7, teamName: "Bulolo Strikers", teamId: '103', played: 10, won: 2, tied: 0, lost: 8, points: 8, netRunRate: '-1.15', isMyTeam: false },
-      { position: 8, teamName: "Cobar Colts", teamId: '208', played: 10, won: 1, tied: 0, lost: 9, points: 4, netRunRate: '-2.05', isMyTeam: false }
+      { position: 1, teamName: "Beyond the Moon Enjoy", teamId: '5721', played: 10, won: 9, tied: 0, lost: 1, points: 36, netRunRate: '+1.92', isMyTeam: false },
+      { position: 2, teamName: "HairyBeanBags", teamId: '5250', played: 10, won: 8, tied: 0, lost: 2, points: 32, netRunRate: '+1.35', isMyTeam: true },
+      { position: 3, teamName: "Bluejays", teamId: '24514', played: 10, won: 7, tied: 0, lost: 3, points: 28, netRunRate: '+0.88', isMyTeam: false },
+      { position: 4, teamName: "Sandshoe Crushers", teamId: '825', played: 10, won: 5, tied: 0, lost: 5, points: 20, netRunRate: '+0.12', isMyTeam: false },
+      { position: 5, teamName: "BB Crickets Tragedies", teamId: '4835', played: 10, won: 4, tied: 0, lost: 6, points: 16, netRunRate: '-0.42', isMyTeam: false },
+      { position: 6, teamName: "Nunawading Noobs", teamId: '5950', played: 10, won: 4, tied: 0, lost: 6, points: 16, netRunRate: '-0.75', isMyTeam: false },
+      { position: 7, teamName: "Cyclone Strikers", teamId: '7501', played: 10, won: 2, tied: 0, lost: 8, points: 8, netRunRate: '-1.15', isMyTeam: false },
+      { position: 8, teamName: "Gold Coast Titans", teamId: '7502', played: 10, won: 1, tied: 0, lost: 9, points: 4, netRunRate: '-2.05', isMyTeam: false }
     ];
   }
 
