@@ -1,6 +1,7 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
+import { BattrickAuthProvider } from './lib/battrickAuthContext';
 import './index.css';
 
 // Intercept localStorage writes/removes to track local modifications and avoid race conditions with incoming Firestore snapshots
@@ -32,7 +33,9 @@ localStorage.removeItem = function (key: string) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <BattrickAuthProvider>
+      <App />
+    </BattrickAuthProvider>
   </StrictMode>,
 );
 

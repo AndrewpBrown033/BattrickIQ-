@@ -24,6 +24,7 @@ export default function App() {
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [teamName, setTeamName] = useState<string>('My Battrick IQ Club');
   const [showMobileMore, setShowMobileMore] = useState<boolean>(false);
+  const [scoutTarget, setScoutTarget] = useState<{ teamName: string; teamId?: string; nonce: number } | null>(null);
   
   // Mobile bottom navigation scrolling
   const mobileNavRef = useRef<HTMLDivElement>(null);
@@ -529,8 +530,15 @@ export default function App() {
                     />
                   )}
                   {activeTab === 'lineup' && <LineupOptimizer setActiveTab={setActiveTab} />}
-                  {activeTab === 'scout' && <OpponentScout setActiveTab={setActiveTab} />}
-                  {activeTab === 'league' && <LeagueStandings setActiveTab={setActiveTab} />}
+                  {activeTab === 'scout' && <OpponentScout setActiveTab={setActiveTab} scoutTarget={scoutTarget} />}
+                  {activeTab === 'league' && (
+                    <LeagueStandings
+                      setActiveTab={setActiveTab}
+                      onSelectScoutTeam={(teamName, teamId) => {
+                        setScoutTarget({ teamName, teamId, nonce: Date.now() });
+                      }}
+                    />
+                  )}
                   {activeTab === 'wage' && <WageCalculator />}
                   {activeTab === 'stadium' && <StadiumPlanner setActiveTab={setActiveTab} />}
                   {activeTab === 'coach' && <AICoach />}
@@ -650,7 +658,7 @@ export default function App() {
             type="button"
             onClick={() => setShowMobileMore(prev => !prev)}
             className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
-              showMobileMore || ['coach', 'sync', 'rules', 'admin'].includes(activeTab)
+              showMobileMore || ['coach', 'sync', 'rules', 'admin', 'scout', 'league'].includes(activeTab)
                 ? 'bg-[#e8edf2] text-slate-900 font-semibold shadow-2xs'
                 : 'text-slate-500 hover:text-slate-900 font-medium'
             }`}
@@ -696,6 +704,42 @@ export default function App() {
               </div>
 
               <div className="grid grid-cols-2 gap-2.5 mt-4">
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('scout'); setShowMobileMore(false); }}
+                  className={`flex items-center gap-3 p-3 rounded-xl border text-left transition cursor-pointer ${
+                    activeTab === 'scout'
+                      ? 'bg-blue-50/80 border-blue-200 text-blue-900 font-bold'
+                      : 'bg-slate-50/70 border-slate-200/80 text-slate-800 hover:bg-slate-100'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                    <Swords className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold">Opponent Scout</div>
+                    <div className="text-[10px] text-slate-500">Tactical Analysis</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('league'); setShowMobileMore(false); }}
+                  className={`flex items-center gap-3 p-3 rounded-xl border text-left transition cursor-pointer ${
+                    activeTab === 'league'
+                      ? 'bg-blue-50/80 border-blue-200 text-blue-900 font-bold'
+                      : 'bg-slate-50/70 border-slate-200/80 text-slate-800 hover:bg-slate-100'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                    <Trophy className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold">League Ladders</div>
+                    <div className="text-[10px] text-slate-500">Standings & Scouting</div>
+                  </div>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => { setActiveTab('coach'); setShowMobileMore(false); }}

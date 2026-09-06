@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { PavilionInfo, BattrickLeagueTable, BattrickLeagueTeam, LeagueLinkInfo } from '../types';
 import { parseLeagueTable, getExampleLeagueTable, parseBattrickPage } from '../parser';
+import { useBattrickAuth } from '../lib/battrickAuthContext';
 
 interface LeagueStandingsProps {
   setActiveTab: (tab: any) => void;
@@ -28,6 +29,7 @@ interface LeagueStandingsProps {
 }
 
 export const LeagueStandings: React.FC<LeagueStandingsProps> = ({ setActiveTab, onSelectScoutTeam }) => {
+  const { username: battrickUsername, password: battrickPassword, requireAuth } = useBattrickAuth();
   const [pavilion, setPavilion] = useState<PavilionInfo | null>(null);
   const [activeLeagueType, setActiveLeagueType] = useState<'First Class' | 'One Day' | 'BT20'>('First Class');
   const [customLeagueId, setCustomLeagueId] = useState<string>('');
@@ -192,14 +194,18 @@ export const LeagueStandings: React.FC<LeagueStandingsProps> = ({ setActiveTab, 
 
   // Direct Live Sync with Battrick
   const handleLiveSyncLeague = async () => {
+    if (!requireAuth('sync live league standings')) {
+      return;
+    }
+
     setIsSyncing(true);
     setSyncError(null);
     setSyncStatus(`Syncing ${activeLeagueType} League #${activeLeagueId} from Battrick servers...`);
 
     try {
       const targetId = activeLeagueId;
-      const username = localStorage.getItem('bt_battrick_username') || localStorage.getItem('bt_direct_user') || '';
-      const password = sessionStorage.getItem('bt_direct_pass') || localStorage.getItem('bt_direct_pass') || '';
+      const username = battrickUsername;
+      const password = battrickPassword;
       const sessionToken = localStorage.getItem('bt_sync_session') || '';
 
       const res = await fetch('/api/sync-battrick-step', {

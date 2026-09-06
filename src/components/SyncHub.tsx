@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { BattrickPlayer, ClubFinances, BattrickGame, PavilionInfo } from '../types';
 import { parseBattrickPage, isNameMatch } from '../parser';
+import { useBattrickAuth } from '../lib/battrickAuthContext';
 import { mergePlayerAndTrackHistory, generateRealisticHistory } from '../utils/history';
 import { 
   SAMPLE_SQUAD_HTML, 
@@ -188,44 +189,18 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
   const [selectedMapping, setSelectedMapping] = useState<string>('auto');
 
   // --- Direct Sync State ---
-  const [directUsername, setDirectUsername] = useState<string>(() => localStorage.getItem('bt_battrick_username') || '');
-  const [directPassword, setDirectPassword] = useState<string>(() => {
-    try {
-      return sessionStorage.getItem('bt_direct_pass') || localStorage.getItem('bt_direct_pass') || '';
-    } catch {
-      return '';
-    }
-  });
-  const [rememberDirectUsername, setRememberDirectUsername] = useState<boolean>(() => !!localStorage.getItem('bt_battrick_username'));
+  // Username/password/authentication status now live in the shared
+  // BattrickAuthContext, set once via the auth bar at the top of the app.
+  // Every sync action in this component reads from that single source
+  // instead of managing its own separate login state.
+  const { username: directUsername, password: directPassword, isAuthenticated: isBattrickAuthenticated, requireAuth, openPrompt, logout: logoutBattrick } = useBattrickAuth();
   const [directSyncing, setDirectSyncing] = useState<boolean>(false);
   const [directSyncError, setDirectSyncError] = useState<string | null>(null);
   const [directPageStatuses, setDirectPageStatuses] = useState<{ name: string; success: boolean; error: string | null }[] | null>(null);
 
-  // Sync password input to sessionStorage for active browser tab session
-  const handlePasswordChange = (val: string) => {
-    setDirectPassword(val);
-    try {
-      if (val) {
-        sessionStorage.setItem('bt_direct_pass', val);
-      } else {
-        sessionStorage.removeItem('bt_direct_pass');
-        localStorage.removeItem('bt_direct_pass');
-      }
-    } catch {
-      // ignore
-    }
-  };
-
-  // Explicit log out action to purge session token & password
+  // Explicit log out action to purge session token & password (delegates to the shared context)
   const handleLogoutDirectSession = () => {
-    try {
-      sessionStorage.removeItem('bt_direct_pass');
-      localStorage.removeItem('bt_direct_pass');
-      localStorage.removeItem('bt_sync_session');
-    } catch {
-      // ignore
-    }
-    setDirectPassword('');
+    logoutBattrick();
     setDirectSyncError(null);
     addSyncLog('auth', 'Logged out of Direct Sync session. Stored password and session credentials removed.', 'success');
   };
@@ -243,8 +218,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
   } | null>(null);
 
   const runDiagnosticTest = async () => {
-    if (!directUsername.trim() || !directPassword) {
-      setDirectSyncError("Please enter your Battrick username and password above before running the diagnostic.");
+    if (!requireAuth('run the connection diagnostic')) {
       return;
     }
     setDiagnosticRunning(true);
@@ -846,12 +820,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
           };
         }
         if (raw.includes('login.asp') || raw.includes('Log In to Battrick')) {
-          try {
-            sessionStorage.removeItem('bt_direct_pass');
-            localStorage.removeItem('bt_direct_pass');
-            localStorage.removeItem('bt_sync_session');
-          } catch {}
-          setDirectPassword('');
+          logoutBattrick();
           return {
             success: false,
             error: `Invalid credentials or session expired during ${context}. Session password has been cleared.`
@@ -882,8 +851,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
   const handleDirectSync = async (pagesOverride?: string[]) => {
     const pagesToSync = pagesOverride && pagesOverride.length > 0 ? pagesOverride : selectedSyncPages;
 
-    if (!directUsername.trim() || !directPassword.trim()) {
-      setDirectSyncError('Please enter your Battrick username and password.');
+    if (!requireAuth('synchronize club data')) {
       return;
     }
 
@@ -896,12 +864,6 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     setDirectSyncError(null);
     setDirectPageStatuses(null);
     abortSyncRef.current = false;
-
-    if (rememberDirectUsername) {
-      localStorage.setItem('bt_battrick_username', directUsername.trim());
-    } else {
-      localStorage.removeItem('bt_battrick_username');
-    }
 
     // Build step queue
     const stepDefinitions: Record<string, { label: string; subLabel: string; urlLabel: string; icon: any; color: string }> = {
@@ -1259,7 +1221,10 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
           success: true
         });
       }
-      setDirectPassword('');
+      // Note: the Battrick session password is intentionally NOT cleared here.
+      // It stays authenticated for the rest of this browser session (see
+      // BattrickAuthContext) so every other sync button keeps working without
+      // asking the user to log in again.
 
     } catch (globalErr: any) {
       console.error('[Sequential Sync Global Error]', globalErr);
@@ -1638,23 +1603,17 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
                 </p>
               </div>
 
-              {/* Login Credentials Box */}
-              <form 
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleDirectSync();
-                }}
-                className="bg-slate-50 border border-slate-200 rounded-xl p-4"
-              >
-                <div className="flex items-center justify-between mb-2.5 flex-wrap gap-2">
+              {/* Battrick Session Status (credentials are entered once via the auth bar at the top of the app) */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
                   <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 block">
-                    1. Battrick Account Credentials
+                    1. Battrick Account Session
                   </span>
-                  {directPassword ? (
+                  {isBattrickAuthenticated ? (
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100/90 px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                        Active Login Session
+                        Connected as {directUsername}
                       </span>
                       <button
                         type="button"
@@ -1667,53 +1626,22 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
                       </button>
                     </div>
                   ) : (
-                    <span className="text-[10px] font-mono text-slate-400">
-                      Not Logged In
-                    </span>
+                    <button
+                      type="button"
+                      onClick={openPrompt}
+                      className="text-[11px] font-mono font-bold text-white bg-amber-600 hover:bg-amber-700 px-2.5 py-1 rounded-md transition cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Lock className="w-3 h-3" />
+                      <span>Connect Battrick Account</span>
+                    </button>
                   )}
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[11px] font-bold text-slate-700 font-sans">Battrick Username</label>
-                    <input
-                      type="text"
-                      value={directUsername}
-                      onChange={(e) => setDirectUsername(e.target.value)}
-                      placeholder="Your Battrick username"
-                      autoComplete="username"
-                      className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[11px] font-bold text-slate-700 font-sans">Battrick Password</label>
-                    <input
-                      type="password"
-                      value={directPassword}
-                      onChange={(e) => handlePasswordChange(e.target.value)}
-                      placeholder="Your Battrick password"
-                      autoComplete="current-password"
-                      className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-2.5 flex items-center justify-between flex-wrap gap-2 text-[11px] text-slate-600 font-sans">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={rememberDirectUsername}
-                      onChange={(e) => setRememberDirectUsername(e.target.checked)}
-                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    Remember username on this device
-                  </label>
-                  <span className="text-[10px] font-mono text-slate-500 flex items-center gap-1">
-                    <Lock className="w-3 h-3 text-slate-400" />
-                    Password is stored in session memory and automatically removed on logout or session timeout.
-                  </span>
-                </div>
-              </form>
+                <p className="text-[11px] text-slate-500 font-sans mt-1">
+                  {isBattrickAuthenticated
+                    ? 'This login is shared across the whole app for the rest of your session \u2014 every sync button below (and on Opponent Scout / League Standings) will use it automatically.'
+                    : 'Not connected yet. Use the "Connect Battrick" bar at the top of the page to authenticate once for this session.'}
+                </p>
+              </div>
 
               {/* Configurable Sync Sections Checklist */}
               <div className="bg-white border border-slate-200 rounded-xl p-4">

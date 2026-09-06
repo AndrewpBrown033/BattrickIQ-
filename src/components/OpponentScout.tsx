@@ -24,6 +24,7 @@ import {
   parseBattrickPlayerDetails,
   estimatePlayerSkills
 } from '../parser';
+import { useBattrickAuth } from '../lib/battrickAuthContext';
 import { 
   ShieldAlert, 
   Target, 
@@ -53,8 +54,6 @@ import {
   UserCheck,
   RefreshCw,
   Lock,
-  ShieldCheck,
-  X,
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
@@ -73,6 +72,9 @@ const normalizeMatchFormat = (type?: string): MatchFormat => {
 };
 
 export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
+  // Shared Battrick session (authenticated once via the auth bar at the top of the app)
+  const { username: battrickUsername, password: battrickPassword, requireAuth, logout: logoutBattrick, openPrompt: openBattrickPrompt } = useBattrickAuth();
+
   // Navigation Sub-tab: match_analyzer | fixtures_scout | dossier | player_scout
   const [activeSubTab, setActiveSubTab] = useState<'match_analyzer' | 'fixtures_scout' | 'dossier' | 'player_scout'>('match_analyzer');
 
@@ -191,15 +193,6 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
   // 5. Match & Summary Intelligence State
   const [matchIdInput, setMatchIdInput] = useState<string>('32554717');
   const [pastedMatchText, setPastedMatchText] = useState<string>('');
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
-  const [modalUsername, setModalUsername] = useState<string>(() => {
-    try {
-      return localStorage.getItem('bt_battrick_username') || localStorage.getItem('bt_direct_user') || '';
-    } catch {
-      return '';
-    }
-  });
-  const [modalPassword, setModalPassword] = useState<string>('');
   const [activeParsedMatch, setActiveParsedMatch] = useState<ParsedBattrickMatch>(() => {
     const savedName = typeof localStorage !== 'undefined' ? localStorage.getItem('bt_team_name') : null;
     const name = savedName && savedName.trim() ? savedName.trim() : 'HairyBeanBags';
@@ -233,14 +226,17 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
       setPlayerSyncError('Please enter a valid Battrick Player ID.');
       return;
     }
+    if (!requireAuth('scout a live player')) {
+      return;
+    }
     setScoutedPlayer(null);
     setIsSyncingPlayer(true);
     setPlayerSyncError(null);
     setPlayerSyncStatus(`Syncing Player ID #${scoutPlayerId} from Battrick servers...`);
 
     try {
-      const username = localStorage.getItem('bt_battrick_username') || localStorage.getItem('bt_direct_user') || '';
-      const password = sessionStorage.getItem('bt_direct_pass') || localStorage.getItem('bt_direct_pass') || '';
+      const username = battrickUsername;
+      const password = battrickPassword;
       const sessionToken = localStorage.getItem('bt_sync_session') || '';
 
       const res = await fetch('/api/sync-battrick-step', {
@@ -603,6 +599,10 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
       return;
     }
 
+    if (!requireAuth(`fetch Match #${targetMatchId} live`)) {
+      return;
+    }
+
     setIsFetchingMatch(true);
     setFetchingMatchId(targetMatchId);
     setFetchError(null);
@@ -616,19 +616,9 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
     }
 
     try {
-      const username = localStorage.getItem('bt_battrick_username') || localStorage.getItem('bt_direct_user') || '';
-      const password = sessionStorage.getItem('bt_direct_pass') || localStorage.getItem('bt_direct_pass') || '';
+      const username = battrickUsername;
+      const password = battrickPassword;
       const sessionToken = localStorage.getItem('bt_sync_session') || '';
-
-      // If no session token or password stored, prompt immediately for quick authentication
-      if (!password && !sessionToken) {
-        setIsFetchingMatch(false);
-        setModalUsername(username);
-        setModalPassword('');
-        setFetchError(`Authentication required to fetch Match #${targetMatchId} live from Battrick.`);
-        setIsAuthModalOpen(true);
-        return;
-      }
 
       const response = await fetch('/api/sync-battrick-match', {
         method: 'POST',
@@ -646,12 +636,8 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
       if (!response.ok || !data.success) {
         const isAuthFailure = response.status === 401 || data.isAuthFailure || data.message?.toLowerCase().includes('credentials') || data.message?.toLowerCase().includes('login') || data.message?.toLowerCase().includes('session') || data.error?.toLowerCase().includes('login') || data.error?.toLowerCase().includes('session');
         if (isAuthFailure) {
-          sessionStorage.removeItem('bt_direct_pass');
-          localStorage.removeItem('bt_direct_pass');
-          localStorage.removeItem('bt_sync_session');
-          setModalUsername(username);
-          setModalPassword('');
-          setIsAuthModalOpen(true);
+          logoutBattrick();
+          openBattrickPrompt();
         }
         throw new Error(data.message || data.error || `HTTP ${response.status}: Failed to fetch match from Battrick.`);
       }
@@ -711,6 +697,9 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
       setSquadSyncError('Opponent Team ID is required for live sync. Please manually enter the Team ID (e.g. 14112) in the input field above.');
       return;
     }
+    if (!requireAuth('fetch a live opponent squad')) {
+      return;
+    }
     
     setOpponentPlayers([]);
     setIsSyncingSquad(true);
@@ -723,19 +712,9 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
     } catch {}
 
     try {
-      const username = localStorage.getItem('bt_battrick_username') || localStorage.getItem('bt_direct_user') || '';
-      const password = sessionStorage.getItem('bt_direct_pass') || localStorage.getItem('bt_direct_pass') || '';
+      const username = battrickUsername;
+      const password = battrickPassword;
       const sessionToken = localStorage.getItem('bt_sync_session') || '';
-
-      // If no credentials and no session, open the credentials modal
-      if (!password && !sessionToken) {
-        setIsSyncingSquad(false);
-        setModalUsername(username);
-        setModalPassword('');
-        setSquadSyncError(`Authentication required to fetch squad live from Battrick.`);
-        setIsAuthModalOpen(true);
-        return;
-      }
 
       const response = await fetch('/api/sync-battrick-step', {
         method: 'POST',
@@ -754,12 +733,8 @@ export default function OpponentScout({ setActiveTab }: OpponentScoutProps) {
       if (!response.ok || !data.success) {
         const isAuthFailure = response.status === 401 || data.isAuthFailure || data.message?.toLowerCase().includes('credentials') || data.message?.toLowerCase().includes('login') || data.message?.toLowerCase().includes('session') || data.error?.toLowerCase().includes('login') || data.error?.toLowerCase().includes('session');
         if (isAuthFailure) {
-          sessionStorage.removeItem('bt_direct_pass');
-          localStorage.removeItem('bt_direct_pass');
-          localStorage.removeItem('bt_sync_session');
-          setModalUsername(username);
-          setModalPassword('');
-          setIsAuthModalOpen(true);
+          logoutBattrick();
+          openBattrickPrompt();
         }
         throw new Error(data.message || data.error || `HTTP ${response.status}: Failed to fetch squad from Battrick.`);
       }
@@ -1199,15 +1174,11 @@ TACTICAL ORDERS:
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
-                    onClick={() => {
-                      setModalUsername(localStorage.getItem('bt_battrick_username') || localStorage.getItem('bt_direct_user') || '');
-                      setModalPassword('');
-                      setIsAuthModalOpen(true);
-                    }}
+                    onClick={openBattrickPrompt}
                     className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
                   >
                     <Lock className="w-3.5 h-3.5" />
-                    <span>Enter Password & Fetch Match #{matchIdInput}</span>
+                    <span>Connect Battrick & Fetch Match #{matchIdInput}</span>
                   </button>
                   <button
                     type="button"
@@ -3021,97 +2992,10 @@ TACTICAL ORDERS:
         </div>
       )}
 
-      {/* Inline Quick Authentication Modal for Live Match Fetching */}
-      {isAuthModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
-                  <Lock className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-serif font-bold text-base text-slate-900">Authenticate Battrick Session</h3>
-                  <p className="text-[11px] font-mono text-slate-500">Live fetch for Match #{matchIdInput}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAuthModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-600 leading-relaxed mb-4">
-              Your Battrick session has expired or requires a password. Enter your credentials below to authenticate directly with Battrick and fetch Match #{matchIdInput}.
-            </p>
-
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (!modalUsername.trim() || !modalPassword) return;
-                localStorage.setItem('bt_battrick_username', modalUsername.trim());
-                sessionStorage.setItem('bt_direct_pass', modalPassword);
-                setIsAuthModalOpen(false);
-                await handleDirectFetchMatch(matchIdInput);
-              }}
-              className="space-y-3"
-            >
-              <div>
-                <label className="text-[11px] font-mono font-bold uppercase text-slate-600 block mb-1">
-                  Battrick Username
-                </label>
-                <input
-                  type="text"
-                  value={modalUsername}
-                  onChange={(e) => setModalUsername(e.target.value)}
-                  placeholder="Your Battrick username"
-                  required
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-mono font-bold uppercase text-slate-600 block mb-1">
-                  Battrick Password
-                </label>
-                <input
-                  type="password"
-                  value={modalPassword}
-                  onChange={(e) => setModalPassword(e.target.value)}
-                  placeholder="Your Battrick password"
-                  required
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-[10px] font-mono text-slate-500 flex items-start gap-1.5 mt-2">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                <span>Password is held securely in tab session memory (`sessionStorage`) for your current use and automatically removed on log out or timeout.</span>
-              </div>
-
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsAuthModalOpen(false)}
-                  className="px-3.5 py-2 text-xs font-mono font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
-                >
-                  Use Simulated Model
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-mono font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
-                >
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>Authenticate & Fetch Match</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Battrick authentication is now handled once, app-wide, via the
+          BattrickAuthBar rendered at the top of the app (see App.tsx).
+          Every live sync action here calls requireAuth() which opens that
+          shared prompt instead of a separate modal. */}
 
     </div>
   );
