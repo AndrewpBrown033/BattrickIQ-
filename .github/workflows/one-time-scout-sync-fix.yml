@@ -1,0 +1,84 @@
+name: One-time Scout Sync Fix
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch scout sync and server validation
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          opponent = Path('src/components/OpponentScout.tsx')
+          text = opponent.read_text()
+
+          old = """const handleSyncOpponentSquadLive = async (explicitTeamId?: string, explicitTeamName?: string) => {\n    const targetTeamId = (explicitTeamId || opponentTeamId).trim();"""
+          new = """const handleSyncOpponentSquadLive = async (explicitTeamId?: string, explicitTeamName?: string) => {\n    const targetTeamId = (explicitTeamId || opponentTeamId).trim();"""
+          if old not in text:
+              raise SystemExit('Expected OpponentScout sync function header not found')
+
+          old2 = """      const data = await response.json();\n      if (data.sessionToken) {\n        localStorage.setItem('bt_sync_session', data.sessionToken);\n      }\n      if (data.success && data.html) {\n        // Try to read the real club name off the synced page\n        const detectedTeamName = extractOpponentTeamNameFromSquadHtml(data.html);\n        const effectiveOpponentName = detectedTeamName || explicitTeamName || opponentName;"""
+          new2 = """      const data = await response.json();\n      if (data.sessionToken) {\n        localStorage.setItem('bt_sync_session', data.sessionToken);\n      }\n      if (data.success && data.html) {\n        // Never accept roster data unless the server confirms that Battrick\n        // returned the same Team ID that was explicitly requested.\n        const returnedTeamId = data.returnedTeamId ? String(data.returnedTeamId).trim() : '';\n        if (!returnedTeamId || returnedTeamId !== targetTeamId) {\n          throw new Error(\n            `Battrick returned the wrong team page. Requested Team #${targetTeamId}, received Team #${returnedTeamId || 'unknown'}. No players were imported.`\n          );\n        }\n\n        // Only after ID validation do we trust the team name and roster.\n        const detectedTeamName = extractOpponentTeamNameFromSquadHtml(data.html);\n        const effectiveOpponentName = detectedTeamName || explicitTeamName || opponentName;"""
+          if old2 not in text:
+              raise SystemExit('Expected OpponentScout response parsing block not found')
+          text = text.replace(old2, new2, 1)
+
+          opponent.write_text(text)
+
+          server = Path('server.ts')
+          text = server.read_text()
+
+          old3 = """  ): Promise<{ success: boolean; html: string; status: number; isRedirect?: boolean; error?: string; updatedCookieHeader?: string }> {"""
+          new3 = """  ): Promise<{ success: boolean; html: string; status: number; isRedirect?: boolean; error?: string; updatedCookieHeader?: string; finalUrl?: string }> {"""
+          if old3 not in text:
+              raise SystemExit('Expected server fetch return type not found')
+          text = text.replace(old3, new3, 1)
+
+          fn_start = text.index('  async function fetchBattrickPageWithSession(')
+          fn_end = text.index('  // API Route for step-by-step sequential sync', fn_start)
+          fn = text[fn_start:fn_end]
+          marker = "        status: pageRes.status,\n"
+          count = fn.count(marker)
+          if count < 1:
+              raise SystemExit('Expected pageRes.status return marker not found')
+          fn = fn.replace(marker, "        status: pageRes.status,\n        finalUrl: pageRes.url,\n")
+          text = text[:fn_start] + fn + text[fn_end:]
+
+          old4 = """      if (!pageResult.success) {\n        res.status(pageResult.status >= 400 ? pageResult.status : 502).json({\n          error: pageResult.error || `Failed to fetch ${pageName}`,\n          pageName,\n          isRedirect: pageResult.isRedirect\n        });\n        return;\n      }\n\n      res.json({\n        success: true,\n        pageName,\n        html: pageResult.html,\n        sessionToken\n      });"""
+          new4 = """      if (!pageResult.success) {\n        res.status(pageResult.status >= 400 ? pageResult.status : 502).json({\n          error: pageResult.error || `Failed to fetch ${pageName}`,\n          pageName,\n          isRedirect: pageResult.isRedirect,\n          resolvedUrl: pageResult.finalUrl || targetUrl\n        });\n        return;\n      }\n\n      // For squad/team requests, Battrick must finish on the exact Team ID\n      // requested. A redirect to the manager's own squad is otherwise\n      // indistinguishable from a successful opponent sync at the client.\n      let returnedTeamId: string | null = null;\n      if ((pageKey === 'squad' || pageKey === 'players' || pageKey === 'squad.asp') && reqTeamId) {\n        try {\n          const resolved = new URL(pageResult.finalUrl || targetUrl);\n          returnedTeamId = resolved.searchParams.get('teamID') || resolved.searchParams.get('teamId');\n        } catch {\n          returnedTeamId = null;\n        }\n\n        if (!returnedTeamId || String(returnedTeamId).trim() !== String(reqTeamId).trim()) {\n          console.warn(\n            `[Battrick Step Sync] Team mismatch: requested Team #${reqTeamId}, final URL returned ${pageResult.finalUrl || targetUrl}`\n          );\n          res.status(409).json({\n            success: false,\n            error: `Battrick returned a different squad page. Requested Team #${reqTeamId}, but the final page resolved to Team #${returnedTeamId || 'unknown'}.`,\n            requestedTeamId: String(reqTeamId).trim(),\n            returnedTeamId: returnedTeamId || null,\n            resolvedUrl: pageResult.finalUrl || targetUrl,\n            pageName\n          });\n          return;\n        }\n      }\n\n      res.json({\n        success: true,\n        pageName,\n        html: pageResult.html,\n        requestedTeamId: reqTeamId ? String(reqTeamId).trim() : null,\n        returnedTeamId,\n        resolvedUrl: pageResult.finalUrl || targetUrl,\n        sessionToken\n      });"""
+          if old4 not in text:
+              raise SystemExit('Expected server page response block not found')
+          text = text.replace(old4, new4, 1)
+
+          server.write_text(text)
+          print('Patch applied successfully.')
+          PY
+
+      - name: Build test
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit patched files and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/one-time-scout-sync-fix.yml
+          git add src/components/OpponentScout.tsx server.ts .github/workflows/one-time-scout-sync-fix.yml
+          git diff --cached --check
+          git diff --cached -- src/components/OpponentScout.tsx server.ts
+          git commit -m "Fix opponent scout team ID validation"
+          git push origin HEAD:main
