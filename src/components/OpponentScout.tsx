@@ -127,8 +127,15 @@ export const mapParsedToOpponentPlayers = (parsedPlayers: BattrickPlayer[]): Opp
 export const getStoredOpponentSquad = (teamId?: string, teamName?: string): { roster: OpponentPlayer[]; isAuthentic: boolean } => {
   if (typeof localStorage === 'undefined') return { roster: [], isAuthentic: false };
   try {
-    const idKey = teamId?.trim() ? localStorage.getItem(`bt_scout_squad_${teamId.trim()}`) : null;
-    const nameKey = teamName?.trim() ? localStorage.getItem(`bt_scout_squad_${teamName.trim().toLowerCase()}`) : null;
+    const trimmedId = teamId?.trim();
+    const idKey = trimmedId ? localStorage.getItem(`bt_scout_squad_${trimmedId}`) : null;
+    // Only fall back to a name-keyed cache entry when we have NO team id at
+    // all. If a team id is present but has no cache entry, that's a genuinely
+    // new/unsynced team - a name match at this point would almost always be
+    // a STALE name (e.g. left over in the name field from whichever team was
+    // scouted previously) matching an unrelated team's cached roster, not
+    // confirmation that this is the same team.
+    const nameKey = !trimmedId && teamName?.trim() ? localStorage.getItem(`bt_scout_squad_${teamName.trim().toLowerCase()}`) : null;
     const raw = idKey || nameKey;
     if (raw) {
       const parsed = JSON.parse(raw);
@@ -392,34 +399,6 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
   const [pastedPlayerText, setPastedPlayerText] = useState<string>('');
   const [isPlayerPasteOpen, setIsPlayerPasteOpen] = useState<boolean>(false);
 
-
-  // Shared helper for calling the sync-battrick-step endpoint. Used by the
-  // 3-step "Scout a Team" flow (team fetch -> team member call -> per-player
-  // detail calls) so each step shares identical request/response handling.
-  const fetchBattrickStepPage = async (body: Record<string, any>): Promise<{
-    success: boolean;
-    html?: string;
-    sessionToken?: string;
-    error?: string;
-    status: number;
-  }> => {
-    const res = await fetch('/api/sync-battrick-step', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    const data = await res.json().catch(() => ({} as any));
-    return {
-      success: res.ok && !!data.success,
-      html: data.html,
-      sessionToken: data.sessionToken,
-      error: data.error || data.message,
-      status: res.status
-    };
-  };
-
-  const isBattrickAuthError = (status: number, error?: string) =>
-    status === 401 || (error || '').toLowerCase().includes('session') || (error || '').toLowerCase().includes('login') || (error || '').toLowerCase().includes('credentials');
 
   const handleSyncPlayerLive = async () => {
     if (!scoutPlayerId.trim()) {
@@ -1020,130 +999,105 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
     try {
       const username = battrickUsername;
       const password = battrickPassword;
-      let sessionToken = localStorage.getItem('bt_sync_session') || '';
+      const sessionToken = localStorage.getItem('bt_sync_session') || '';
 
-      const handleAuthFailure = (message?: string): never => {
-        logoutBattrick();
-        openBattrickPrompt();
-        throw new Error(message || 'Authentication required.');
-      };
+      // Step 1: fetch the team's own pavilion/office page first. This is the
+      // single authoritative source for a team's real name (it's the same
+      // breadcrumb Battrick shows on every page for that team), independent
+      // of whatever name happened to be sitting in the input field before
+      // this Team ID was entered. Squad parsing below no longer has to guess.
+      let officeDetectedName: string | null = null;
+      try {
+        const officeResponse = await fetch('/api/sync-battrick-step', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pageName: 'teamoffice',
+            teamId: targetTeamId,
+            username,
+            password,
+            sessionToken
+          })
+        });
+        const officeData = await officeResponse.json();
+        if (officeResponse.ok && officeData.success && officeData.html) {
+          officeDetectedName = extractOpponentTeamNameFromSquadHtml(officeData.html);
+          if (officeData.sessionToken) {
+            localStorage.setItem('bt_sync_session', officeData.sessionToken);
+          }
+        }
+      } catch {
+        // Non-fatal - fall through to squad-page name detection below.
+      }
 
-      // --- Step 1: Team fetch (office.asp?teamID=X) ---
-      setSquadSyncStatus(`Step 1/3: Fetching team info for Team #${targetTeamId}...`);
-      const teamRes = await fetchBattrickStepPage({
-        pageName: 'teamoffice',
-        teamId: targetTeamId,
-        username,
-        password,
-        sessionToken
+      const response = await fetch('/api/sync-battrick-step', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pageName: 'squad',
+          teamId: targetTeamId,
+          username,
+          password,
+          sessionToken
+        })
       });
-      if (teamRes.sessionToken) {
-        sessionToken = teamRes.sessionToken;
-        localStorage.setItem('bt_sync_session', sessionToken);
-      }
-      if (!teamRes.success) {
-        if (isBattrickAuthError(teamRes.status, teamRes.error)) handleAuthFailure(teamRes.error);
-        throw new Error(teamRes.error || `Step 1 failed: could not fetch Team #${targetTeamId}'s info page.`);
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        const isAuthFailure = response.status === 401 || data.isAuthFailure || data.message?.toLowerCase().includes('credentials') || data.message?.toLowerCase().includes('login') || data.message?.toLowerCase().includes('session') || data.error?.toLowerCase().includes('login') || data.error?.toLowerCase().includes('session');
+        if (isAuthFailure) {
+          logoutBattrick();
+          openBattrickPrompt();
+        }
+        throw new Error(data.message || data.error || `HTTP ${response.status}: Failed to fetch squad from Battrick.`);
       }
 
-      const detectedTeamName = extractOpponentTeamNameFromSquadHtml(teamRes.html || '') || explicitTeamName || opponentName;
+      if (data.sessionToken) {
+        localStorage.setItem('bt_sync_session', data.sessionToken);
+      }
+
+      if (!data.html) {
+        throw new Error("Battrick returned empty response for squad list.");
+      }
+
+      // Prefer the name resolved from their office page above (authoritative);
+      // fall back to parsing it off the squad page itself, then whatever name
+      // the caller explicitly passed in, and only last of all the stale name
+      // already sitting in state.
+      const detectedTeamName = officeDetectedName || extractOpponentTeamNameFromSquadHtml(data.html);
+      const effectiveOpponentName = detectedTeamName || explicitTeamName || opponentName;
       if (detectedTeamName && detectedTeamName !== opponentName) {
         setOpponentName(detectedTeamName);
       }
 
-      // --- Step 2: Team member call (squad.asp?teamID=X) ---
-      setSquadSyncStatus(`Step 2/3: Fetching squad list for ${detectedTeamName}...`);
-      const squadRes = await fetchBattrickStepPage({
-        pageName: 'squad',
-        teamId: targetTeamId,
-        username,
-        password,
-        sessionToken
-      });
-      if (squadRes.sessionToken) {
-        sessionToken = squadRes.sessionToken;
-        localStorage.setItem('bt_sync_session', sessionToken);
-      }
-      if (!squadRes.success) {
-        if (isBattrickAuthError(squadRes.status, squadRes.error)) handleAuthFailure(squadRes.error);
-        throw new Error(squadRes.error || `Step 2 failed: could not fetch the squad list for Team #${targetTeamId}.`);
-      }
-      if (!squadRes.html) {
-        throw new Error('Battrick returned an empty response for the squad list.');
-      }
-
-      let baseRoster = parseOpponentSquad(squadRes.html, detectedTeamName, targetTeamId);
-      if (baseRoster.length === 0) {
+      // Parse the HTML content using our unified squad parser
+      let parsedPlayers = parseOpponentSquad(data.html, effectiveOpponentName, targetTeamId);
+      if (parsedPlayers.length === 0) {
         // Fallback to own-squad format parser just in case it's their own team
-        const fallbackPage = parseBattrickPage(squadRes.html, 'squad');
+        const fallbackPage = parseBattrickPage(data.html, 'squad');
         if (fallbackPage && fallbackPage.players && fallbackPage.players.length > 0) {
-          baseRoster = fallbackPage.players;
+          parsedPlayers = fallbackPage.players;
         }
-      }
-      if (baseRoster.length === 0) {
-        throw new Error('Step 2 succeeded but no players could be parsed from the squad list. Verify the Team ID is correct or copy-paste the squad HTML.');
       }
 
-      // --- Step 3: Player detail calls (playerdetails.asp?playerID=Y, one per player) ---
-      // Squad.asp already gives us reliable core stats (BTR, wage, age, form,
-      // fitness, batting/bowling/leadership) - see Step 2. What it does NOT
-      // expose is Concentration/Consistency, so Step 3 augments each player
-      // with those two secondary skills rather than replacing everything
-      // Step 2 already got right.
-      const finalRoster: BattrickPlayer[] = [];
-      for (let i = 0; i < baseRoster.length; i++) {
-        const basePlayer = baseRoster[i];
-        setSquadSyncStatus(`Step 3/3: Fetching player details ${i + 1}/${baseRoster.length} — ${basePlayer.name}...`);
-        try {
-          const detailRes = await fetchBattrickStepPage({
-            pageName: 'playerdetails.asp',
-            pageUrl: `https://www.battrick.org/nl/playerdetails.asp?playerID=${basePlayer.id}`,
-            username,
-            password,
-            sessionToken
-          });
-          if (detailRes.sessionToken) {
-            sessionToken = detailRes.sessionToken;
-            localStorage.setItem('bt_sync_session', sessionToken);
-          }
-          if (detailRes.success && detailRes.html) {
-            const detail = parseBattrickPlayerDetails(detailRes.html);
-            finalRoster.push({
-              ...basePlayer,
-              skills: {
-                ...basePlayer.skills,
-                concentration: detail?.skills.concentration ? detail.skills.concentration : basePlayer.skills.concentration,
-                consistency: detail?.skills.consistency ? detail.skills.consistency : basePlayer.skills.consistency,
-              },
-            });
-          } else {
-            finalRoster.push(basePlayer);
-          }
-        } catch {
-          // A single player's detail call failing shouldn't sink the whole
-          // sync - just keep the squad.asp-derived stats for this player.
-          finalRoster.push(basePlayer);
-        }
-        // Be a good citizen with Battrick's server: brief pause between
-        // per-player requests rather than firing them all at once.
-        if (i < baseRoster.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 450));
-        }
+      if (parsedPlayers.length === 0) {
+        throw new Error("Failed to extract any player statistics. Please verify the Opponent Team ID is correct or copy-paste the squad HTML.");
       }
 
       // Map parsed BattrickPlayer[] to OpponentPlayer[]
-      const mappedPlayers = mapParsedToOpponentPlayers(finalRoster);
+      const mappedPlayers = mapParsedToOpponentPlayers(parsedPlayers);
 
       setOpponentPlayers(mappedPlayers);
       setIsAuthenticRoster(true);
 
       try {
         localStorage.setItem(`bt_scout_squad_${targetTeamId}`, JSON.stringify(mappedPlayers));
-        localStorage.setItem(`bt_scout_squad_${detectedTeamName.toLowerCase()}`, JSON.stringify(mappedPlayers));
+        localStorage.setItem(`bt_scout_squad_${effectiveOpponentName.toLowerCase()}`, JSON.stringify(mappedPlayers));
         localStorage.setItem('bt_scout_squad_last', JSON.stringify(mappedPlayers));
       } catch {}
 
-      setSquadSyncStatus(`✓ Successfully fetched & loaded ${mappedPlayers.length} authentic players for ${detectedTeamName} (ID: ${targetTeamId}) live from Battrick!`);
+      setSquadSyncStatus(`✓ Successfully fetched & loaded ${mappedPlayers.length} authentic players for ${effectiveOpponentName} (ID: ${targetTeamId}) live from Battrick!`);
     } catch (err: any) {
       console.warn('Squad live fetch error:', err);
       setSquadSyncError(

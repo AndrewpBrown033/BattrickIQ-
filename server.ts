@@ -597,6 +597,12 @@ async function startServer() {
         office: 'https://www.battrick.org/nl/myoffice.asp',
         myoffice: 'https://www.battrick.org/nl/myoffice.asp',
         'myoffice.asp': 'https://www.battrick.org/nl/myoffice.asp',
+
+        // Any *other* team's pavilion/office page (team name, league position,
+        // etc.) - distinct from 'office'/'myoffice' above, which are always the
+        // logged-in user's OWN team and ignore teamId entirely.
+        teamoffice: reqTeamId ? `https://www.battrick.org/nl/office.asp?teamID=${reqTeamId}` : '',
+        'office.asp': reqTeamId ? `https://www.battrick.org/nl/office.asp?teamID=${reqTeamId}` : 'https://www.battrick.org/nl/myoffice.asp',
         ground: 'https://www.battrick.org/nl/ground.asp',
         stadium: 'https://www.battrick.org/nl/ground.asp',
         'ground.asp': 'https://www.battrick.org/nl/ground.asp',
@@ -1180,4 +1186,4 @@ Respond with supportive, highly specialized, yet easy-to-read formatting. Use Ma
   });
 }
 
-startServer(); 
+startServer();

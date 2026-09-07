@@ -18,7 +18,7 @@ import {
   Trophy, Calculator, 
   Calendar, Landmark as StadiumIcon, ShieldCheck,
   Check, Wifi, Activity, CheckSquare, Square, Clipboard, ArrowRight,
-  KeyRound, Play, CheckCircle2, XCircle, Clock, ArrowUpRight, Zap,
+  KeyRound, Play, CheckCircle2, XCircle, Clock, ArrowUpRight,
   Loader2, X, LogOut, Lock, ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 
@@ -839,15 +839,9 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     }
   };
 
-  // Accepts an optional explicit list of page ids to sync. This is required
-  // for the "Sync All" one-click button below: it calls selectAllPages()
-  // (which updates state via setSelectedSyncPages) and then immediately
-  // wants to run every page. React state updates aren't visible until the
-  // next render, so reading `selectedSyncPages` right after calling
-  // selectAllPages() would still see the OLD (possibly partial) selection.
-  // Passing the page list in directly sidesteps that timing problem, while
-  // the regular "Run Direct Sync" button keeps using the checked boxes by
-  // simply calling handleDirectSync() with no argument.
+  // Accepts an optional explicit list of page ids to sync (kept for
+  // flexibility), but the "Run Direct Sync" button always calls this with
+  // no argument, using whatever pages are currently ticked in the checklist.
   const handleDirectSync = async (pagesOverride?: string[]) => {
     const pagesToSync = pagesOverride && pagesOverride.length > 0 ? pagesOverride : selectedSyncPages;
 
@@ -1751,7 +1745,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
                 </button>
               </div>
               <p className="text-[10px] text-slate-400 -mt-1.5">
-                Tick the pages you want above, then run Direct Sync. It walks through the selected pages one at a time (squad → nets → finances → club → fixtures → pavilion), showing the record count returned for each before moving to the next.
+                <strong className="text-slate-500">Run Direct Sync</strong> steps through every ticked section/page — squad → nets → finances → club → fixtures → pavilion — one at a time, showing the record count returned for each before moving to the next. Tick "select all" above to sync everything in one run.
               </p>
 
               {/* Real-time Diagnostic Log Console */}
