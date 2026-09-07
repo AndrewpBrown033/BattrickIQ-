@@ -3889,4 +3889,4 @@ export function calculateBattrickMatchRatings(squadLineup: OpponentPlayer[] | an
     estimatedBTR: estimatedTotalBTR,
     teamExperience: avgExperience,
   };
-}
+} 

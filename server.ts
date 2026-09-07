@@ -666,6 +666,8 @@ async function startServer() {
       // Small spacing delay (400ms) to ensure Battrick ASP thread readiness
       await new Promise(resolve => setTimeout(resolve, 400));
 
+      console.log(`[Battrick Step Sync] Fetching ${pageName} -> ${targetUrl} | session cookies: ${Object.keys(activeSession.cookieMap).length} (${Object.keys(activeSession.cookieMap).join(', ')})`);
+
       const pageResult = await fetchBattrickPageWithSession(
         activeSession.cookieHeader,
         activeSession.cookieMap,
@@ -684,6 +686,29 @@ async function startServer() {
           isRedirect: pageResult.isRedirect
         });
         return;
+      }
+
+      // Defensive check: team-scoped pages always carry a breadcrumb link
+      // back to office.asp?teamID=X for whichever team's data is actually
+      // being shown. If that doesn't match the team we asked for, Battrick
+      // (or something between us and it - a cache, a stale/pinned session,
+      // etc.) served the wrong team's data. Rather than silently passing
+      // that through to the UI (which is exactly the "right name, wrong
+      // players" bug reported), fail loudly here with both IDs so it's
+      // immediately diagnosable instead of looking like a parsing bug.
+      if (reqTeamId && ['squad', 'players', 'squad.asp', 'club', 'club.asp', 'teamoffice', 'office.asp'].includes(pageKey)) {
+        const returnedTeamIdMatch = pageResult.html.match(/office\.asp\?teamID=(\d+)/i);
+        const returnedTeamId = returnedTeamIdMatch ? returnedTeamIdMatch[1] : null;
+        if (returnedTeamId && returnedTeamId !== String(reqTeamId).trim()) {
+          console.warn(`[Battrick Step Sync] TEAM MISMATCH on ${pageName}: requested teamID=${reqTeamId} (${targetUrl}) but Battrick returned data for teamID=${returnedTeamId}. Session cookies sent: ${Object.keys(activeSession.cookieMap).join(', ')}.`);
+          res.status(409).json({
+            error: `Battrick returned data for team #${returnedTeamId} instead of the requested team #${reqTeamId}. This is a sync/session issue, not bad data on Battrick's end - try re-authenticating and syncing again.`,
+            pageName,
+            requestedTeamId: reqTeamId,
+            returnedTeamId
+          });
+          return;
+        }
       }
 
       res.json({
