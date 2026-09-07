@@ -2169,6 +2169,7 @@ export const KNOWN_OPPONENT_CLUBS: KnownOpponentClub[] = [
   { teamId: '32384', teamName: 'Atlanta Braves', league: 'Twenty20 League', isBot: false },
   { teamId: '7501', teamName: 'Cyclone Strikers', league: 'BT20 League', isBot: false },
   { teamId: '7502', teamName: 'Gold Coast Titans', league: 'BT20 League', isBot: false },
+  { teamId: '674', teamName: 'RosenPens XI', league: 'Australia', isBot: false },
 ];
 
 export function getKnownTeamNameById(teamId: string | number): string | null {
@@ -3681,36 +3682,71 @@ export function extractOpponentTeamNameFromSquadHtml(content: string): string | 
 
     const clean = (raw: string | null | undefined): string | null => {
       const text = (raw || '').replace(/\s+/g, ' ').trim();
-      if (!text || text.length < 2 || text.length > 60) return null;
-      return text.replace(/\s*\(.*?\)/g, '').trim() || null;
+      if (!text || text.length < 2 || text.length > 80) return null;
+      // Strip trailing breadcrumbs like "» Squad" or "» Pavilion"
+      const stripped = text.replace(/\s*[»>]\s*(Squad|Pavilion|Office|Club).*$/i, '').trim();
+      return stripped.replace(/\s*\(.*?\)/g, '').trim() || null;
     };
 
-    // 1. Common explicit club-name containers.
-    const directSelectors = ['.clubname', '.club_name', '#clubname', '.teamname', '.team_name', 'h1'];
+    // 0. Battrick squad/office page title area:
+    //    <div id="pagetitle">...<a href="office.asp?teamID=674">RosenPens XI</a> » Squad</div>
+    // Prefer the anchor inside #pagetitle that points at the club office/squad.
+    const pageTitle = doc.querySelector('#pagetitle');
+    if (pageTitle) {
+      const titleLink = pageTitle.querySelector('a[href*="office.asp?teamID="], a[href*="club.asp?teamID="], a[href*="squad.asp?teamID="]');
+      const fromTitleLink = clean(titleLink?.textContent);
+      if (fromTitleLink) return fromTitleLink;
+      // Sometimes the whole pagetitle text is "RosenPens XI » Squad"
+      const fromTitleText = clean(pageTitle.textContent);
+      if (fromTitleText && !/^squad$/i.test(fromTitleText) && !/^battrick$/i.test(fromTitleText)) {
+        return fromTitleText;
+      }
+    }
+
+    // 1. Explicit club-name containers / subheader (e.g. <h2 class="subheadernew">RosenPens XI (674)</h2>)
+    const directSelectors = ['.clubname', '.club_name', '#clubname', '.teamname', '.team_name', 'h1', 'h2.subheadernew', '.subheadernew'];
     for (const sel of directSelectors) {
       const found = clean(doc.querySelector(sel)?.textContent);
-      if (found) return found;
+      if (found && !/^squad$/i.test(found) && !/^battrick$/i.test(found)) return found;
     }
 
     // 2. A link back to the team's own office/club page usually carries the name as its text.
     // Battrick's real squad page links the club name to office.asp?teamID=..., e.g.
-    // "[Darlington Stripes](https://www.battrick.org/nl/office.asp?teamID=4327) » Squad"
+    // "RosenPens XI" -> office.asp?teamID=674
     const selfLink = doc.querySelector('a[href*="office.asp?teamID="], a[href*="club.asp?teamID="], a[href*="squad.asp?teamID="]');
     const linkName = clean(selfLink?.textContent);
-    if (linkName) return linkName;
+    if (linkName && !/^squad$/i.test(linkName)) return linkName;
 
     // 3. Fall back to the <title> tag, e.g. "Battrick - Squad - HairyBeanBags".
     const title = doc.querySelector('title')?.textContent || '';
     const segments = title.split(/[-|]/).map(s => s.trim()).filter(Boolean);
     for (const seg of segments.reverse()) {
       const lower = seg.toLowerCase();
-      if (lower !== 'squad' && lower !== 'battrick' && lower !== 'nl') {
+      if (lower !== 'squad' && lower !== 'battrick' && lower !== 'nl' && lower !== 'pavilion') {
         const found = clean(seg);
         if (found) return found;
       }
     }
   } catch {
     // ignore - just fall back to whatever name the caller already has
+  }
+
+  // Regex fallback when DOMParser is unavailable or selectors miss (e.g. server-side partial HTML)
+  try {
+    // #pagetitle ... <a href="office.asp?teamID=674">RosenPens XI</a>
+    const pageTitleMatch = content.match(/id=["']pagetitle["'][^>]*>[\s\S]*?<a[^>]*href=["'][^"']*office\.asp\?teamID=\d+[^"']*["'][^>]*>([^<]+)<\/a>/i);
+    if (pageTitleMatch) {
+      const name = pageTitleMatch[1].replace(/\s+/g, ' ').trim().replace(/\s*\(.*?\)/g, '').trim();
+      if (name && name.length >= 2 && name.length <= 80) return name;
+    }
+    // <h2 ...>RosenPens XI (674)</h2>
+    const h2Match = content.match(/<h2[^>]*class=["'][^"']*subheadernew[^"']*["'][^>]*>([^<]+)<\/h2>/i);
+    if (h2Match) {
+      const name = h2Match[1].replace(/\s*\(\d+\)\s*$/, '').replace(/\s+/g, ' ').trim();
+      if (name && name.length >= 2 && name.length <= 80) return name;
+    }
+  } catch {
+    // ignore
   }
 
   return null;

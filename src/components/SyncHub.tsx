@@ -1721,29 +1721,6 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
               <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    // Reflect "all pages" in the checklist UI, and pass the
-                    // full page list straight into handleDirectSync so the
-                    // sequential step-by-step modal (with per-page record
-                    // counts) runs immediately for every page, regardless of
-                    // whatever was previously ticked.
-                    selectAllPages();
-                    handleDirectSync(AVAILABLE_SYNC_OPTIONS.map(o => o.id));
-                  }}
-                  disabled={directSyncing || diagnosticRunning || !directUsername.trim() || !directPassword.trim()}
-                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer font-sans"
-                  title="Selects every page and steps through each one, one at a time, showing the records returned for each"
-                >
-                  {directSyncing ? (
-                    <RefreshCw className="w-4.5 h-4.5 animate-spin" />
-                  ) : (
-                    <Zap className="w-4.5 h-4.5" />
-                  )}
-                  {directSyncing ? 'Stepping through sync queue...' : 'Sync All (Step-by-Step)'}
-                </button>
-
-                <button
-                  type="button"
                   onClick={() => handleDirectSync()}
                   disabled={directSyncing || diagnosticRunning || selectedSyncPages.length === 0}
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer font-sans"
@@ -1774,7 +1751,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
                 </button>
               </div>
               <p className="text-[10px] text-slate-400 -mt-1.5">
-                <strong className="text-slate-500">Sync All</strong> ticks every page and walks through squad → nets → finances → club → fixtures → pavilion one at a time, showing the record count returned for each before moving to the next.
+                Tick the pages you want above, then run Direct Sync. It walks through the selected pages one at a time (squad → nets → finances → club → fixtures → pavilion), showing the record count returned for each before moving to the next.
               </p>
 
               {/* Real-time Diagnostic Log Console */}
