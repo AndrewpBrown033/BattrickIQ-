@@ -1062,11 +1062,18 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
       }
 
       // Prefer the name resolved from their office page above (authoritative);
-      // fall back to parsing it off the squad page itself, then whatever name
-      // the caller explicitly passed in, and only last of all the stale name
-      // already sitting in state.
-      const detectedTeamName = officeDetectedName || extractOpponentTeamNameFromSquadHtml(data.html);
+      // fall back to parsing it off the squad page itself, then to the local
+      // known-clubs registry (reliable for the ~13 teams we track - this is
+      // the same lookup that powers the "✓ Kangaroo All-Stars" checkmark
+      // badge above the input, so if THAT can resolve it, we should use it
+      // too instead of falling through to a stale name), and only as an
+      // absolute last resort the name the caller explicitly passed in or
+      // whatever was already sitting in state.
+      const detectedTeamName = officeDetectedName || extractOpponentTeamNameFromSquadHtml(data.html) || getKnownTeamNameById(targetTeamId);
       const effectiveOpponentName = detectedTeamName || explicitTeamName || opponentName;
+      if (!detectedTeamName) {
+        console.warn(`[OpponentScout] Could not detect a real team name for teamID=${targetTeamId} from either office.asp or squad.asp, and it isn't in the known-clubs registry. Falling back to stale name "${effectiveOpponentName}". Squad data itself is still authentic - only the label is unreliable here.`);
+      }
       if (detectedTeamName && detectedTeamName !== opponentName) {
         setOpponentName(detectedTeamName);
       }
@@ -3889,4 +3896,4 @@ export function calculateBattrickMatchRatings(squadLineup: OpponentPlayer[] | an
     estimatedBTR: estimatedTotalBTR,
     teamExperience: avgExperience,
   };
-} 
+}
