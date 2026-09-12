@@ -254,6 +254,51 @@ export default function WageCalculator() {
   const [cupAttendanceRate, setCupAttendanceRate] = useState<number>(80); // Cup Matches (default 80%)
   const [friendlyAttendanceRate, setFriendlyAttendanceRate] = useState<number>(25); // Friendly Matches (default 25%)
 
+  // Calibration info: when we've derived attendance rates from the club's actual last-known
+  // gate receipts (rather than generic guesses), we surface it here so the UI can be transparent
+  // about where the numbers came from.
+  const [attendanceCalibration, setAttendanceCalibration] = useState<{ impliedPct: number; sourceReceipts: number } | null>(null);
+
+  // Calibrate attendance % assumptions from REAL data: the club's actual last reported gate
+  // receipts (finances.gateReceipts, straight from the synced Club Finances ledger) combined with
+  // the club's actual stadium composition ("the draw") and current ticket prices. This replaces
+  // the generic 60/85/95/80/25% sample guesses with a figure derived from what the club actually
+  // earned at the gate, the moment real finance data is synced.
+  useEffect(() => {
+    if (finances && typeof finances.gateReceipts === 'number' && finances.gateReceipts > 0 && stadium.capacity > 0) {
+      const maxPossibleRevenueAtFullHouse =
+        (stadium.terracing * terracingPrice) +
+        (stadium.grass * grassPrice) +
+        (stadium.seats * seatsPrice) +
+        (stadium.boxes * boxesPrice);
+
+      if (maxPossibleRevenueAtFullHouse > 0) {
+        // Battrick's most common home fixture type is One Day, so we treat the last reported
+        // gate receipts as coming from a One Day match and back-solve the occupancy rate that
+        // would have produced that exact real revenue figure.
+        const impliedOccupancy = Math.min(1, Math.max(0.02, finances.gateReceipts / maxPossibleRevenueAtFullHouse));
+        const impliedPct = Math.round(impliedOccupancy * 100);
+
+        // Preserve the relative crowd-size shape Battrick clubs typically see across match types
+        // (Twenty20 draws the biggest crowds, Friendlies the smallest), but rescale that whole
+        // curve around this club's real, most-recently reported gate income instead of guessing.
+        const RATIO = { fc: 0.706, od: 1.0, t20: 1.118, cup: 0.941, friendly: 0.294 };
+        setFcAttendanceRate(Math.min(100, Math.round(impliedPct * RATIO.fc)));
+        setOdAttendanceRate(Math.min(100, Math.round(impliedPct * RATIO.od)));
+        setT20AttendanceRate(Math.min(100, Math.round(impliedPct * RATIO.t20)));
+        setCupAttendanceRate(Math.min(100, Math.round(impliedPct * RATIO.cup)));
+        setFriendlyAttendanceRate(Math.min(100, Math.round(impliedPct * RATIO.friendly)));
+
+        setAttendanceCalibration({ impliedPct, sourceReceipts: finances.gateReceipts });
+      }
+    } else {
+      setAttendanceCalibration(null);
+    }
+    // Deliberately excludes ticket price state: recalibrating only on a fresh finance/stadium sync
+    // (not on every ticket-price keystroke) avoids fighting the user's own manual overrides.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finances, stadium.capacity, stadium.terracing, stadium.grass, stadium.seats, stadium.boxes]);
+
   // Venue toggle mapping for the projection weeks
   const [customVenues, setCustomVenues] = useState<Record<number, 'Home' | 'Away'>>({});
   // Match type overrides mapping for the projection weeks
@@ -427,12 +472,22 @@ export default function WageCalculator() {
     setSeatsPrice(35);
     setBoxesPrice(120);
 
-    // Reset rates
-    setFcAttendanceRate(60);
-    setOdAttendanceRate(85);
-    setT20AttendanceRate(95);
-    setCupAttendanceRate(80);
-    setFriendlyAttendanceRate(25);
+    // Reset attendance rates: prefer the real, gate-receipts-calibrated rates when we have them,
+    // falling back to generic sample assumptions only when no real financial data is synced.
+    if (attendanceCalibration) {
+      const RATIO = { fc: 0.706, od: 1.0, t20: 1.118, cup: 0.941, friendly: 0.294 };
+      setFcAttendanceRate(Math.min(100, Math.round(attendanceCalibration.impliedPct * RATIO.fc)));
+      setOdAttendanceRate(Math.min(100, Math.round(attendanceCalibration.impliedPct * RATIO.od)));
+      setT20AttendanceRate(Math.min(100, Math.round(attendanceCalibration.impliedPct * RATIO.t20)));
+      setCupAttendanceRate(Math.min(100, Math.round(attendanceCalibration.impliedPct * RATIO.cup)));
+      setFriendlyAttendanceRate(Math.min(100, Math.round(attendanceCalibration.impliedPct * RATIO.friendly)));
+    } else {
+      setFcAttendanceRate(60);
+      setOdAttendanceRate(85);
+      setT20AttendanceRate(95);
+      setCupAttendanceRate(80);
+      setFriendlyAttendanceRate(25);
+    }
 
     // Reset venues to default synced schedule
     const initialVenues: Record<number, 'Home' | 'Away'> = {};
@@ -736,12 +791,28 @@ export default function WageCalculator() {
                   <span className="leading-relaxed">To view your actual club projections, go to the <strong className="text-indigo-900">Roster Sync</strong> tab and paste your Club Finances ledger. Showing a standard Battrick club scenario below for planning.</span>
                 </div>
               </div>
+            ) : attendanceCalibration ? (
+              <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-emerald-950 shadow-sm">
+                <Shield className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold block mb-0.5">Club Financial Ledger & Roster Synced — Attendance Calibrated!</span>
+                  <span className="leading-relaxed">
+                    Cash, sponsors, interest, and wages are pulled directly from your synced ledger. Attendance rates below have also been calibrated
+                    from your <strong>actual last reported gate receipts of £{attendanceCalibration.sourceReceipts.toLocaleString()}</strong> against
+                    your real stadium's seating draw (£{terracingPrice}/£{grassPrice}/£{seatsPrice}/£{boxesPrice} pricing) — implying roughly{' '}
+                    <strong>{attendanceCalibration.impliedPct}%</strong> occupancy for a standard One Day fixture, rather than a generic guess. Feel free to fine-tune further below!
+                  </span>
+                </div>
+              </div>
             ) : (
               <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-emerald-950 shadow-sm">
                 <Shield className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                 <div>
                   <span className="font-bold block mb-0.5">Club Financial Ledger & Roster Synced!</span>
-                  <span className="leading-relaxed">Model interactive forecasts using your real synchronized parameters and upcoming Battrick fixtures. Customize ticket prices and ground occupancy below!</span>
+                  <span className="leading-relaxed">
+                    Cash, sponsors, interest, and wages are pulled directly from your synced ledger. Your last reported gate receipts were £0 (likely an Away
+                    week), so attendance rates below are still standard planning assumptions — customize ticket prices and ground occupancy to match your club!
+                  </span>
                 </div>
               </div>
             )}
