@@ -90,6 +90,8 @@ async function startServer() {
       detectedType = "club staff";
     } else if (urlLower.includes("finances.asp") || lower.includes("finances.asp") || lower.includes("weekly finances") || lower.includes("financial statement") || lower.includes("weekly outgoings") || lower.includes("player salaries") || lower.includes("backroom staff salaries")) {
       detectedType = "club finances";
+    } else if (urlLower.includes("diary.asp") || lower.includes("diary.asp") || lower.includes("manager diary") || lower.includes("club diary") || lower.includes("cash book")) {
+      detectedType = "club diary";
     } else if (urlLower.includes("fixtures.asp") || lower.includes("fixtures.asp") || lower.includes("fixtures list") || lower.includes("match date")) {
       detectedType = "match fixtures";
     } else if (urlLower.includes("ground.asp") || lower.includes("ground.asp") || lower.includes("seating capacity") || lower.includes("terracing") || lower.includes("standing room")) {
@@ -177,6 +179,8 @@ async function startServer() {
       detectedType = "club staff";
     } else if (urlLower.includes("finances.asp") || lower.includes("finances.asp") || lower.includes("weekly finances") || lower.includes("financial statement") || lower.includes("weekly outgoings") || lower.includes("player salaries") || lower.includes("backroom staff salaries")) {
       detectedType = "club finances";
+    } else if (urlLower.includes("diary.asp") || lower.includes("diary.asp") || lower.includes("manager diary") || lower.includes("club diary") || lower.includes("cash book")) {
+      detectedType = "club diary";
     } else if (urlLower.includes("fixtures.asp") || lower.includes("fixtures.asp") || lower.includes("fixtures list") || lower.includes("match date")) {
       detectedType = "match fixtures";
     } else if (urlLower.includes("ground.asp") || lower.includes("ground.asp") || lower.includes("seating capacity") || lower.includes("terracing") || lower.includes("standing room")) {
@@ -584,6 +588,10 @@ async function startServer() {
         finance: 'https://www.battrick.org/nl/finances.asp',
         'finances.asp': 'https://www.battrick.org/nl/finances.asp',
 
+        diary: 'https://www.battrick.org/nl/diary.asp',
+        'club diary': 'https://www.battrick.org/nl/diary.asp',
+        'diary.asp': 'https://www.battrick.org/nl/diary.asp',
+
         club: reqTeamId ? `https://www.battrick.org/nl/club.asp?teamID=${reqTeamId}` : 'https://www.battrick.org/nl/club.asp',
         staff: 'https://www.battrick.org/nl/club.asp',
         'club.asp': reqTeamId ? `https://www.battrick.org/nl/club.asp?teamID=${reqTeamId}` : 'https://www.battrick.org/nl/club.asp',
@@ -927,6 +935,7 @@ async function startServer() {
         { name: 'squad', url: 'https://www.battrick.org/nl/squad.asp' },
         { name: 'nets', url: 'https://www.battrick.org/nl/nets.asp' },
         { name: 'finances', url: 'https://www.battrick.org/nl/finances.asp' },
+        { name: 'diary', url: 'https://www.battrick.org/nl/diary.asp' },
         { name: 'club', url: 'https://www.battrick.org/nl/club.asp' },
         { name: 'fixtures', url: 'https://www.battrick.org/nl/fixtures.asp' },
         { name: 'pavilion', url: 'https://www.battrick.org/nl/myoffice.asp' }
@@ -1028,6 +1037,7 @@ async function startServer() {
           squad: results.find(r => r.name === 'squad')?.html || '',
           nets: results.find(r => r.name === 'nets')?.html || '',
           finances: results.find(r => r.name === 'finances')?.html || '',
+          diary: results.find(r => r.name === 'diary')?.html || '',
           club: results.find(r => r.name === 'club')?.html || '',
           fixtures: results.find(r => r.name === 'fixtures')?.html || '',
           pavilion: results.find(r => r.name === 'pavilion')?.html || ''

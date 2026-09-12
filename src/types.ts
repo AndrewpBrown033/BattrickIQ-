@@ -247,6 +247,51 @@ export interface ClubFinances {
   psychologists?: number;
 }
 
+/**
+ * A single row from the club diary / cash-book page (diary.asp) — a running
+ * ledger of weekly income & outgoings, membership counts, and (where the
+ * entry relates to a fixture) the match it ties back to.
+ */
+export interface DiaryEntry {
+  week?: number;
+  season?: number;
+  date: string;
+  description: string;
+  /** Signed amount: positive = income, negative = expense/outgoing. */
+  amount: number;
+  /** Running account balance after this entry, if shown on the page. */
+  balance?: number;
+  /** Club member count as of this entry, if shown. */
+  members?: number;
+  /** Change in member count vs the previous entry, if derivable. */
+  membersDelta?: number;
+  /** matchID this entry is tied to (e.g. gate receipts for a specific fixture). */
+  matchId?: string;
+  matchUrl?: string;
+  category?: 'gate receipts' | 'sponsorship' | 'interest' | 'wages' | 'transfer' | 'other';
+}
+
+/**
+ * A financial projection for a fixture, built by cross-mapping diary
+ * entries (actuals, keyed by matchId) against the fixtures list.
+ */
+export interface FinancialProjection {
+  matchId: string;
+  opponent?: string;
+  date?: string;
+  venue?: 'Home' | 'Away';
+  type?: string;
+  /** Actual gate receipts if this fixture already has a matching diary entry. */
+  actualGateReceipts?: number;
+  /** Projected gate receipts, based on historical averages for similar fixtures. */
+  projectedGateReceipts: number;
+  /** Projected change in membership by matchday, extrapolated from diary trend. */
+  projectedMembersDelta: number;
+  /** How many historical diary entries the projection is based on. */
+  basedOnEntries: number;
+  confidence: 'low' | 'medium' | 'high';
+}
+
 export interface LineupPlayer {
   id: string;
   name: string;

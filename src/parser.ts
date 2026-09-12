@@ -1,4 +1,4 @@
-import { BattrickPlayer, ClubFinances, BattrickGame, PavilionInfo, StadiumConfig, BattrickLeagueTable, BattrickLeagueTeam, LeagueLinkInfo, SKILL_LEVELS, STAMINA_LEVELS } from './types';
+import { BattrickPlayer, ClubFinances, BattrickGame, PavilionInfo, StadiumConfig, BattrickLeagueTable, BattrickLeagueTeam, LeagueLinkInfo, DiaryEntry, FinancialProjection, SKILL_LEVELS, STAMINA_LEVELS } from './types';
 
 // Fuzzy name matcher to map abbreviated names like "A. Alistair" to "Andrew Alistair"
 export function isNameMatch(name1: string, name2: string): boolean {
@@ -102,7 +102,7 @@ function getPlayerLinksInElement(el: Element): Element[] {
     return /(?:playerid|id)(?:_|-|=|%3d|%3D|\s)*(\d+)/i.test(href);
   });
 }// Detect page type from pasted content with maximum flexibility
-export function detectPageType(content: string): 'squad' | 'nets' | 'finances' | 'club' | 'fixtures' | 'pavilion' | 'ground' | 'league' | 'unknown' {
+export function detectPageType(content: string): 'squad' | 'nets' | 'finances' | 'club' | 'fixtures' | 'pavilion' | 'ground' | 'league' | 'diary' | 'unknown' {
   // 1. High priority check: data-page in pagetitle or anywhere in the raw text/HTML (extremely specific and reliable for Battrick's modern HTML structure)
   const pagetitleRegex = /id=["']pagetitle["'][^>]*>[\s\S]*?data-page=["']([^"']+\.asp)["']/i;
   const pagetitleMatch = content.match(pagetitleRegex);
@@ -116,6 +116,7 @@ export function detectPageType(content: string): 'squad' | 'nets' | 'finances' |
     if (dataPage.includes('ground.asp') || dataPage.includes('expandground.asp')) return 'ground';
     if (dataPage.includes('pavilion.asp') || dataPage.includes('office.asp') || dataPage.includes('myoffice.asp')) return 'pavilion';
     if (dataPage.includes('leagues.asp') || dataPage.includes('league.asp')) return 'league';
+    if (dataPage.includes('diary.asp')) return 'diary';
   }
 
   const generalDataPageRegex = /data-page=["']([^"']+\.asp)["']/i;
@@ -130,6 +131,7 @@ export function detectPageType(content: string): 'squad' | 'nets' | 'finances' |
     if (dataPage.includes('ground.asp') || dataPage.includes('expandground.asp')) return 'ground';
     if (dataPage.includes('pavilion.asp') || dataPage.includes('office.asp') || dataPage.includes('myoffice.asp')) return 'pavilion';
     if (dataPage.includes('leagues.asp') || dataPage.includes('league.asp')) return 'league';
+    if (dataPage.includes('diary.asp')) return 'diary';
   }
 
   let textToAnalyze = content;
@@ -152,6 +154,7 @@ export function detectPageType(content: string): 'squad' | 'nets' | 'finances' |
         if (dataPage.includes('fixtures.asp')) return 'fixtures';
         if (dataPage.includes('ground.asp') || dataPage.includes('expandground.asp')) return 'ground';
         if (dataPage.includes('pavilion.asp') || dataPage.includes('office.asp')) return 'pavilion';
+        if (dataPage.includes('diary.asp')) return 'diary';
       }
       
       // Remove menu/navigation/sidebar elements that exist on all pages
@@ -275,6 +278,25 @@ export function detectPageType(content: string): 'squad' | 'nets' | 'finances' |
     return 'club';
   }
 
+  // 6b. Manager's diary / cash-book page detection. This is a running weekly
+  // ledger (one row per week) rather than the single current-state snapshot
+  // that finances.asp shows, so look for diary-specific vocabulary and the
+  // presence of many repeated "Week N" markers before falling through to
+  // the generic finances heuristics below.
+  const weekMarkerCount = (plainText.match(/\bweek\s*\d+\b/gi) || []).length;
+  if (
+    plainText.includes('manager diary') ||
+    plainText.includes("manager's diary") ||
+    plainText.includes('club diary') ||
+    plainText.includes('weekly diary') ||
+    plainText.includes('cash book') ||
+    plainText.includes('cashbook') ||
+    plainText.includes('transaction history') ||
+    (weekMarkerCount >= 3 && (plainText.includes('balance') || plainText.includes('members')))
+  ) {
+    return 'diary';
+  }
+
   // 7. Finances page detection (including weekly balance, outgoings, wages, salaries, gate receipts, and statement terms)
   if (
     plainText.includes('weekly outgoings') || 
@@ -305,19 +327,21 @@ export function detectPageType(content: string): 'squad' | 'nets' | 'finances' |
   if (lower.includes('pavilion.asp') || lower.includes('office.asp') || lower.includes('myoffice.asp')) return 'pavilion';
   if (lower.includes('leagues.asp') || lower.includes('league.asp') || lower.includes('leagueid=')) return 'league';
   if (lower.includes('squad.asp')) return 'squad';
+  if (lower.includes('diary.asp')) return 'diary';
 
   return 'unknown';
 }
 
 // Master parser that accepts raw HTML or text copy-pasted and updates the state
 export function parseBattrickPage(content: string, forcedType?: string): {
-  type: 'squad' | 'nets' | 'finances' | 'club' | 'fixtures' | 'pavilion' | 'ground' | 'league' | 'unknown';
+  type: 'squad' | 'nets' | 'finances' | 'club' | 'fixtures' | 'pavilion' | 'ground' | 'league' | 'diary' | 'unknown';
   players?: BattrickPlayer[];
   finances?: Partial<ClubFinances>;
   fixtures?: BattrickGame[];
   pavilion?: PavilionInfo | Partial<PavilionInfo>;
   stadium?: StadiumConfig;
   league?: BattrickLeagueTable;
+  diary?: DiaryEntry[];
   count?: number;
 } {
   let type = (forcedType as any) || detectPageType(content);
@@ -327,6 +351,7 @@ export function parseBattrickPage(content: string, forcedType?: string): {
     const tLower = type.toLowerCase();
     if (tLower.includes('squad')) type = 'squad';
     else if (tLower.includes('net')) type = 'nets';
+    else if (tLower.includes('diary')) type = 'diary';
     else if (tLower.includes('finance')) type = 'finances';
     else if (tLower.includes('club')) type = 'club';
     else if (tLower.includes('fixture')) type = 'fixtures';
@@ -349,6 +374,9 @@ export function parseBattrickPage(content: string, forcedType?: string): {
   }
   if (type === 'fixtures') {
     return { type, fixtures: parseFixtures(content) };
+  }
+  if (type === 'diary') {
+    return { type, diary: parseDiary(content) };
   }
   if (type === 'pavilion') {
     const pavilion = parsePavilion(content);
@@ -1750,6 +1778,270 @@ export function parseFixtures(content: string): BattrickGame[] {
     { matchId: '32383795', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383795', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32383795', date: '15/09/2026', time: '11:45', opponent: 'Royal West Herts GC', homeTeam: 'Royal West Herts GC', awayTeam: 'HairyBeanBags', type: 'Twenty20', venue: 'Away', result: 'Upcoming' },
     { matchId: '32383799', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383799', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32383799', date: '16/09/2026', time: '00:30', opponent: 'Atlanta Braves', homeTeam: 'Atlanta Braves', awayTeam: 'HairyBeanBags', type: 'Twenty20', venue: 'Away', result: 'Upcoming' }
   ];
+}
+
+// Convert a Battrick-style dd/mm/yyyy date string into a sortable Date.
+// Returns null if it can't be parsed. Kept local to parseDiary/projections
+// since no shared date helper exists elsewhere in this file yet.
+function parseBattrickDate(dateStr: string | undefined): Date | null {
+  if (!dateStr) return null;
+  const m = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (!m) return null;
+  let [, d, mo, y] = m;
+  let year = parseInt(y, 10);
+  if (year < 100) year += 2000;
+  const dt = new Date(year, parseInt(mo, 10) - 1, parseInt(d, 10));
+  return isNaN(dt.getTime()) ? null : dt;
+}
+
+// Best-effort categorization of a diary line's description text.
+function categorizeDiaryEntry(description: string): DiaryEntry['category'] {
+  const d = description.toLowerCase();
+  if (d.includes('gate') || d.includes('attendance') || d.includes('spectator')) return 'gate receipts';
+  if (d.includes('sponsor')) return 'sponsorship';
+  if (d.includes('interest')) return 'interest';
+  if (d.includes('wage') || d.includes('salary') || d.includes('salaries')) return 'wages';
+  if (d.includes('transfer')) return 'transfer';
+  return 'other';
+}
+
+/**
+ * Parses the manager's diary / cash-book page (diary.asp) — a running,
+ * week-by-week ledger of income and outgoings, plus membership counts,
+ * with entries that relate to a specific fixture (gate receipts) linking
+ * back to that match via matchinfo.asp?matchID=.
+ *
+ * The exact markup of diary.asp hasn't been verified against a live page
+ * (it sits behind a Battrick login), so this parser uses the same
+ * dual-strategy approach as the rest of the file: try a structured DOM
+ * pass over table rows / list items first, then fall back to line-based
+ * regex scanning of the plain text so pasted content ("Cut & Paste" tab)
+ * still works even if the DOM structure differs from what's assumed here.
+ * If real-world sync results come back empty, paste a sample diary.asp
+ * page into the Cut & Paste tab and adjust the selectors below.
+ */
+export function parseDiary(content: string): DiaryEntry[] {
+  const entries: DiaryEntry[] = [];
+  let currentWeek: number | undefined;
+
+  // --- Strategy 1: structured DOM table/list parsing ---
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(content, 'text/html');
+
+    const mainContent = doc.getElementById('leftcolumn') || doc.getElementById('page') || doc.getElementById('content') || doc.body;
+    const rows = mainContent ? mainContent.querySelectorAll('tr, li') : doc.querySelectorAll('tr, li');
+
+    rows.forEach(row => {
+      const rowText = row.textContent?.replace(/\s+/g, ' ').trim() || '';
+      if (!rowText) return;
+
+      // A stray "Week N" heading row with no amount just updates the
+      // current week context for subsequent rows that don't repeat it.
+      const weekHeadingMatch = rowText.match(/^week\s*(\d+)\s*$/i);
+      if (weekHeadingMatch) {
+        currentWeek = parseInt(weekHeadingMatch[1], 10);
+        return;
+      }
+
+      const weekMatch = rowText.match(/week\s*(\d+)/i);
+      const dateMatch = rowText.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})/);
+      // Signed currency amount, e.g. "+£45,230", "-£1,200", "(£1,200)"
+      const amountMatch = rowText.match(/([+-]?£?\(?[\d,]+\)?)\s*(?:£)?(?=\s|$)/);
+      const currencyMatches = Array.from(rowText.matchAll(/([+\-]?)£\s*\(?([\d,]+)\)?/g));
+
+      if (!weekMatch && !dateMatch && currencyMatches.length === 0) return; // not a ledger row
+      if (currencyMatches.length === 0) return; // no amount, nothing to record
+
+      // Take the first currency figure on the row as the entry amount, and
+      // (if present) a second, larger figure as the running balance.
+      const parseSignedAmount = (m: RegExpMatchArray): number => {
+        const isNegative = m[1] === '-' || rowText.includes(`(${m[0].replace(/[+\-]/, '')})`);
+        const val = parseFormattedNumber(m[2]);
+        return isNegative ? -val : val;
+      };
+
+      const amount = parseSignedAmount(currencyMatches[0]);
+      const balance = currencyMatches.length > 1 ? parseSignedAmount(currencyMatches[currencyMatches.length - 1]) : undefined;
+
+      // Match link -> ties this entry (typically gate receipts) to a fixture
+      const matchLink = row.querySelector ? row.querySelector('a[href*="matchinfo.asp?matchID="]') : null;
+      let matchId: string | undefined;
+      let matchUrl: string | undefined;
+      if (matchLink) {
+        const href = matchLink.getAttribute('href') || '';
+        const idMatch = href.match(/matchID=(\d+)/i);
+        if (idMatch) {
+          matchId = idMatch[1];
+          matchUrl = `https://www.battrick.org/nl/${href.replace(/^\//, '')}`;
+        }
+      }
+
+      // Membership count/delta on this row, e.g. "Members: 1,432 (+12)"
+      let members: number | undefined;
+      let membersDelta: number | undefined;
+      const memberMatch = rowText.match(/members?\D{0,10}?([\d,]{2,})/i);
+      if (memberMatch) members = parseFormattedNumber(memberMatch[1]);
+      const memberDeltaMatch = rowText.match(/members?[^()]*\(([+-]\s*\d+)\)/i);
+      if (memberDeltaMatch) membersDelta = parseInt(memberDeltaMatch[1].replace(/\s/g, ''), 10);
+
+      if (weekMatch) currentWeek = parseInt(weekMatch[1], 10);
+
+      // Description = row text with the leading week/date/amount tokens
+      // stripped out, so what's left reads like "Gate receipts (v Opponent)".
+      let description = rowText
+        .replace(/week\s*\d+/i, '')
+        .replace(/\d{1,2}\/\d{1,2}\/\d{2,4}/, '')
+        .replace(/members?\D{0,10}?[\d,]{2,}(\s*\([+-]\s*\d+\))?/i, '')
+        .trim();
+      if (!description) description = matchLink?.textContent?.trim() || 'Diary entry';
+
+      entries.push({
+        week: currentWeek,
+        date: dateMatch ? dateMatch[1] : '',
+        description,
+        amount,
+        balance,
+        members,
+        membersDelta,
+        matchId,
+        matchUrl,
+        category: categorizeDiaryEntry(description)
+      });
+    });
+  } catch (e) {
+    console.error('Diary DOMParser error:', e);
+  }
+
+  if (entries.length > 0) {
+    try {
+      localStorage.setItem('bt_diary', JSON.stringify(entries));
+    } catch (e) {}
+    return entries;
+  }
+
+  // --- Strategy 2: line-based plain-text fallback (for pasted text with no HTML tags) ---
+  const plainText = content.replace(/<[^>]+>/g, '\n');
+  const lines = plainText.split(/\n+/).map(l => l.trim()).filter(Boolean);
+
+  lines.forEach(line => {
+    const weekMatch = line.match(/week\s*(\d+)/i);
+    const dateMatch = line.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})/);
+    const currencyMatches = Array.from(line.matchAll(/([+\-]?)£\s*\(?([\d,]+)\)?/g));
+    if (currencyMatches.length === 0) return;
+
+    const parseSignedAmount = (m: RegExpMatchArray): number => {
+      const val = parseFormattedNumber(m[2]);
+      return m[1] === '-' ? -val : val;
+    };
+
+    if (weekMatch) currentWeek = parseInt(weekMatch[1], 10);
+    const matchIdMatch = line.match(/matchID=(\d+)/i);
+
+    const description = line
+      .replace(/week\s*\d+/i, '')
+      .replace(/\d{1,2}\/\d{1,2}\/\d{2,4}/, '')
+      .replace(/([+\-]?)£\s*\(?[\d,]+\)?/g, '')
+      .trim() || 'Diary entry';
+
+    entries.push({
+      week: currentWeek,
+      date: dateMatch ? dateMatch[1] : '',
+      description,
+      amount: parseSignedAmount(currencyMatches[0]),
+      balance: currencyMatches.length > 1 ? parseSignedAmount(currencyMatches[currencyMatches.length - 1]) : undefined,
+      matchId: matchIdMatch ? matchIdMatch[1] : undefined,
+      matchUrl: matchIdMatch ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${matchIdMatch[1]}` : undefined,
+      category: categorizeDiaryEntry(description)
+    });
+  });
+
+  try {
+    if (entries.length > 0) localStorage.setItem('bt_diary', JSON.stringify(entries));
+  } catch (e) {}
+
+  return entries;
+}
+
+/**
+ * Cross-maps diary entries (actual weekly income, keyed by matchId) against
+ * the fixtures list to produce a financial projection per fixture:
+ *  - Fixtures that already have a matching diary entry (matchId in both
+ *    lists) get their actual gate receipts carried straight across.
+ *  - Fixtures with no diary entry yet (future games) get a projected gate
+ *    receipts figure based on the historical average for that venue
+ *    (Home/Away) and match type, falling back to an overall average.
+ *  - Membership trend is extrapolated from the average per-week member
+ *    delta seen in the diary, applied across the weeks between "now" and
+ *    the fixture date.
+ */
+export function buildFinancialProjections(diary: DiaryEntry[], fixtures: BattrickGame[]): FinancialProjection[] {
+  const gateEntries = diary.filter(d => d.matchId && (d.category === 'gate receipts' || d.amount > 0));
+  const entriesByMatchId = new Map<string, DiaryEntry>();
+  gateEntries.forEach(e => { if (e.matchId) entriesByMatchId.set(e.matchId, e); });
+
+  const avgFor = (predicate: (g: BattrickGame) => boolean): { avg: number; count: number } => {
+    const relevant = gateEntries.filter(e => {
+      const fixture = fixtures.find(f => f.matchId === e.matchId);
+      return fixture ? predicate(fixture) : false;
+    });
+    if (relevant.length === 0) return { avg: 0, count: 0 };
+    const total = relevant.reduce((sum, e) => sum + Math.abs(e.amount), 0);
+    return { avg: total / relevant.length, count: relevant.length };
+  };
+
+  const overallAvg = avgFor(() => true);
+
+  // Average member delta per diary entry that recorded one, used to
+  // extrapolate a membership trend forward to future fixture dates.
+  const deltas = diary.map(d => d.membersDelta).filter((v): v is number => typeof v === 'number');
+  const avgMemberDeltaPerWeek = deltas.length > 0 ? deltas.reduce((s, v) => s + v, 0) / deltas.length : 0;
+
+  const lastKnownWeek = diary.reduce((max, d) => (d.week && d.week > max ? d.week : max), 0);
+
+  return fixtures.map(fixture => {
+    const matchId = fixture.matchId || '';
+    const actualEntry = matchId ? entriesByMatchId.get(matchId) : undefined;
+
+    let projected: { avg: number; count: number };
+    if (fixture.venue && fixture.type) {
+      projected = avgFor(g => g.venue === fixture.venue && g.type === fixture.type);
+      if (projected.count === 0) projected = avgFor(g => g.venue === fixture.venue);
+    } else {
+      projected = { avg: 0, count: 0 };
+    }
+    if (projected.count === 0) projected = overallAvg;
+
+    // Rough week offset from the last diary entry to this fixture's date,
+    // assuming ~1 in-game week per real week (Battrick convention).
+    let weeksAhead = 0;
+    if (fixture.date) {
+      const fixtureDate = parseBattrickDate(fixture.date);
+      const lastDiaryDate = parseBattrickDate(diary.length > 0 ? diary[diary.length - 1].date : undefined);
+      if (fixtureDate && lastDiaryDate) {
+        weeksAhead = Math.max(0, Math.round((fixtureDate.getTime() - lastDiaryDate.getTime()) / (7 * 24 * 60 * 60 * 1000)));
+      }
+    }
+
+    const confidence: FinancialProjection['confidence'] = actualEntry
+      ? 'high'
+      : projected.count >= 3
+        ? 'medium'
+        : 'low';
+
+    return {
+      matchId,
+      opponent: fixture.opponent,
+      date: fixture.date,
+      venue: fixture.venue,
+      type: fixture.type,
+      actualGateReceipts: actualEntry ? Math.abs(actualEntry.amount) : undefined,
+      projectedGateReceipts: actualEntry ? Math.abs(actualEntry.amount) : Math.round(projected.avg),
+      projectedMembersDelta: Math.round(avgMemberDeltaPerWeek * Math.max(weeksAhead, 1)),
+      basedOnEntries: actualEntry ? 1 : projected.count,
+      confidence
+    };
+  });
 }
 
 export function parsePavilion(content: string): PavilionInfo {

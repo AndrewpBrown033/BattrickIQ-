@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { BattrickPlayer, ClubFinances, BattrickGame, PavilionInfo } from '../types';
-import { parseBattrickPage, isNameMatch } from '../parser';
+import { BattrickPlayer, ClubFinances, BattrickGame, PavilionInfo, DiaryEntry } from '../types';
+import { parseBattrickPage, isNameMatch, buildFinancialProjections } from '../parser';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
 import { mergePlayerAndTrackHistory, generateRealisticHistory } from '../utils/history';
 import { 
@@ -95,6 +95,14 @@ const AVAILABLE_SYNC_OPTIONS: SyncOptionItem[] = [
     color: 'text-amber-600 bg-amber-50 border-amber-200'
   },
   {
+    id: 'diary',
+    label: 'Manager Diary',
+    url: 'diary.asp',
+    description: 'Weekly income/outgoings ledger, running balance & membership trend, tied to games played',
+    icon: Coins,
+    color: 'text-amber-600 bg-amber-50 border-amber-200'
+  },
+  {
     id: 'club',
     label: 'Club & Staff Details',
     url: 'club.asp',
@@ -131,6 +139,7 @@ const AVAILABLE_SYNC_OPTIONS: SyncOptionItem[] = [
 export default function SyncHub({ setActiveTab }: SyncHubProps) {
   const [squad, setSquad] = useState<BattrickPlayer[]>([]);
   const [fixtures, setFixtures] = useState<BattrickGame[]>([]);
+  const [diary, setDiary] = useState<DiaryEntry[]>([]);
   const [pavilion, setPavilion] = useState<PavilionInfo | null>(null);
   const [hasEverSynced, setHasEverSynced] = useState<boolean>(() => {
     return localStorage.getItem('bt_has_ever_synced') === 'true';
@@ -177,11 +186,28 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
   const squadRef = useRef<BattrickPlayer[]>(squad);
   const financesRef = useRef<ClubFinances>(finances);
   const fixturesRef = useRef<BattrickGame[]>(fixtures);
+  const diaryRef = useRef<DiaryEntry[]>(diary);
   const pavilionRef = useRef<PavilionInfo | null>(pavilion);
   useEffect(() => { squadRef.current = squad; }, [squad]);
   useEffect(() => { financesRef.current = finances; }, [finances]);
   useEffect(() => { fixturesRef.current = fixtures; }, [fixtures]);
+  useEffect(() => { diaryRef.current = diary; }, [diary]);
   useEffect(() => { pavilionRef.current = pavilion; }, [pavilion]);
+
+  // Whenever either the diary ledger or the fixtures list changes, rebuild
+  // the per-fixture financial projections (actuals for games with a
+  // matching diary entry, historical-average projections for the rest) and
+  // persist them so other parts of the app can read 'bt_financial_projections'.
+  useEffect(() => {
+    if (diary.length === 0 && fixtures.length === 0) return;
+    try {
+      const projections = buildFinancialProjections(diary, fixtures);
+      localStorage.setItem('bt_financial_projections', JSON.stringify(projections));
+      window.dispatchEvent(new Event('storage'));
+    } catch (e) {
+      console.error('Failed to build financial projections:', e);
+    }
+  }, [diary, fixtures]);
 
   // Only 2 sync methods: Direct Sync & Cut/Paste
   const [importTab, setImportTab] = useState<'direct' | 'paste'>('direct');
@@ -290,7 +316,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
         console.error(e);
       }
     }
-    return ['squad', 'nets', 'finances', 'club', 'fixtures', 'pavilion'];
+    return ['squad', 'nets', 'finances', 'diary', 'club', 'fixtures', 'pavilion'];
   });
 
   const [importMessage, setImportMessage] = useState<{ text: string; success: boolean } | null>(null);
@@ -298,7 +324,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
   const [showSyncControls, setShowSyncControls] = useState<boolean>(true);
   const [successModal, setSuccessModal] = useState<{
     isOpen: boolean;
-    type: 'squad' | 'nets' | 'finances' | 'club' | 'fixtures' | 'pavilion' | 'ground' | 'demo' | 'unknown';
+    type: 'squad' | 'nets' | 'finances' | 'diary' | 'club' | 'fixtures' | 'pavilion' | 'ground' | 'demo' | 'unknown';
     title: string;
     message: string;
     stats?: { label: string; value: string | number }[];
@@ -389,6 +415,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     const savedSquad = localStorage.getItem('bt_squad');
     const savedFin = localStorage.getItem('bt_finances');
     const savedFixtures = localStorage.getItem('bt_fixtures');
+    const savedDiary = localStorage.getItem('bt_diary');
     const savedPavilion = localStorage.getItem('bt_pavilion');
     const savedLogs = localStorage.getItem('bt_sync_logs');
     const savedHasEverSynced = localStorage.getItem('bt_has_ever_synced') === 'true';
@@ -457,6 +484,16 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       setPavilion(null);
     }
 
+    if (savedDiary) {
+      try {
+        setDiary(JSON.parse(savedDiary));
+      } catch (e) {
+        console.error(e);
+      }
+    } else {
+      setDiary([]);
+    }
+
     if (savedLogs) {
       try {
         setSyncLogs(JSON.parse(savedLogs));
@@ -480,7 +517,8 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     newSquad: BattrickPlayer[], 
     newFin?: ClubFinances, 
     newFixtures?: BattrickGame[], 
-    newPavilion?: PavilionInfo
+    newPavilion?: PavilionInfo,
+    newDiary?: DiaryEntry[]
   ) => {
     localStorage.setItem('bt_squad', JSON.stringify(newSquad));
     if (newFin) {
@@ -489,6 +527,9 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     }
     if (newFixtures) {
       localStorage.setItem('bt_fixtures', JSON.stringify(newFixtures));
+    }
+    if (newDiary) {
+      localStorage.setItem('bt_diary', JSON.stringify(newDiary));
     }
     if (newPavilion) {
       localStorage.setItem('bt_pavilion', JSON.stringify(newPavilion));
@@ -537,6 +578,9 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     } else if (result.type === 'fixtures') {
       if (result.fixtures && result.fixtures.length > 0) isDataValid = true;
       else failReason = 'No match fixtures could be parsed from page content.';
+    } else if (result.type === 'diary') {
+      if (result.diary && result.diary.length > 0) isDataValid = true;
+      else failReason = 'No diary/ledger entries could be parsed from page content.';
     } else if (result.type === 'pavilion') {
       if (result.pavilion && Object.keys(result.pavilion).length > 0) isDataValid = true;
       else failReason = 'No pavilion details could be parsed from page content.';
@@ -557,6 +601,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     if (shouldWipe) {
       setSquad([]);
       setFixtures([]);
+      setDiary([]);
       setPavilion(null);
       setFinances({
         cash: 0, members: 0, prOfficers: 0, finAdvisors: 0, sponsorsIncome: 0, gateReceipts: 0, interestReceived: 0, playerWages: 0, staffWages: 0, morale: 'respectable', sponsorsMood: 'respectable', membersConfidence: 'respectable', academyCondition: 'feeble', academyInvestment: 0, academyIts: 0, bowlingCoaches: 0, battingCoaches: 0, fieldingCoaches: 0, keepingCoaches: 0, staminaCoaches: 0, psychologists: 0
@@ -565,6 +610,8 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       localStorage.removeItem('bt_finances');
       localStorage.removeItem('bt_stadium');
       localStorage.removeItem('bt_fixtures');
+      localStorage.removeItem('bt_diary');
+      localStorage.removeItem('bt_financial_projections');
       localStorage.removeItem('bt_pavilion');
       localStorage.removeItem('bt_sync_logs');
       setSyncLogs([]);
@@ -579,6 +626,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       cash: 0, members: 0, prOfficers: 0, finAdvisors: 0, sponsorsIncome: 0, gateReceipts: 0, interestReceived: 0, playerWages: 0, staffWages: 0, morale: 'respectable' as const, sponsorsMood: 'respectable' as const, membersConfidence: 'respectable', academyCondition: 'feeble', academyInvestment: 0, academyIts: 0, bowlingCoaches: 0, battingCoaches: 0, fieldingCoaches: 0, keepingCoaches: 0, staminaCoaches: 0, psychologists: 0
     } : financesRef.current;
     const activeFixtures = shouldWipe ? [] : fixturesRef.current;
+    const activeDiary = shouldWipe ? [] : diaryRef.current;
     const activePavilion = shouldWipe ? null : pavilionRef.current;
 
     if (result.type === 'squad' && result.players) {
@@ -594,7 +642,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       });
       squadRef.current = merged;
       setSquad(merged);
-      saveToLocalStorage(merged, activeFinances, activeFixtures.length > 0 ? activeFixtures : undefined, activePavilion || undefined);
+      saveToLocalStorage(merged, activeFinances, activeFixtures.length > 0 ? activeFixtures : undefined, activePavilion || undefined, activeDiary.length > 0 ? activeDiary : undefined);
       setImportMessage({ text: `Successfully synced ${result.count} players into your squad!`, success: true });
       addSyncLog('squad', `Imported & updated squad roster (${result.count} players)`, 'success');
       
@@ -623,7 +671,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       });
       squadRef.current = merged;
       setSquad(merged);
-      saveToLocalStorage(merged, activeFinances, activeFixtures.length > 0 ? activeFixtures : undefined, activePavilion || undefined);
+      saveToLocalStorage(merged, activeFinances, activeFixtures.length > 0 ? activeFixtures : undefined, activePavilion || undefined, activeDiary.length > 0 ? activeDiary : undefined);
       setImportMessage({ text: `Matched and synced net training schedules for ${updatedCount} squad players!`, success: true });
       addSyncLog('nets', `Updated training net allocation schedule for ${updatedCount} players`, 'success');
       
@@ -642,7 +690,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       const updatedFin = { ...activeFinances, ...result.finances } as ClubFinances;
       financesRef.current = updatedFin;
       setFinances(updatedFin);
-      saveToLocalStorage(activeSquad, updatedFin, activeFixtures.length > 0 ? activeFixtures : undefined, activePavilion || undefined);
+      saveToLocalStorage(activeSquad, updatedFin, activeFixtures.length > 0 ? activeFixtures : undefined, activePavilion || undefined, activeDiary.length > 0 ? activeDiary : undefined);
       setImportMessage({ text: result.type === 'club' ? 'Successfully parsed and synced club staff & morale levels!' : `Successfully parsed and synced club finances!`, success: true });
       addSyncLog(result.type, result.type === 'club' ? 'Synchronized club staff levels & morale' : `Synchronized weekly finances & staff ratios`, 'success');
       
@@ -669,7 +717,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     } else if (result.type === 'fixtures' && result.fixtures) {
       fixturesRef.current = result.fixtures;
       setFixtures(result.fixtures);
-      saveToLocalStorage(activeSquad, activeFinances, result.fixtures, activePavilion || undefined);
+      saveToLocalStorage(activeSquad, activeFinances, result.fixtures, activePavilion || undefined, activeDiary.length > 0 ? activeDiary : undefined);
       setImportMessage({ text: `Successfully parsed and synced ${result.fixtures.length} club fixtures!`, success: true });
       addSyncLog('fixtures', `Synchronized ${result.fixtures.length} club fixtures`, 'success');
       
@@ -680,6 +728,40 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
         message: `Parsed and synchronized upcoming match schedules and pitch ratings.`,
         stats: [
           { label: 'Fixtures Found', value: result.fixtures.length }
+        ]
+      });
+    } else if (result.type === 'diary' && result.diary) {
+      // Diary entries accumulate week-by-week, so merge on matchId/week+date
+      // rather than replacing wholesale - a re-sync should update existing
+      // rows in place and append genuinely new ones, not duplicate them.
+      const merged = [...activeDiary];
+      result.diary.forEach(newEntry => {
+        const existingIdx = merged.findIndex(e =>
+          (newEntry.matchId && e.matchId === newEntry.matchId) ||
+          (!newEntry.matchId && e.week === newEntry.week && e.date === newEntry.date && e.description === newEntry.description)
+        );
+        if (existingIdx >= 0) merged[existingIdx] = { ...merged[existingIdx], ...newEntry };
+        else merged.push(newEntry);
+      });
+      merged.sort((a, b) => (a.week || 0) - (b.week || 0));
+
+      diaryRef.current = merged;
+      setDiary(merged);
+      saveToLocalStorage(activeSquad, activeFinances, activeFixtures.length > 0 ? activeFixtures : undefined, activePavilion || undefined, merged);
+      setImportMessage({ text: `Successfully parsed and synced ${result.diary.length} diary entries!`, success: true });
+      addSyncLog('diary', `Synchronized ${result.diary.length} manager diary entries (${merged.length} total on file)`, 'success');
+
+      const gateEntries = merged.filter(e => e.matchId);
+      const totalIncome = merged.filter(e => e.amount > 0).reduce((sum, e) => sum + e.amount, 0);
+      if (!silent) setSuccessModal({
+        isOpen: true,
+        type: 'diary',
+        title: 'Manager Diary Synced!',
+        message: `Weekly income/outgoings ledger parsed and synchronized. Entries tied to a specific match are cross-mapped against your fixtures to build gate-receipt projections.`,
+        stats: [
+          { label: 'Diary Entries', value: merged.length },
+          { label: 'Entries Tied to a Game', value: gateEntries.length },
+          { label: 'Total Recorded Income', value: `£${totalIncome.toLocaleString()}` }
         ]
       });
     } else if (result.type === 'pavilion' && result.pavilion) {
@@ -713,7 +795,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
         localStorage.setItem('bt_stadium_synced', 'true');
       }
 
-      saveToLocalStorage(activeSquad, activeFinances, activeFixtures.length > 0 ? activeFixtures : undefined, mergedPavilion);
+      saveToLocalStorage(activeSquad, activeFinances, activeFixtures.length > 0 ? activeFixtures : undefined, mergedPavilion, activeDiary.length > 0 ? activeDiary : undefined);
       setImportMessage({ text: `Successfully parsed and synced pavilion details: ${mergedPavilion.groundName}!`, success: true });
       addSyncLog('pavilion', `Synchronized pavilion ground detail (${mergedPavilion.groundName})`, 'success');
       
@@ -762,7 +844,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
         setPavilion(updatedPavilion);
       }
 
-      saveToLocalStorage(activeSquad, activeFinances, activeFixtures.length > 0 ? activeFixtures : undefined, updatedPavilion || undefined);
+      saveToLocalStorage(activeSquad, activeFinances, activeFixtures.length > 0 ? activeFixtures : undefined, updatedPavilion || undefined, activeDiary.length > 0 ? activeDiary : undefined);
       setImportMessage({ text: `Successfully parsed and synced stadium ground specs!`, success: true });
       addSyncLog('ground', `Updated stadium capacity to ${(stadium.capacity || 0).toLocaleString()} seats`, 'success');
 
@@ -879,6 +961,13 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
         label: 'Club Financial Accounts',
         subLabel: 'Cash reserves, sponsor weekly income & wage ledger',
         urlLabel: 'finances.asp',
+        icon: Coins,
+        color: 'text-amber-600 bg-amber-50 border-amber-200'
+      },
+      diary: {
+        label: 'Manager Diary & Cash Book',
+        subLabel: 'Weekly income/outgoings ledger, balance history & membership trend',
+        urlLabel: 'diary.asp',
         icon: Coins,
         color: 'text-amber-600 bg-amber-50 border-amber-200'
       },
@@ -1074,6 +1163,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
               squad: 'squad',
               nets: 'nets',
               finances: 'finances',
+              diary: 'diary',
               club: 'club',
               fixtures: 'fixtures',
               pavilion: 'ground'
@@ -1103,6 +1193,11 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
                 statBadge = `£${(parsed.finances.cash / 1000000).toFixed(2)}M Balance`;
                 collectedStats.push({ label: 'Club Capital', value: `£${parsed.finances.cash.toLocaleString()}` });
               }
+            } else if (pageKey === 'diary') {
+              const parsed = parseBattrickPage(pageData.html);
+              const dCount = parsed.diary?.length || 0;
+              statBadge = `${dCount} Ledger Rows`;
+              collectedStats.push({ label: 'Diary Entries', value: `${dCount} Weeks Recorded` });
             } else if (pageKey === 'club') {
               statBadge = 'Staff & Morale';
               collectedStats.push({ label: 'Club Mood', value: 'Morale & Specialists Synced' });
