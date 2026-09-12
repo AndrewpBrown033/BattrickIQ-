@@ -24,7 +24,8 @@ const OPENROUTER_MODELS = [
   { id: 'nex-agi/nex-n2.5-pro:free', name: 'Nex-N2.5 Pro (Free)', desc: 'Strong agentic reasoning, good all-rounder for tactics', free: true },
   { id: 'nvidia/nemotron-3.5-lightning:free', name: 'NVIDIA Nemotron 3.5 Lightning (Free)', desc: 'Fast, lightweight, high-throughput responses', free: true },
   { id: 'poolside/laguna-s-2.1:free', name: 'Poolside Laguna S 2.1 (Free)', desc: 'Coding-agent model, solid structured analysis', free: true },
-  { id: 'inclusionai/ling-3.0-flash-vl:free', name: 'Ling 3.0 Flash VL (Free)', desc: 'Multimodal — can read pasted screenshots too', free: true },
+  { id: 'inclusionai/ling-3.0-flash-fin:free', name: 'Ling 3.0 Flash Fin (Free)', desc: 'Finance-tuned reasoning, good for budget/wage analysis', free: true },
+  { id: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free', name: 'NVIDIA Nemotron 3 Nano Omni (Free)', desc: 'Multimodal — can read pasted screenshots too', free: true },
   { id: 'liquid/lfm-2.5-2.6b:free', name: 'LiquidAI LFM2.5 2.6B (Free)', desc: 'Compact, quick answers for simple questions', free: true }
 ];
 

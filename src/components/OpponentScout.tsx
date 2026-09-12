@@ -587,21 +587,38 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
       localStorage.removeItem('bt_scout_squad_last');
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const k = localStorage.key(i);
-        if (k && (k.startsWith('bt_scout_squad_') || k.startsWith('bt_opponent_squad_'))) {
+        if (k && (k.startsWith('bt_scout_squad_') || k.startsWith('bt_opponent_squad_') || k.startsWith('bt_scout_'))) {
           localStorage.removeItem(k);
         }
       }
     } catch {}
     setOpponentPlayers([]);
     setIsAuthenticRoster(false);
-    setSquadSyncStatus('✓ Opponent scouting cache cleared. Ready to fetch real players from team.');
+    setSquadSyncStatus('✓ Opponent scouting cache cleared.');
     setSquadSyncError(null);
-    setTimeout(() => setSquadSyncStatus(null), 5000);
+    if (opponentTeamId && battrickUsername && battrickPassword) {
+      handleSyncOpponentSquadLive(opponentTeamId, opponentName);
+    } else {
+      setTimeout(() => setSquadSyncStatus(null), 5000);
+    }
   };
 
   // Load user data on mount and listen to storage synchronization events
   const loadLocalData = () => {
     try {
+      // Purge legacy/stale scout cache version if outdated so fresh real players are pulled
+      const scoutCacheVersion = localStorage.getItem('bt_scout_cache_v');
+      if (scoutCacheVersion !== 'v3_fresh_real_players') {
+        localStorage.removeItem('bt_scout_squad_last');
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k && (k.startsWith('bt_scout_squad_') || k.startsWith('bt_opponent_squad_'))) {
+            localStorage.removeItem(k);
+          }
+        }
+        localStorage.setItem('bt_scout_cache_v', 'v3_fresh_real_players');
+      }
+
       const savedSquadStr = localStorage.getItem('bt_squad');
       const loadedSquad = savedSquadStr ? JSON.parse(savedSquadStr) : [];
       if (loadedSquad.length > 0) setMySquad(loadedSquad);

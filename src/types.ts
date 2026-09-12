@@ -502,4 +502,4 @@ export interface LLMConfig {
   model: string;
   openRouterApiKey?: string;
   geminiApiKey?: string;
-}
+} 
