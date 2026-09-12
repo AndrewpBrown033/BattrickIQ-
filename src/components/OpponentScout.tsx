@@ -750,7 +750,6 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
       setOpponentTeamId(pastedTeamId);
     }
     const effectiveName = detectedTeamName || opponentName;
-    const effectiveName = detectedTeamName || opponentName;
     if (detectedTeamName && detectedTeamName !== opponentName) {
       setOpponentName(detectedTeamName);
     }
