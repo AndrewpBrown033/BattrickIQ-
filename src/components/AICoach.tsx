@@ -12,12 +12,20 @@ interface Message {
 }
 
 const OPENROUTER_MODELS = [
-  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', desc: 'Top strategic reasoning & cricket tactics' },
-  { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B Instruct', desc: 'Fast, open-weights tactical LLM' },
-  { id: 'openai/gpt-4o', name: 'GPT-4o', desc: 'High capability multimodal reasoning' },
-  { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3', desc: 'Efficient, deep mathematical analysis' },
-  { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash (via OpenRouter)', desc: 'Ultra-low latency tactical responses' },
-  { id: 'mistralai/mistral-large-2407', name: 'Mistral Large', desc: 'Advanced European reasoning model' }
+  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', desc: 'Top strategic reasoning & cricket tactics', free: false },
+  { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B Instruct', desc: 'Fast, open-weights tactical LLM', free: false },
+  { id: 'openai/gpt-4o', name: 'GPT-4o', desc: 'High capability multimodal reasoning', free: false },
+  { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3', desc: 'Efficient, deep mathematical analysis', free: false },
+  { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash (via OpenRouter)', desc: 'Ultra-low latency tactical responses', free: false },
+  { id: 'mistralai/mistral-large-2407', name: 'Mistral Large', desc: 'Advanced European reasoning model', free: false },
+  // Note: all models above are routed exclusively through OpenRouter. There is no direct/non-OpenRouter provider option.
+  // Free-tier models (zero cost per token on OpenRouter as of this list's last verification):
+  { id: 'openrouter/free', name: 'OpenRouter Free Router (Auto)', desc: 'Automatically picks a free model that fits your request', free: true },
+  { id: 'nex-agi/nex-n2.5-pro:free', name: 'Nex-N2.5 Pro (Free)', desc: 'Strong agentic reasoning, good all-rounder for tactics', free: true },
+  { id: 'nvidia/nemotron-3.5-lightning:free', name: 'NVIDIA Nemotron 3.5 Lightning (Free)', desc: 'Fast, lightweight, high-throughput responses', free: true },
+  { id: 'poolside/laguna-s-2.1:free', name: 'Poolside Laguna S 2.1 (Free)', desc: 'Coding-agent model, solid structured analysis', free: true },
+  { id: 'inclusionai/ling-3.0-flash-vl:free', name: 'Ling 3.0 Flash VL (Free)', desc: 'Multimodal — can read pasted screenshots too', free: true },
+  { id: 'liquid/lfm-2.5-2.6b:free', name: 'LiquidAI LFM2.5 2.6B (Free)', desc: 'Compact, quick answers for simple questions', free: true }
 ];
 
 export default function AICoach() {
@@ -35,12 +43,13 @@ export default function AICoach() {
   const [loadingChat, setLoadingChat] = useState<boolean>(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Model & Provider Configuration State
-  const [provider, setProvider] = useState<LLMProvider>(() => {
-    return (localStorage.getItem('bt_llm_provider') as LLMProvider) || 'openrouter';
-  });
+  // Model Configuration State — Coach Jarvis is OpenRouter-only, no provider switch.
+  const provider: LLMProvider = 'openrouter';
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     return localStorage.getItem('bt_llm_model') || 'anthropic/claude-3.5-sonnet';
+  });
+  const [showFreeOnly, setShowFreeOnly] = useState<boolean>(() => {
+    return localStorage.getItem('bt_llm_free_only') === 'true';
   });
   const [openRouterKey, setOpenRouterKey] = useState<string>(() => {
     return localStorage.getItem('bt_openrouter_api_key') || '';
@@ -244,21 +253,18 @@ export default function AICoach() {
       let errorMsg = "";
       let useClientFallback = false;
 
-      // 1. Attempt server-side proxy route first with OpenRouter / selected LLM
-      try {
-        const customGeminiKey = localStorage.getItem('bt_custom_api_key') || '';
-        const activeOpenRouterKey = openRouterKey || localStorage.getItem('bt_openrouter_api_key') || '';
+      const activeOpenRouterKey = openRouterKey || localStorage.getItem('bt_openrouter_api_key') || '';
 
+      // 1. Attempt server-side proxy route first (OpenRouter only)
+      try {
         const response = await fetch('/api/coach-chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: textToSend,
             context: teamContext,
-            provider: provider,
             model: selectedModel,
-            openRouterApiKey: activeOpenRouterKey,
-            customApiKey: customGeminiKey
+            openRouterApiKey: activeOpenRouterKey
           })
         });
 
@@ -280,95 +286,51 @@ export default function AICoach() {
         useClientFallback = true;
       }
 
-      // 2. Client-side direct fallback if server-side proxy is unavailable
+      // 2. Client-side direct fallback to OpenRouter if server-side proxy is unavailable
       if (useClientFallback) {
-        if (provider === 'openrouter') {
-          const activeOpenRouterKey = openRouterKey || localStorage.getItem('bt_openrouter_api_key') || '';
-          if (activeOpenRouterKey) {
-            console.log("[AICoach] Server-side unavailable. Calling OpenRouter client-side directly...");
-            try {
-              const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                  "Authorization": `Bearer ${activeOpenRouterKey}`,
-                  "HTTP-Referer": window.location.origin,
-                  "X-Title": "Battrick Tactical Assistant",
-                  "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                  model: selectedModel || "anthropic/claude-3.5-sonnet",
-                  messages: [
-                    {
-                      role: "system",
-                      content: `You are 'Coach Jarvis', the premier AI Strategic Coach and Opponent Scout for Battrick cricket management. You are an expert at reverse-engineering match ratings, Batstats, top/middle/lower order groupings, tail collapses, and custom net planning.`
-                    },
-                    {
-                      role: "user",
-                      content: `[TEAM & MATCH CONTEXT]:\n${teamContext || "No context provided yet."}\n\n[USER INQUIRY]:\n${textToSend}`
-                    }
-                  ]
-                })
-              });
+        if (activeOpenRouterKey) {
+          console.log("[AICoach] Server-side unavailable. Calling OpenRouter client-side directly...");
+          try {
+            const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${activeOpenRouterKey}`,
+                "HTTP-Referer": window.location.origin,
+                "X-Title": "Battrick Tactical Assistant",
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                model: selectedModel || "anthropic/claude-3.5-sonnet",
+                messages: [
+                  {
+                    role: "system",
+                    content: `You are 'Coach Jarvis', the premier AI Strategic Coach and Opponent Scout for Battrick cricket management. You are an expert at reverse-engineering match ratings, Batstats, top/middle/lower order groupings, tail collapses, and custom net planning.`
+                  },
+                  {
+                    role: "user",
+                    content: `[TEAM & MATCH CONTEXT]:\n${teamContext || "No context provided yet."}\n\n[USER INQUIRY]:\n${textToSend}`
+                  }
+                ]
+              })
+            });
 
-              if (!orRes.ok) {
-                const errData = await orRes.json().catch(() => ({}));
-                throw new Error(errData.error?.message || `HTTP ${orRes.status}`);
-              }
-              const orData = await orRes.json();
-              const reply = orData.choices?.[0]?.message?.content;
-              if (reply) {
-                replyText = reply;
-                success = true;
-              } else {
-                throw new Error("Empty response from OpenRouter API.");
-              }
-            } catch (orErr: any) {
-              errorMsg = `OpenRouter Direct API call failed: ${orErr.message}`;
+            if (!orRes.ok) {
+              const errData = await orRes.json().catch(() => ({}));
+              throw new Error(errData.error?.message || `HTTP ${orRes.status}`);
             }
-          } else {
-            errorMsg = "OpenRouter API Key not set. Please click 'Model Settings' in the top-right corner to enter your OpenRouter API key or select Gemini.";
+            const orData = await orRes.json();
+            const reply = orData.choices?.[0]?.message?.content;
+            if (reply) {
+              replyText = reply;
+              success = true;
+            } else {
+              throw new Error("Empty response from OpenRouter API.");
+            }
+          } catch (orErr: any) {
+            errorMsg = `OpenRouter Direct API call failed: ${orErr.message}`;
           }
         } else {
-          const customKey = localStorage.getItem('bt_custom_api_key') || '';
-          const clientKey = customKey || (import.meta as any).env?.VITE_GEMINI_API_KEY;
-          if (clientKey) {
-            console.log("[AICoach] Falling back to direct client-side Gemini API call...");
-            const systemInstruction = `You are 'Coach Jarvis', the premier AI Strategic Coach for Battrick, an online multiplayer cricket management game. Analyze questions, opponent lineups, and club management.`;
-            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${clientKey}`;
-            try {
-              const geminiRes = await fetch(geminiUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  contents: [
-                    {
-                      role: "user",
-                      parts: [{ text: `[TEAM CONTEXT]:\n${teamContext || "No context provided."}\n\n[USER INQUIRY]:\n${textToSend}` }]
-                    }
-                  ],
-                  systemInstruction: { parts: [{ text: systemInstruction }] }
-                })
-              });
-
-              if (!geminiRes.ok) {
-                const errData = await geminiRes.json().catch(() => ({}));
-                throw new Error(errData.error?.message || `HTTP status ${geminiRes.status}`);
-              }
-
-              const geminiData = await geminiRes.json();
-              const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (text) {
-                replyText = text;
-                success = true;
-              } else {
-                throw new Error("No response text found in Gemini payload.");
-              }
-            } catch (directErr: any) {
-              errorMsg = `Direct Gemini API call failed: ${directErr.message || "Network error"}.`;
-            }
-          } else {
-            errorMsg = "No API Key configured. Please click 'Model Settings' in the top right to configure OpenRouter or Gemini.";
-          }
+          errorMsg = "OpenRouter API Key not set. Please click 'Model Settings' in the top-right corner to enter your OpenRouter API key.";
         }
       }
 
@@ -598,89 +560,89 @@ export default function AICoach() {
               </button>
             </div>
 
-            {/* Provider Selection */}
+            {/* Provider — locked to OpenRouter */}
             <div>
               <label className="text-xs font-mono font-bold uppercase text-slate-500 block mb-2">
                 LLM Provider
               </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setProvider('openrouter');
-                    localStorage.setItem('bt_llm_provider', 'openrouter');
-                  }}
-                  className={`p-3 rounded-xl border text-left transition flex items-start gap-2.5 ${
-                    provider === 'openrouter'
-                      ? 'border-indigo-600 bg-indigo-50/50 text-indigo-950 font-bold'
-                      : 'border-slate-200 bg-white hover:border-slate-300 text-slate-600'
-                  }`}
-                >
-                  <Cpu className="w-4 h-4 text-indigo-600 mt-0.5" />
-                  <div>
-                    <div className="text-xs font-bold">OpenRouter (Recommended)</div>
-                    <div className="text-[10px] text-slate-500 font-normal mt-0.5">Claude 3.5, Llama 3.3, GPT-4o, DeepSeek</div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setProvider('gemini');
-                    localStorage.setItem('bt_llm_provider', 'gemini');
-                  }}
-                  className={`p-3 rounded-xl border text-left transition flex items-start gap-2.5 ${
-                    provider === 'gemini'
-                      ? 'border-indigo-600 bg-indigo-50/50 text-indigo-950 font-bold'
-                      : 'border-slate-200 bg-white hover:border-slate-300 text-slate-600'
-                  }`}
-                >
-                  <Sparkles className="w-4 h-4 text-indigo-600 mt-0.5" />
-                  <div>
-                    <div className="text-xs font-bold">Google Gemini</div>
-                    <div className="text-[10px] text-slate-500 font-normal mt-0.5">Gemini 2.5 Flash / Pro</div>
-                  </div>
-                </button>
+              <div className="p-3 rounded-xl border border-indigo-600 bg-indigo-50/50 text-indigo-950 font-bold flex items-start gap-2.5">
+                <Cpu className="w-4 h-4 text-indigo-600 mt-0.5" />
+                <div>
+                  <div className="text-xs font-bold">OpenRouter</div>
+                  <div className="text-[10px] text-slate-500 font-normal mt-0.5">Claude 3.5, Llama 3.3, GPT-4o, DeepSeek — Coach Jarvis runs exclusively on OpenRouter</div>
+                </div>
               </div>
             </div>
 
-            {/* Model Selection (if OpenRouter) */}
-            {provider === 'openrouter' && (
-              <div>
-                <label className="text-xs font-mono font-bold uppercase text-slate-500 block mb-2">
+            {/* Model Selection */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-mono font-bold uppercase text-slate-500">
                   Select OpenRouter Model
                 </label>
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {OPENROUTER_MODELS.map(m => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedModel(m.id);
-                        localStorage.setItem('bt_llm_model', m.id);
-                      }}
-                      className={`w-full p-2.5 rounded-xl border text-left transition flex items-center justify-between ${
-                        selectedModel === m.id
-                          ? 'border-indigo-600 bg-indigo-50/80 text-indigo-950 font-bold'
-                          : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
-                      }`}
-                    >
-                      <div>
-                        <div className="text-xs font-bold">{m.name}</div>
-                        <div className="text-[10px] text-slate-500 font-normal">{m.desc}</div>
-                      </div>
-                      {selectedModel === m.id && (
-                        <Check className="w-4 h-4 text-indigo-600 shrink-0" />
-                      )}
-                    </button>
-                  ))}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !showFreeOnly;
+                    setShowFreeOnly(next);
+                    localStorage.setItem('bt_llm_free_only', String(next));
+                    // If the currently selected model would be hidden by the filter, jump to the first visible one.
+                    const visibleModels = next ? OPENROUTER_MODELS.filter(m => m.free) : OPENROUTER_MODELS;
+                    if (!visibleModels.some(m => m.id === selectedModel) && visibleModels.length > 0) {
+                      setSelectedModel(visibleModels[0].id);
+                      localStorage.setItem('bt_llm_model', visibleModels[0].id);
+                    }
+                  }}
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded-full border text-[10px] font-bold font-mono transition cursor-pointer ${
+                    showFreeOnly
+                      ? 'bg-emerald-600 border-emerald-600 text-white'
+                      : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
+                  }`}
+                  title="Show only $0/token OpenRouter models"
+                >
+                  <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center transition ${showFreeOnly ? 'bg-white' : 'bg-slate-200'}`}>
+                    <span className={`w-2 h-2 rounded-full ${showFreeOnly ? 'bg-emerald-600' : 'bg-slate-400'}`} />
+                  </span>
+                  Free Models Only
+                </button>
               </div>
-            )}
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {(showFreeOnly ? OPENROUTER_MODELS.filter(m => m.free) : OPENROUTER_MODELS).map(m => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedModel(m.id);
+                      localStorage.setItem('bt_llm_model', m.id);
+                    }}
+                    className={`w-full p-2.5 rounded-xl border text-left transition flex items-center justify-between ${
+                      selectedModel === m.id
+                        ? 'border-indigo-600 bg-indigo-50/80 text-indigo-950 font-bold'
+                        : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
+                    }`}
+                  >
+                    <div>
+                      <div className="text-xs font-bold flex items-center gap-1.5">
+                        {m.name}
+                        {m.free && (
+                          <span className="text-[9px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 border border-emerald-200 rounded px-1 py-0.5">Free</span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-normal">{m.desc}</div>
+                    </div>
+                    {selectedModel === m.id && (
+                      <Check className="w-4 h-4 text-indigo-600 shrink-0" />
+                    )}
+                  </button>
+                ))}
+                {showFreeOnly && OPENROUTER_MODELS.filter(m => m.free).length === 0 && (
+                  <div className="text-[11px] text-slate-400 italic p-2">No free models currently available.</div>
+                )}
+              </div>
+            </div>
 
             {/* OpenRouter API Key Input */}
-            {provider === 'openrouter' && (
-              <div>
+            <div>
                 <label className="text-xs font-mono font-bold uppercase text-slate-500 block mb-1">
                   OpenRouter API Key (Optional)
                 </label>
@@ -705,7 +667,6 @@ export default function AICoach() {
                   </span>
                 )}
               </div>
-            )}
 
             <div className="pt-2 border-t border-slate-100 flex justify-end">
               <button
