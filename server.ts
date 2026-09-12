@@ -259,6 +259,33 @@ async function startServer() {
     return rawCookie ? rawCookie.split(/,(?=\s*[a-zA-Z0-9_]+\s*=)/) : [];
   };
 
+  // Pull teamID off a Battrick URL. Used both to build Referers and to
+  // refuse redirects that would silently drop us onto the logged-in user's
+  // own club pages (the root cause of "I scouted 674 and got my own squad").
+  const readTeamIdFromUrl = (raw: string): string | null => {
+    try {
+      const u = new URL(raw, 'https://www.battrick.org');
+      return u.searchParams.get('teamID') || u.searchParams.get('teamId');
+    } catch {
+      const m = String(raw).match(/[?&]teamID=(\d+)/i);
+      return m ? m[1] : null;
+    }
+  };
+
+  // Authoritative team id on a Battrick page lives in #pagetitle, e.g.
+  //   <div id="pagetitle">...<a href="office.asp?teamID=674">RosenPens XI</a> » Squad</div>
+  // The rest of the document also contains office.asp?teamID= links for the
+  // national teams / other clubs in the menu, so NEVER take the first match
+  // in the whole HTML.
+  const extractPageTitleTeamId = (html: string): string | null => {
+    if (!html) return null;
+    const pageTitle = html.match(/id=["']pagetitle["'][^>]*>[\s\S]{0,1200}?office\.asp\?teamID=(\d+)/i);
+    if (pageTitle) return pageTitle[1];
+    const h2 = html.match(/<h2[^>]*subheadernew[^>]*>[^<]*\((\d+)\)\s*</i);
+    if (h2) return h2[1];
+    return null;
+  };
+
   // Outbound request pacing queue to prevent Battrick HTTP 429 Rate Limits
   let lastBattrickRequestTime = 0;
   const MIN_BATTRICK_REQUEST_INTERVAL_MS = 3000; // 3 seconds minimum spacing between requests to battrick.org by default
@@ -314,7 +341,22 @@ async function startServer() {
               res = response;
               break;
             }
-            currentUrl = new URL(location, currentUrl).toString();
+            const nextUrl = new URL(location, currentUrl).toString();
+            const nextLower = nextUrl.toLowerCase();
+            const originTeamId = readTeamIdFromUrl(url);
+            const nextTeamId = readTeamIdFromUrl(nextUrl);
+
+            // Always allow hops onto the login page so the caller can surface
+            // a proper auth-failure. Anything else that drops or rewrites a
+            // teamID we asked for would serve the logged-in user's own club
+            // (squad.asp?teamID=674 → squad.asp) and is the scout bug.
+            if (originTeamId && !nextLower.includes('login.asp') && nextTeamId !== originTeamId) {
+              console.warn(`[Battrick Fetch] Refusing teamID-stripping redirect: ${currentUrl} -> ${nextUrl} (wanted teamID=${originTeamId})`);
+              res = response;
+              break;
+            }
+
+            currentUrl = nextUrl;
             continue;
           }
 
@@ -490,22 +532,46 @@ async function startServer() {
     cookieHeader: string,
     cookieMap: Record<string, string>,
     pageUrl: string
-  ): Promise<{ success: boolean; html: string; status: number; isRedirect?: boolean; error?: string; updatedCookieHeader?: string }> {
+  ): Promise<{ success: boolean; html: string; status: number; isRedirect?: boolean; error?: string; updatedCookieHeader?: string; finalUrl?: string }> {
     try {
+      const teamId = readTeamIdFromUrl(pageUrl);
+      // Mimic a real browser click. Referer=login.asp is what Battrick's
+      // classic ASP uses as "just logged in, send them to THEIR club", and
+      // is exactly what made scout(teamID=X) return the user's own squad.
+      const referer = teamId
+        ? `https://www.battrick.org/nl/office.asp?teamID=${teamId}`
+        : 'https://www.battrick.org/nl/myoffice.asp';
+
       const pageRes = await fetchWithPacingAndRetry(pageUrl, {
         headers: {
-          'Referer': 'https://www.battrick.org/nl/login.asp?private=1',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+          'Referer': referer,
+          'Origin': 'https://www.battrick.org',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-GB,en;q=0.9'
         }
       }, cookieMap);
 
+      if ([301, 302, 303, 307, 308].includes(pageRes.status)) {
+        const location = pageRes.headers.get('location') || '';
+        console.warn(`[Battrick Sync] Unfollowed redirect on ${pageUrl} -> ${location} (HTTP ${pageRes.status}).`);
+        return {
+          success: false,
+          html: '',
+          status: pageRes.status,
+          isRedirect: true,
+          error: `Battrick redirected away from ${pageUrl} to ${location || '(no location)'}. The teamID query string was dropped, which would have served your own club page instead of the requested team.`
+        };
+      }
+
       const html = await pageRes.text();
       const updatedCookieHeader = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
-      
-      const isRedirected = pageRes.url && pageRes.url.includes('login.asp');
-      const hasLoginForms = html.includes("Log In to Battrick") || html.includes("Username:") || html.includes("Password:") || html.includes("login.asp");
+      const responseUrl = (pageRes as any).url ? String((pageRes as any).url) : pageUrl;
 
-      if (isRedirected || hasLoginForms) {
+      const landedOnLogin = responseUrl.toLowerCase().includes('login.asp')
+        || (/<form[^>]*>/i.test(html) && /name=["']username["']/i.test(html) && /name=["']password["']/i.test(html) && /Log In to Battrick/i.test(html));
+
+      if (landedOnLogin) {
         console.warn(`[Battrick Sync] Redirect/unauthenticated state detected on ${pageUrl}.`);
         return {
           success: false,
@@ -520,7 +586,8 @@ async function startServer() {
         success: true,
         html,
         status: pageRes.status,
-        updatedCookieHeader
+        updatedCookieHeader,
+        finalUrl: responseUrl
       };
     } catch (fetchErr: any) {
       console.error(`[Battrick Page Fetch Exception for ${pageUrl}]:`, fetchErr);
@@ -591,6 +658,11 @@ async function startServer() {
         diary: 'https://www.battrick.org/nl/diary.asp',
         'club diary': 'https://www.battrick.org/nl/diary.asp',
         'diary.asp': 'https://www.battrick.org/nl/diary.asp',
+        managerdiary: 'https://www.battrick.org/nl/diary.asp',
+        'manager diary': 'https://www.battrick.org/nl/diary.asp',
+        cashbook: 'https://www.battrick.org/nl/diary.asp',
+        'cash book': 'https://www.battrick.org/nl/diary.asp',
+        ledger: 'https://www.battrick.org/nl/diary.asp',
 
         club: reqTeamId ? `https://www.battrick.org/nl/club.asp?teamID=${reqTeamId}` : 'https://www.battrick.org/nl/club.asp',
         staff: 'https://www.battrick.org/nl/club.asp',
@@ -632,14 +704,26 @@ async function startServer() {
 
       let targetUrl = pageUrlMap[pageKey];
       if (req.body.pageUrl) {
-        let customUrl = req.body.pageUrl.trim();
+        let customUrl = String(req.body.pageUrl).trim();
         if (customUrl.startsWith('/nl/')) {
           customUrl = `https://www.battrick.org${customUrl}`;
-        } else if (customUrl.startsWith('matchinfo.asp') || customUrl.startsWith('fixtures.asp') || customUrl.startsWith('squad.asp') || customUrl.startsWith('leagues.asp') || customUrl.startsWith('playerdetails.asp')) {
+        } else if (/^[a-z0-9_.-]+\.asp(\?|$)/i.test(customUrl)) {
           customUrl = `https://www.battrick.org/nl/${customUrl}`;
         }
         if (customUrl.startsWith('https://www.battrick.org/')) {
           targetUrl = customUrl;
+        }
+      }
+
+      // Last-resort: any unknown but well-formed page name (e.g. "diary")
+      // maps onto https://www.battrick.org/nl/<name>.asp. This is what made
+      // "Unknown page name: diary" fail when the frontend shipped the new
+      // diary tab before an older backend process was recycled.
+      if (!targetUrl && pageKey) {
+        const aspName = pageKey.endsWith('.asp') ? pageKey : `${pageKey}.asp`;
+        if (/^[a-z0-9_.-]+\.asp$/i.test(aspName)) {
+          targetUrl = `https://www.battrick.org/nl/${aspName}`;
+          console.log(`[Battrick Step Sync] Unmapped pageName '${pageName}' — falling back to ${targetUrl}`);
         }
       }
 
@@ -696,24 +780,21 @@ async function startServer() {
         return;
       }
 
-      // Defensive check: team-scoped pages always carry a breadcrumb link
-      // back to office.asp?teamID=X for whichever team's data is actually
-      // being shown. If that doesn't match the team we asked for, Battrick
-      // (or something between us and it - a cache, a stale/pinned session,
-      // etc.) served the wrong team's data. Rather than silently passing
-      // that through to the UI (which is exactly the "right name, wrong
-      // players" bug reported), fail loudly here with both IDs so it's
-      // immediately diagnosable instead of looking like a parsing bug.
+      // Defensive check: the team actually shown on a Battrick page is the
+      // one named in #pagetitle (e.g. office.asp?teamID=674 → RosenPens XI).
+      // The rest of the HTML also contains office.asp?teamID= links for the
+      // national sides in the menu, so matching the FIRST teamID in the
+      // document is wrong and was itself a source of false mismatches.
       if (reqTeamId && ['squad', 'players', 'squad.asp', 'club', 'club.asp', 'teamoffice', 'office.asp'].includes(pageKey)) {
-        const returnedTeamIdMatch = pageResult.html.match(/office\.asp\?teamID=(\d+)/i);
-        const returnedTeamId = returnedTeamIdMatch ? returnedTeamIdMatch[1] : null;
+        const returnedTeamId = extractPageTitleTeamId(pageResult.html);
         if (returnedTeamId && returnedTeamId !== String(reqTeamId).trim()) {
-          console.warn(`[Battrick Step Sync] TEAM MISMATCH on ${pageName}: requested teamID=${reqTeamId} (${targetUrl}) but Battrick returned data for teamID=${returnedTeamId}. Session cookies sent: ${Object.keys(activeSession.cookieMap).join(', ')}.`);
+          console.warn(`[Battrick Step Sync] TEAM MISMATCH on ${pageName}: requested teamID=${reqTeamId} (${targetUrl}) but #pagetitle is teamID=${returnedTeamId}. Session cookies sent: ${Object.keys(activeSession.cookieMap).join(', ')}.`);
           res.status(409).json({
             error: `Battrick returned data for team #${returnedTeamId} instead of the requested team #${reqTeamId}. This is a sync/session issue, not bad data on Battrick's end - try re-authenticating and syncing again.`,
             pageName,
             requestedTeamId: reqTeamId,
-            returnedTeamId
+            returnedTeamId,
+            requestedUrl: targetUrl
           });
           return;
         }
@@ -723,7 +804,9 @@ async function startServer() {
         success: true,
         pageName,
         html: pageResult.html,
-        sessionToken
+        sessionToken,
+        requestedUrl: targetUrl,
+        finalUrl: pageResult.finalUrl || targetUrl
       });
     } catch (err: any) {
       console.error(`[Battrick Step Sync] Unhandled error:`, err);

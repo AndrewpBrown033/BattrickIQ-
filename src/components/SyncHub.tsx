@@ -1149,6 +1149,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
             body: JSON.stringify({
               step: 'fetch',
               pageName: pageKey,
+              pageUrl: `https://www.battrick.org/nl/${currentStep.urlLabel}`,
               sessionToken: activeSessionToken,
               username: directUsername.trim(),
               password: directPassword

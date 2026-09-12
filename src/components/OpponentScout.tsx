@@ -14,6 +14,7 @@ import {
 import { 
   parseOpponentSquad, 
   extractOpponentTeamNameFromSquadHtml,
+  extractOpponentTeamIdFromHtml,
   generateOpponentScoutDossier, 
   generateRealisticOpponentRoster,
   parseBattrickFullMatch, 
@@ -608,7 +609,7 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
     try {
       // Purge legacy/stale scout cache version if outdated so fresh real players are pulled
       const scoutCacheVersion = localStorage.getItem('bt_scout_cache_v');
-      if (scoutCacheVersion !== 'v3_fresh_real_players') {
+      if (scoutCacheVersion !== 'v4_pagetitle_teamid') {
         localStorage.removeItem('bt_scout_squad_last');
         for (let i = localStorage.length - 1; i >= 0; i--) {
           const k = localStorage.key(i);
@@ -616,7 +617,7 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
             localStorage.removeItem(k);
           }
         }
-        localStorage.setItem('bt_scout_cache_v', 'v3_fresh_real_players');
+        localStorage.setItem('bt_scout_cache_v', 'v4_pagetitle_teamid');
       }
 
       const savedSquadStr = localStorage.getItem('bt_squad');
@@ -743,7 +744,12 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
   // Handle parsing pasted opponent squad text
   const handleParseOpponent = () => {
     if (!pastedText.trim()) return;
-    const detectedTeamName = extractOpponentTeamNameFromSquadHtml(pastedText);
+    const detectedTeamName = extractOpponentTeamNameFromSquadHtml(pastedText, opponentTeamId);
+    const pastedTeamId = extractOpponentTeamIdFromHtml(pastedText);
+    if (pastedTeamId && opponentTeamId && pastedTeamId !== opponentTeamId) {
+      setOpponentTeamId(pastedTeamId);
+    }
+    const effectiveName = detectedTeamName || opponentName;
     const effectiveName = detectedTeamName || opponentName;
     if (detectedTeamName && detectedTeamName !== opponentName) {
       setOpponentName(detectedTeamName);
@@ -1030,6 +1036,7 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             pageName: 'teamoffice',
+            pageUrl: `https://www.battrick.org/nl/office.asp?teamID=${targetTeamId}`,
             teamId: targetTeamId,
             username,
             password,
@@ -1038,7 +1045,7 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
         });
         const officeData = await officeResponse.json();
         if (officeResponse.ok && officeData.success && officeData.html) {
-          officeDetectedName = extractOpponentTeamNameFromSquadHtml(officeData.html);
+          officeDetectedName = extractOpponentTeamNameFromSquadHtml(officeData.html, targetTeamId);
           if (officeData.sessionToken) {
             localStorage.setItem('bt_sync_session', officeData.sessionToken);
           }
@@ -1052,6 +1059,7 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           pageName: 'squad',
+          pageUrl: `https://www.battrick.org/nl/squad.asp?teamID=${targetTeamId}`,
           teamId: targetTeamId,
           username,
           password,
@@ -1078,6 +1086,15 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
         throw new Error("Battrick returned empty response for squad list.");
       }
 
+      const returnedTeamId = extractOpponentTeamIdFromHtml(data.html);
+      if (returnedTeamId && returnedTeamId !== targetTeamId) {
+        throw new Error(
+          `Battrick returned team #${returnedTeamId} instead of the requested team #${targetTeamId}. ` +
+          `This means the live fetch landed on your own club page. Re-authenticate in Sync Hub, then try again — ` +
+          `or paste the HTML from https://www.battrick.org/nl/squad.asp?teamID=${targetTeamId}`
+        );
+      }
+
       // Prefer the name resolved from their office page above (authoritative);
       // fall back to parsing it off the squad page itself, then to the local
       // known-clubs registry (reliable for the ~13 teams we track - this is
@@ -1086,7 +1103,7 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
       // too instead of falling through to a stale name), and only as an
       // absolute last resort the name the caller explicitly passed in or
       // whatever was already sitting in state.
-      const detectedTeamName = officeDetectedName || extractOpponentTeamNameFromSquadHtml(data.html) || getKnownTeamNameById(targetTeamId);
+      const detectedTeamName = officeDetectedName || extractOpponentTeamNameFromSquadHtml(data.html, targetTeamId) || getKnownTeamNameById(targetTeamId);
       const effectiveOpponentName = detectedTeamName || explicitTeamName || opponentName;
       if (!detectedTeamName) {
         console.warn(`[OpponentScout] Could not detect a real team name for teamID=${targetTeamId} from either office.asp or squad.asp, and it isn't in the known-clubs registry. Falling back to stale name "${effectiveOpponentName}". Squad data itself is still authentic - only the label is unreliable here.`);
@@ -1098,15 +1115,11 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
       // Parse the HTML content using our unified squad parser
       let parsedPlayers = parseOpponentSquad(data.html, effectiveOpponentName, targetTeamId);
       if (parsedPlayers.length === 0) {
-        // Fallback to own-squad format parser just in case it's their own team
-        const fallbackPage = parseBattrickPage(data.html, 'squad');
-        if (fallbackPage && fallbackPage.players && fallbackPage.players.length > 0) {
-          parsedPlayers = fallbackPage.players;
-        }
-      }
-
-      if (parsedPlayers.length === 0) {
-        throw new Error("Failed to extract any player statistics. Please verify the Opponent Team ID is correct or copy-paste the squad HTML.");
+        throw new Error(
+          `Failed to extract any players for team #${targetTeamId}` +
+          (effectiveOpponentName ? ` (${effectiveOpponentName})` : '') +
+          `. Verify the Team ID is correct, or paste the squad HTML from https://www.battrick.org/nl/squad.asp?teamID=${targetTeamId}`
+        );
       }
 
       // Map parsed BattrickPlayer[] to OpponentPlayer[]

@@ -3960,17 +3960,55 @@ export function estimateSkillFromWageAndBTR(wage: number, btr: number, role?: 'B
   };
 }
 
+// Battrick's layout is: #menubar/#topmenu = the LOGGED-IN user's club
+// (their squad is listed as <li><a href="playerdetails.asp?playerID="> even
+// when you are viewing someone else's team), #leftcolumn = the page body
+// for whichever teamID is in the URL. Always strip the menu before parsing
+// an opponent squad or we will mix the two rosters.
+export function isolateBattrickMainColumn(content: string): string {
+  if (!content) return content;
+  let html = content;
+  html = html.replace(/<div[^>]*id=["']menubarwrapper["'][\s\S]*?<\/div><!-- menubarwrapper -->/i, '');
+  html = html.replace(/<ul[^>]*id=["']topmenu["'][\s\S]*?<\/ul>/gi, '');
+  html = html.replace(/<div[^>]*id=["']header["'][\s\S]*?<\/div>/i, '');
+  html = html.replace(/<div[^>]*id=["']rightmenu["'][\s\S]*$/i, '');
+
+  const leftOpen = html.search(/<div[^>]*id=["']leftcolumn["'][^>]*>/i);
+  if (leftOpen >= 0) {
+    const afterOpen = html.indexOf('>', leftOpen);
+    if (afterOpen >= 0) {
+      const rightIdx = html.search(/<div[^>]*id=["']right(column|menu)["']/i);
+      return html.slice(afterOpen + 1, rightIdx > afterOpen ? rightIdx : undefined);
+    }
+  }
+  return html;
+}
+
+// Authoritative team id on a Battrick squad/office page. Lives in #pagetitle:
+//   <div id="pagetitle">...<a href="office.asp?teamID=674">RosenPens XI</a> » Squad</div>
+// Do NOT scan the whole document — the menu also has office.asp?teamID=-2 (AUS Team).
+export function extractOpponentTeamIdFromHtml(content: string): string | null {
+  if (!content) return null;
+  const pageTitle = content.match(/id=["']pagetitle["'][^>]*>[\s\S]{0,1200}?office\.asp\?teamID=(\d+)/i);
+  if (pageTitle) return pageTitle[1];
+  const h2 = content.match(/<h2[^>]*subheadernew[^>]*>[^<]*\((\d+)\)\s*</i);
+  if (h2) return h2[1];
+  return null;
+}
+
 // Attempt to read the actual club name off a synced squad.asp page, so a
 // live "Sync Live Squad" (by Team ID) can correct the displayed opponent
 // name instead of silently keeping whatever was last typed/selected.
 // Battrick squad pages vary slightly, so we try several known locations,
 // in order of reliability, before giving up.
-export function extractOpponentTeamNameFromSquadHtml(content: string): string | null {
+export function extractOpponentTeamNameFromSquadHtml(content: string, expectedTeamId?: string): string | null {
   if (!content) return null;
+
+  const scoped = isolateBattrickMainColumn(content);
 
   try {
     const parser = new DOMParser();
-    const doc = parser.parseFromString(content, 'text/html');
+    const doc = parser.parseFromString(scoped, 'text/html');
 
     const clean = (raw: string | null | undefined): string | null => {
       const text = (raw || '').replace(/\s+/g, ' ').trim();
@@ -3985,7 +4023,10 @@ export function extractOpponentTeamNameFromSquadHtml(content: string): string | 
     // Prefer the anchor inside #pagetitle that points at the club office/squad.
     const pageTitle = doc.querySelector('#pagetitle');
     if (pageTitle) {
-      const titleLink = pageTitle.querySelector('a[href*="office.asp?teamID="], a[href*="club.asp?teamID="], a[href*="squad.asp?teamID="]');
+      const titleLinkSelector = expectedTeamId
+        ? `a[href*="office.asp?teamID=${expectedTeamId}"], a[href*="club.asp?teamID=${expectedTeamId}"], a[href*="squad.asp?teamID=${expectedTeamId}"]`
+        : 'a[href*="office.asp?teamID="], a[href*="club.asp?teamID="], a[href*="squad.asp?teamID="]';
+      const titleLink = pageTitle.querySelector(titleLinkSelector);
       const fromTitleLink = clean(titleLink?.textContent);
       if (fromTitleLink) return fromTitleLink;
       // Sometimes the whole pagetitle text is "RosenPens XI » Squad"
@@ -3999,43 +4040,29 @@ export function extractOpponentTeamNameFromSquadHtml(content: string): string | 
     const directSelectors = ['.clubname', '.club_name', '#clubname', '.teamname', '.team_name', 'h1', 'h2.subheadernew', '.subheadernew'];
     for (const sel of directSelectors) {
       const found = clean(doc.querySelector(sel)?.textContent);
-      if (found && !/^squad$/i.test(found) && !/^battrick$/i.test(found)) return found;
-    }
-
-    // 2. A link back to the team's own office/club page usually carries the name as its text.
-    // Battrick's real squad page links the club name to office.asp?teamID=..., e.g.
-    // "RosenPens XI" -> office.asp?teamID=674
-    const selfLink = doc.querySelector('a[href*="office.asp?teamID="], a[href*="club.asp?teamID="], a[href*="squad.asp?teamID="]');
-    const linkName = clean(selfLink?.textContent);
-    if (linkName && !/^squad$/i.test(linkName)) return linkName;
-
-    // 3. Fall back to the <title> tag, e.g. "Battrick - Squad - HairyBeanBags".
-    const title = doc.querySelector('title')?.textContent || '';
-    const segments = title.split(/[-|]/).map(s => s.trim()).filter(Boolean);
-    for (const seg of segments.reverse()) {
-      const lower = seg.toLowerCase();
-      if (lower !== 'squad' && lower !== 'battrick' && lower !== 'nl' && lower !== 'pavilion') {
-        const found = clean(seg);
-        if (found) return found;
-      }
+      if (found && !/^squad$/i.test(found) && !/^squad details/i.test(found) && !/^battrick$/i.test(found) && !/^aus team$/i.test(found)) return found;
     }
   } catch {
-    // ignore - just fall back to whatever name the caller already has
+    // ignore - just fall back to regex below
   }
 
   // Regex fallback when DOMParser is unavailable or selectors miss (e.g. server-side partial HTML)
   try {
     // #pagetitle ... <a href="office.asp?teamID=674">RosenPens XI</a>
-    const pageTitleMatch = content.match(/id=["']pagetitle["'][^>]*>[\s\S]*?<a[^>]*href=["'][^"']*office\.asp\?teamID=\d+[^"']*["'][^>]*>([^<]+)<\/a>/i);
+    const teamIdPart = expectedTeamId ? expectedTeamId.replace(/[^\d]/g, '') : '\\d+';
+    const pageTitleMatch = scoped.match(new RegExp(
+      `id=["']pagetitle["'][^>]*>[\\s\\S]{0,1200}?<a[^>]*href=["'][^"']*office\\.asp\\?teamID=${teamIdPart}[^"']*["'][^>]*>([^<]+)<\\/a>`,
+      'i'
+    ));
     if (pageTitleMatch) {
       const name = pageTitleMatch[1].replace(/\s+/g, ' ').trim().replace(/\s*\(.*?\)/g, '').trim();
       if (name && name.length >= 2 && name.length <= 80) return name;
     }
     // <h2 ...>RosenPens XI (674)</h2>
-    const h2Match = content.match(/<h2[^>]*class=["'][^"']*subheadernew[^"']*["'][^>]*>([^<]+)<\/h2>/i);
+    const h2Match = scoped.match(/<h2[^>]*class=["'][^"']*subheadernew[^"']*["'][^>]*>([^<]+)<\/h2>/i);
     if (h2Match) {
       const name = h2Match[1].replace(/\s*\(\d+\)\s*$/, '').replace(/\s+/g, ' ').trim();
-      if (name && name.length >= 2 && name.length <= 80) return name;
+      if (name && name.length >= 2 && name.length <= 80 && !/^squad details/i.test(name)) return name;
     }
   } catch {
     // ignore
@@ -4047,10 +4074,16 @@ export function extractOpponentTeamNameFromSquadHtml(content: string): string | 
 export function parseOpponentSquad(content: string, overrideTeamName?: string, overrideTeamId?: string): BattrickPlayer[] {
   const players: BattrickPlayer[] = [];
 
+  // Always parse the main column only. The top menu lists the logged-in
+  // user's players (Zesh Ardley, …) even on someone else's squad.asp, and
+  // falling through to the playerdetails.asp regex on the full document
+  // was mixing those into the scouted roster.
+  const scopedContent = isolateBattrickMainColumn(content);
+
   const parser = new DOMParser();
   let doc: Document | null = null;
   try {
-    doc = parser.parseFromString(content, 'text/html');
+    doc = parser.parseFromString(scopedContent, 'text/html');
   } catch {
     // ignore
   }
@@ -4207,7 +4240,7 @@ export function parseOpponentSquad(content: string, overrideTeamName?: string, o
     const linkRegex = /<a[^>]*href="[^"]*playerdetails\.asp\?playerID=(\d+)[^"]*"[^>]*>(.*?)<\/a>/gis;
     const linkMatches: { id: string; name: string; index: number; end: number }[] = [];
     let lm;
-    while ((lm = linkRegex.exec(content)) !== null) {
+    while ((lm = linkRegex.exec(scopedContent)) !== null) {
       linkMatches.push({
         id: lm[1],
         name: lm[2].replace(/<[^>]+>/g, '').trim(),
@@ -4219,7 +4252,7 @@ export function parseOpponentSquad(content: string, overrideTeamName?: string, o
     for (let i = 0; i < linkMatches.length; i++) {
       const cur = linkMatches[i];
       const next = linkMatches[i + 1];
-      const block = content.slice(cur.end, next ? next.index : Math.min(content.length, cur.end + 1500));
+      const block = scopedContent.slice(cur.end, next ? next.index : Math.min(scopedContent.length, cur.end + 1500));
       const plainBlock = block.replace(/<[^>]+>/g, ' ');
 
       const ageMatch = plainBlock.match(/(\d+)\s*yo/i);
@@ -4316,7 +4349,7 @@ export function parseOpponentSquad(content: string, overrideTeamName?: string, o
   if (players.length === 0) {
     const playerRegex = /<a[^>]*playerID=(\d+)[^>]*>(.*?)<\/a>.*?(\d+)\s*yo.*?BT\s*(?:\(Battrick\)\s*)?Rating\s*=\s*([0-9,]+).*?Wage\s*=\s*(?:&#163;|£)?([0-9,]+)/gis;
     let match;
-    while ((match = playerRegex.exec(content)) !== null) {
+    while ((match = playerRegex.exec(scopedContent)) !== null) {
       const id = match[1];
       const name = match[2].replace(/<[^>]+>/g, '').trim();
       const age = parseInt(match[3], 10);
@@ -4362,7 +4395,7 @@ export function parseOpponentSquad(content: string, overrideTeamName?: string, o
 
   // 4. Fallback for raw text copied and pasted from Battrick's squad page (without HTML tags)
   if (players.length === 0) {
-    const rawLines = content.split('\n');
+    const rawLines = scopedContent.split('\n');
     const playerHeaderRegex = /([A-Za-z0-9'\-. ]+?)\s*-\s*(\d+)\s*(?:yo|years old)[^,]*,\s*BT\s*(?:\(Battrick\)\s*)?Rating\s*=\s*([0-9,]+)[^,]*,\s*Wage\s*=\s*(?:&#163;|£)?([0-9,]+)/i;
     
     let currentParsed: any = null;
