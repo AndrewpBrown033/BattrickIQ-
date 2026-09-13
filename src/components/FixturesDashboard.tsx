@@ -466,9 +466,25 @@ export default function FixturesDashboard({ setActiveTab, onSelectScoutTeam }: F
                               const homeId = game.homeTeamId || (game.venue === 'Away' ? game.opponentTeamId : undefined) || getKnownTeamIdByName(homeName) || '';
                               const awayId = game.awayTeamId || (game.venue === 'Home' ? game.opponentTeamId : undefined) || getKnownTeamIdByName(awayName) || '';
 
-                              // My team is whichever side matches this fixture's venue - never the scout target.
-                              const isHomeMyTeam = game.venue === 'Home';
-                              const isAwayMyTeam = game.venue === 'Away';
+                              // My team is identified by the name tied to your login (clubName/bt_team_name),
+                              // not just this fixture's parsed venue - that's the reliable source of truth.
+                              const normalize = (s: string) => s.trim().toLowerCase();
+                              const myClub = normalize(clubName);
+                              const isRealClubName = myClub && myClub !== 'my club' && myClub !== 'my battrick iq club';
+                              const homeMatchesMe = isRealClubName && normalize(homeName).includes(myClub);
+                              const awayMatchesMe = isRealClubName && normalize(awayName).includes(myClub);
+
+                              let isHomeMyTeam: boolean;
+                              let isAwayMyTeam: boolean;
+                              if (homeMatchesMe || awayMatchesMe) {
+                                // Trust the name match over venue - handles cases where venue was parsed wrong.
+                                isHomeMyTeam = homeMatchesMe;
+                                isAwayMyTeam = awayMatchesMe && !homeMatchesMe;
+                              } else {
+                                // Name match was inconclusive (e.g. clubName not loaded yet) - fall back to venue.
+                                isHomeMyTeam = game.venue === 'Home';
+                                isAwayMyTeam = game.venue === 'Away';
+                              }
                               const myTeamId = isHomeMyTeam ? homeId : awayId;
 
                               const handleScoutTeam = (teamName: string, teamId: string, targetVenue?: 'Home' | 'Away') => {
