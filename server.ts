@@ -1135,7 +1135,8 @@ async function startServer() {
 
   // API Route to inspect available LLM providers
   app.get("/api/llm-config", (req, res) => {
-    const hasOpenRouter = !!(process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY.trim() !== "");
+    const defaultOpenRouterKey = process.env.OPENROUTER_API_KEY?.trim() || "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";
+    const hasOpenRouter = !!(defaultOpenRouterKey && defaultOpenRouterKey !== "");
     const hasGemini = !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== "");
     res.json({
       hasOpenRouter,
@@ -1186,7 +1187,7 @@ Your expertise includes:
 Respond with supportive, highly specialized, yet easy-to-read formatting. Use Markdown lists, bold highlights, and clean spacing.`;
 
     // 1. OPENROUTER FLOW
-    const effectiveOpenRouterKey = openRouterApiKey?.trim() || process.env.OPENROUTER_API_KEY?.trim();
+    const effectiveOpenRouterKey = openRouterApiKey?.trim() || process.env.OPENROUTER_API_KEY?.trim() || "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";
     const effectiveProvider = provider === "openrouter" || (effectiveOpenRouterKey && provider !== "gemini") ? "openrouter" : "gemini";
 
     if (effectiveProvider === "openrouter") {
