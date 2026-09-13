@@ -55,7 +55,7 @@ export const STAMINA_LEVELS = [
 
 export function getSkillLabel(skillKey: string, value: number): string {
   const normalizedKey = skillKey.trim().toLowerCase();
-  if (normalizedKey === 'stamina') {
+  if (normalizedKey.includes('stamina')) {
     return STAMINA_LEVELS[Math.min(value, STAMINA_LEVELS.length - 1)] || 'useless';
   }
   return SKILL_LEVELS[Math.min(value, SKILL_LEVELS.length - 1)] || 'useless';

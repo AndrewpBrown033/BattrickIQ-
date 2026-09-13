@@ -424,84 +424,93 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
 
     if (savedSquad) {
       try {
-        setSquad(JSON.parse(savedSquad));
+        const parsed = JSON.parse(savedSquad);
+        setSquad(prev => JSON.stringify(prev) === JSON.stringify(parsed) ? prev : parsed);
       } catch (e) {
         console.error(e);
       }
     } else {
-      setSquad([]);
+      setSquad(prev => prev.length === 0 ? prev : []);
     }
 
     if (savedFin) {
       try {
-        setFinances(JSON.parse(savedFin));
+        const parsed = JSON.parse(savedFin);
+        setFinances(prev => JSON.stringify(prev) === JSON.stringify(parsed) ? prev : parsed);
       } catch (e) {
         console.error(e);
       }
     } else {
-      setFinances({
-        cash: 0,
-        members: 0,
-        prOfficers: 0,
-        finAdvisors: 0,
-        sponsorsIncome: 0,
-        gateReceipts: 0,
-        interestReceived: 0,
-        playerWages: 0,
-        staffWages: 0,
-        morale: 'respectable',
-        sponsorsMood: 'respectable',
-        membersConfidence: 'respectable',
-        academyCondition: 'feeble',
-        academyInvestment: 0,
-        academyIts: 0,
-        bowlingCoaches: 0,
-        battingCoaches: 0,
-        fieldingCoaches: 0,
-        keepingCoaches: 0,
-        staminaCoaches: 0,
-        psychologists: 0
+      setFinances(prev => {
+        const emptyFinances = {
+          cash: 0,
+          members: 0,
+          prOfficers: 0,
+          finAdvisors: 0,
+          sponsorsIncome: 0,
+          gateReceipts: 0,
+          interestReceived: 0,
+          playerWages: 0,
+          staffWages: 0,
+          morale: 'respectable',
+          sponsorsMood: 'respectable',
+          membersConfidence: 'respectable',
+          academyCondition: 'feeble',
+          academyInvestment: 0,
+          academyIts: 0,
+          bowlingCoaches: 0,
+          battingCoaches: 0,
+          fieldingCoaches: 0,
+          keepingCoaches: 0,
+          staminaCoaches: 0,
+          psychologists: 0
+        };
+        return JSON.stringify(prev) === JSON.stringify(emptyFinances) ? prev : emptyFinances;
       });
     }
 
     if (savedFixtures) {
       try {
-        setFixtures(JSON.parse(savedFixtures));
+        const parsed = JSON.parse(savedFixtures);
+        setFixtures(prev => JSON.stringify(prev) === JSON.stringify(parsed) ? prev : parsed);
       } catch (e) {
         console.error(e);
       }
     } else {
-      setFixtures([]);
+      setFixtures(prev => prev.length === 0 ? prev : []);
     }
 
     if (savedPavilion) {
       try {
-        setPavilion(JSON.parse(savedPavilion));
+        const parsed = JSON.parse(savedPavilion);
+        setPavilion(prev => JSON.stringify(prev) === JSON.stringify(parsed) ? prev : parsed);
       } catch (e) {
         console.error(e);
       }
     } else {
-      setPavilion(null);
+      setPavilion(prev => prev === null ? prev : null);
     }
 
     if (savedDiary) {
       try {
-        setDiary(JSON.parse(savedDiary));
+        const parsed = JSON.parse(savedDiary);
+        setDiary(prev => JSON.stringify(prev) === JSON.stringify(parsed) ? prev : parsed);
       } catch (e) {
         console.error(e);
       }
     } else {
-      setDiary([]);
+      setDiary(prev => prev.length === 0 ? prev : []);
     }
 
     if (savedLogs) {
       try {
-        setSyncLogs(JSON.parse(savedLogs));
+        const parsed = JSON.parse(savedLogs);
+        setSyncLogs(prev => JSON.stringify(prev) === JSON.stringify(parsed) ? prev : parsed);
       } catch (e) {
         console.error(e);
       }
     } else {
-      setSyncLogs([]);
+      setSyncLogs(prev => prev.length === 0 ? prev : []);
     }
   };
 
@@ -578,6 +587,9 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     } else if (result.type === 'fixtures') {
       if (result.fixtures && result.fixtures.length > 0) isDataValid = true;
       else failReason = 'No match fixtures could be parsed from page content.';
+    } else if (result.type === 'match') {
+      if (result.match) isDataValid = true;
+      else failReason = 'No match scorecard or report could be parsed.';
     } else if (result.type === 'diary') {
       if (result.diary && result.diary.length > 0) isDataValid = true;
       else failReason = 'No diary/ledger entries could be parsed from page content.';
@@ -642,6 +654,10 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       });
       squadRef.current = merged;
       setSquad(merged);
+      if (result.teamName && result.teamName !== 'My Club' && result.teamName !== 'My Battrick IQ Club') {
+        localStorage.setItem('bt_team_name', result.teamName);
+        window.dispatchEvent(new Event('bt_team_name_updated'));
+      }
       saveToLocalStorage(merged, activeFinances, activeFixtures.length > 0 ? activeFixtures : undefined, activePavilion || undefined, activeDiary.length > 0 ? activeDiary : undefined);
       setImportMessage({ text: `Successfully synced ${result.count} players into your squad!`, success: true });
       addSyncLog('squad', `Imported & updated squad roster (${result.count} players)`, 'success');
@@ -717,17 +733,47 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     } else if (result.type === 'fixtures' && result.fixtures) {
       fixturesRef.current = result.fixtures;
       setFixtures(result.fixtures);
+      if (result.teamName && result.teamName !== 'My Club' && result.teamName !== 'My Battrick IQ Club') {
+        localStorage.setItem('bt_team_name', result.teamName);
+        window.dispatchEvent(new Event('bt_team_name_updated'));
+      }
       saveToLocalStorage(activeSquad, activeFinances, result.fixtures, activePavilion || undefined, activeDiary.length > 0 ? activeDiary : undefined);
-      setImportMessage({ text: `Successfully parsed and synced ${result.fixtures.length} club fixtures!`, success: true });
-      addSyncLog('fixtures', `Synchronized ${result.fixtures.length} club fixtures`, 'success');
+      const teamMsg = result.teamName ? ` for ${result.teamName}` : '';
+      setImportMessage({ text: `Successfully parsed and synced ${result.fixtures.length} club fixtures${teamMsg}!`, success: true });
+      addSyncLog('fixtures', `Synchronized ${result.fixtures.length} club fixtures${teamMsg}`, 'success');
       
       if (!silent) setSuccessModal({
         isOpen: true,
         type: 'fixtures',
         title: 'Match Fixtures Synced!',
-        message: `Parsed and synchronized upcoming match schedules and pitch ratings.`,
+        message: `Parsed and synchronized upcoming match schedules and pitch ratings${result.teamName ? ` for ${result.teamName}` : ''}. The Home page "This Week" schedule has been updated.`,
         stats: [
-          { label: 'Fixtures Found', value: result.fixtures.length }
+          { label: 'Fixtures Found', value: result.fixtures.length },
+          ...(result.teamName ? [{ label: 'Team / Club', value: result.teamName }] : [])
+        ]
+      });
+    } else if (result.type === 'match' && result.match) {
+      const updatedFixtures = result.fixtures || activeFixtures;
+      fixturesRef.current = updatedFixtures;
+      setFixtures(updatedFixtures);
+      if (result.teamName && result.teamName !== 'My Club' && result.teamName !== 'My Battrick IQ Club') {
+        localStorage.setItem('bt_team_name', result.teamName);
+        window.dispatchEvent(new Event('bt_team_name_updated'));
+      }
+      saveToLocalStorage(activeSquad, activeFinances, updatedFixtures, activePavilion || undefined, activeDiary.length > 0 ? activeDiary : undefined);
+      const teamMsg = result.teamName ? ` (${result.teamName})` : '';
+      setImportMessage({ text: `Successfully synced match ${result.match.matchId}${teamMsg} into fixtures!`, success: true });
+      addSyncLog('fixtures', `Synchronized match ${result.match.matchId} (${result.match.homeTeam} v ${result.match.awayTeam})`, 'success');
+
+      if (!silent) setSuccessModal({
+        isOpen: true,
+        type: 'fixtures',
+        title: 'Match Scorecard Synced!',
+        message: `Imported scorecard data for match ${result.match.matchId}. The Home page "This Week" schedule and results have been updated.`,
+        stats: [
+          { label: 'Match ID', value: result.match.matchId },
+          { label: 'Result', value: result.match.result || 'Completed' },
+          ...(result.teamName ? [{ label: 'Club Name', value: result.teamName }] : [])
         ]
       });
     } else if (result.type === 'diary' && result.diary) {

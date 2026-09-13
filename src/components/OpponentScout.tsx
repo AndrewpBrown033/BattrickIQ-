@@ -29,7 +29,11 @@ import {
   getKnownTeamNameById,
   getKnownTeamIdByName,
   getAllKnownOpponentTeams,
-  KNOWN_OPPONENT_CLUBS
+  KNOWN_OPPONENT_CLUBS,
+  BATTRICK_CONTRIBUTIONS,
+  getBattrickImpliedPrimary,
+  getBattrickImpliedSecondary,
+  getBattrickDecisionTableRow
 } from '../parser';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
 import { 
@@ -66,7 +70,8 @@ import {
   ArrowUpDown,
   Trash2,
   Gauge,
-  Users
+  Users,
+  Sliders
 } from 'lucide-react';
 
 interface OpponentScoutProps {
@@ -399,6 +404,20 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
   const [playerSyncError, setPlayerSyncError] = useState<string | null>(null);
   const [pastedPlayerText, setPastedPlayerText] = useState<string>('');
   const [isPlayerPasteOpen, setIsPlayerPasteOpen] = useState<boolean>(false);
+
+  // Battrickipedia calibration sandbox and reference table states
+  const [calibrationWage, setCalibrationWage] = useState<number | null>(null);
+  const [calibrationBtr, setCalibrationBtr] = useState<number | null>(null);
+  const [calibrationRole, setCalibrationRole] = useState<string>('Batter');
+  const [selectedRefTab, setSelectedRefTab] = useState<'none' | 'scale' | 'implied' | 'decision'>('none');
+
+  useEffect(() => {
+    if (scoutedPlayer) {
+      setCalibrationWage(scoutedPlayer.wage);
+      setCalibrationBtr(scoutedPlayer.btRating);
+      setCalibrationRole(scoutedPlayer.role || scoutedPlayer.primaryRoleClassifier || 'Batter');
+    }
+  }, [scoutedPlayer]);
 
 
   const handleSyncPlayerLive = async () => {
@@ -854,6 +873,12 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
       bowlingType: p.bowlingType,
       battingFormLabel: p.battingFormLabel || 'respectable',
       fitnessLabel: p.fitnessLabel || 'fit',
+      careerStats: p.careerStats,
+      primaryRoleClassifier: p.primaryRoleClassifier,
+      battingAverage: p.battingAverage,
+      bowlingAverage: p.bowlingAverage,
+      estimatedSkillLabel: p.estimatedSkillLabel,
+      estimatedSkillLevel: p.estimatedSkillLevel,
       form: 6,
       fitness: 6,
       skills: {
@@ -2959,9 +2984,12 @@ TACTICAL ORDERS:
                       const est = hasHiddenSkills ? estimatePlayerSkills(
                         p.wage,
                         p.btRating,
-                        p.careerStats?.runs ?? (p.role === 'Batter' ? 1200 : 80),
-                        p.careerStats?.overs ?? (p.role === 'Bowler' ? 140 : 0),
-                        p.careerStats?.matches ?? 32
+                        p.careerStats?.runs,
+                        p.careerStats?.overs,
+                        p.careerStats?.matches,
+                        p.role || p.primaryRoleClassifier,
+                        batAvg,
+                        bowlAvg
                       ) : null;
 
                       // Classification logic based on user's definition: 
@@ -3290,9 +3318,12 @@ TACTICAL ORDERS:
                         const estimation = estimatePlayerSkills(
                           scoutedPlayer.wage,
                           scoutedPlayer.btRating,
-                          500,
-                          20,
-                          30
+                          scoutedPlayer.careerStats?.runs,
+                          scoutedPlayer.careerStats?.overs,
+                          scoutedPlayer.careerStats?.matches,
+                          scoutedPlayer.role || scoutedPlayer.primaryRoleClassifier,
+                          scoutedPlayer.battingAverage,
+                          scoutedPlayer.bowlingAverage
                         );
                         return (
                           <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-1">
@@ -3376,10 +3407,14 @@ TACTICAL ORDERS:
                   const estimation = estimatePlayerSkills(
                     scoutedPlayer.wage,
                     scoutedPlayer.btRating,
-                    500,
-                    20,
-                    30
+                    scoutedPlayer.careerStats?.runs,
+                    scoutedPlayer.careerStats?.overs,
+                    scoutedPlayer.careerStats?.matches,
+                    scoutedPlayer.role || scoutedPlayer.primaryRoleClassifier,
+                    scoutedPlayer.battingAverage,
+                    scoutedPlayer.bowlingAverage
                   );
+                  const hasHidden = scoutedPlayer.skills.batting === 0 && scoutedPlayer.skills.bowling === 0;
 
                   return (
                     <div className="space-y-4">
@@ -3412,7 +3447,7 @@ TACTICAL ORDERS:
                               Estimated Primary:
                             </span>
                             <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-200">
-                              Benchmark
+                              Level {estimation.primarySkillLevel}
                             </span>
                           </div>
                           <div>
@@ -3420,7 +3455,7 @@ TACTICAL ORDERS:
                               {estimation.primarySkill}
                             </div>
                             <p className="text-[11px] font-sans text-emerald-800/80 mt-1 font-medium">
-                              Skill bracket calibrated to Battrick economy curve
+                              Skill bracket calibrated to Battrick wage formula
                             </p>
                           </div>
                         </div>
@@ -3431,7 +3466,7 @@ TACTICAL ORDERS:
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                           <div className="space-y-1">
                             <span className="text-xs font-mono font-extrabold uppercase text-amber-900/80 tracking-wider block">
-                              Secondaries:
+                              Secondaries & Conditioning:
                             </span>
                             <p className="text-xs font-sans text-slate-600 font-medium">
                               Support attributes including stamina, consistency, and fielding capabilities
@@ -3440,6 +3475,404 @@ TACTICAL ORDERS:
                           <span className="text-base sm:text-xl font-black text-amber-950 bg-amber-100/90 border border-amber-300/80 px-4 py-2.5 rounded-xl font-mono text-left sm:text-right shadow-2xs shrink-0">
                             {estimation.secondaries}
                           </span>
+                        </div>
+                      </div>
+
+                      {/* Salary Scale & Benchmark Intelligence Card */}
+                      <div className="bg-sky-50/60 border border-sky-200/90 rounded-2xl p-5 space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-sky-600"></span>
+                            <span className="text-xs font-mono font-extrabold uppercase text-sky-950 tracking-wider">
+                              Salary vs Skill Benchmark Intelligence
+                            </span>
+                          </div>
+                          <span className="text-[11px] font-mono font-bold text-sky-800 bg-sky-100/90 border border-sky-300/80 px-2.5 py-0.5 rounded-full">
+                            Battrick Economy Model
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-sky-950 leading-relaxed font-sans font-medium">
+                          {estimation.wageTierNote}
+                        </p>
+
+                        {/* Reference Comparison Chips */}
+                        <div className="pt-1.5 border-t border-sky-200/60 grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px] font-mono">
+                          <div className="bg-white/80 border border-sky-200 p-2 rounded-lg">
+                            <span className="text-slate-500 block text-[10px] font-bold">Wonderful (13)</span>
+                            <span className="font-extrabold text-slate-800">Base: £12,250</span>
+                          </div>
+                          <div className="bg-white/80 border border-sky-200 p-2 rounded-lg">
+                            <span className="text-slate-500 block text-[10px] font-bold">Exceptional (14)</span>
+                            <span className="font-extrabold text-slate-800">Base: £17,553</span>
+                          </div>
+                          <div className="bg-white/80 border border-sky-200 p-2 rounded-lg">
+                            <span className="text-slate-500 block text-[10px] font-bold">Sensational (15)</span>
+                            <span className="font-extrabold text-slate-800">Base: £24,442</span>
+                          </div>
+                          <div className="bg-white/80 border border-sky-300 p-2 rounded-lg bg-sky-100/50">
+                            <span className="text-sky-700 block text-[10px] font-bold">Exquisite (16)</span>
+                            <span className="font-extrabold text-sky-900">Base: £33,205</span>
+                          </div>
+                          <div className="bg-white/80 border border-sky-200 p-2 rounded-lg">
+                            <span className="text-slate-500 block text-[10px] font-bold">Masterful (17)</span>
+                            <span className="font-extrabold text-slate-800">Base: £44,154</span>
+                          </div>
+                        </div>
+
+                        {/* Interactive Sandbox Header */}
+                        <div className="pt-3 border-t border-sky-200/60 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <Sliders className="w-4 h-4 text-indigo-600" />
+                            <span className="text-xs font-mono font-extrabold uppercase text-indigo-950 tracking-wider">
+                              🔍 Battrickipedia Calibration Sandbox & Decision Engine
+                            </span>
+                          </div>
+                          <p className="text-xs text-indigo-950/80 font-medium leading-relaxed font-sans">
+                            Test any weekly wage & BTR to see live Battrick economy model deductions, implied primary/secondary skill bands, and active Decision Table matches.
+                          </p>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white/70 border border-sky-100 p-4 rounded-xl">
+                            <div className="space-y-1.5">
+                              <label className="text-[11px] font-mono font-extrabold text-sky-950 uppercase tracking-wider block">Weekly Wage (£)</label>
+                              <div className="flex gap-2">
+                                <input 
+                                  type="number" 
+                                  value={calibrationWage !== null ? calibrationWage : ''} 
+                                  onChange={(e) => setCalibrationWage(e.target.value === '' ? null : Number(e.target.value))} 
+                                  placeholder="e.g. 31500"
+                                  className="w-full bg-white border border-sky-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg py-1.5 px-3 text-xs font-mono font-bold text-slate-800"
+                                />
+                                {scoutedPlayer && (
+                                  <button 
+                                    onClick={() => {
+                                      setCalibrationWage(scoutedPlayer.wage);
+                                      setCalibrationBtr(scoutedPlayer.btRating);
+                                    }}
+                                    title="Reset to Active Player"
+                                    className="bg-sky-100 hover:bg-sky-200 text-sky-800 border border-sky-300 font-mono font-bold text-[10px] rounded-lg px-2.5 py-1 transition-all"
+                                  >
+                                    Reset
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-[11px] font-mono font-extrabold text-sky-950 uppercase tracking-wider block">Battrick Rating (BTR)</label>
+                              <input 
+                                type="number" 
+                                value={calibrationBtr !== null ? calibrationBtr : ''} 
+                                onChange={(e) => setCalibrationBtr(e.target.value === '' ? null : Number(e.target.value))} 
+                                placeholder="e.g. 125000"
+                                className="w-full bg-white border border-sky-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg py-1.5 px-3 text-xs font-mono font-bold text-slate-800"
+                              />
+                            </div>
+                          </div>
+
+                          {(() => {
+                            const currentCalibWage = calibrationWage !== null ? calibrationWage : (scoutedPlayer?.wage || 31500);
+                            const currentCalibBtr = calibrationBtr !== null ? calibrationBtr : (scoutedPlayer?.btRating || 125000);
+                            const calibResidual = Math.max(0, currentCalibWage - 250);
+                            const calibPrimary = getBattrickImpliedPrimary(calibResidual);
+                            const calibSecondary = getBattrickImpliedSecondary(calibResidual);
+                            const calibDecision = getBattrickDecisionTableRow(currentCalibWage, currentCalibBtr);
+
+                            const impliedSkillBands = [
+                              { level: 20, name: "elite", primFrom: 93347, primTo: Infinity, secFrom: 19070, secTo: Infinity },
+                              { level: 19, name: "phenomenal", primFrom: 73728, primTo: 93346, secFrom: 14658, secTo: 19069 },
+                              { level: 18, name: "miraculous", primFrom: 57375, primTo: 73727, secFrom: 11104, secTo: 14657 },
+                              { level: 17, name: "masterful", primFrom: 43904, primTo: 57374, secFrom: 8275, secTo: 11103 },
+                              { level: 16, name: "exquisite", primFrom: 32955, primTo: 43903, secFrom: 6054, secTo: 8274 },
+                              { level: 15, name: "sensational", primFrom: 24192, primTo: 32954, secFrom: 4338, secTo: 6053 },
+                              { level: 14, name: "exceptional", primFrom: 17303, primTo: 24191, secFrom: 3035, secTo: 4337 },
+                              { level: 13, name: "wonderful", primFrom: 12000, primTo: 17302, secFrom: 2066, secTo: 3034 },
+                              { level: 12, name: "remarkable", primFrom: 8019, primTo: 11999, secFrom: 1362, secTo: 2065 },
+                              { level: 11, name: "quality", primFrom: 5120, primTo: 8018, secFrom: 865, secTo: 1361 },
+                              { level: 10, name: "superb", primFrom: 3087, primTo: 5119, secFrom: 524, secTo: 864 },
+                              { level: 9, name: "strong", primFrom: 1728, primTo: 3086, secFrom: 301, secTo: 523 },
+                              { level: 8, name: "proficient", primFrom: 875, primTo: 1727, secFrom: 161, secTo: 300 },
+                              { level: 7, name: "respectable", primFrom: 384, primTo: 874, secFrom: 79, secTo: 160 },
+                              { level: 6, name: "competent", primFrom: 135, primTo: 383, secFrom: 34, secTo: 78 },
+                              { level: 5, name: "mediocre", primFrom: 32, primTo: 134, secFrom: 13, secTo: 33 },
+                              { level: 4, name: "feeble", primFrom: 3, primTo: 31, secFrom: 4, secTo: 12 },
+                              { level: 3, name: "woeful", primFrom: 0, primTo: 2, secFrom: 1, secTo: 3 },
+                              { level: 2, name: "abysmal", primFrom: 0, primTo: 0, secFrom: 0, secTo: 0 }
+                            ];
+
+                            const contributionsTable = (
+                              <div className="overflow-x-auto border border-sky-150 rounded-xl bg-white mt-3 shadow-2xs max-h-96">
+                                <table className="min-w-full divide-y divide-sky-100 text-left text-[11px] font-sans">
+                                  <thead className="bg-sky-50/50 text-sky-900 uppercase font-mono font-extrabold text-[10px] sticky top-0 bg-white">
+                                    <tr>
+                                      <th className="py-2 px-3">Level Name</th>
+                                      <th className="py-2 px-3 text-center">n (Level)</th>
+                                      <th className="py-2 px-3 text-right">Primary Contrib.</th>
+                                      <th className="py-2 px-3 text-right">Secondary Contrib.</th>
+                                      <th className="py-2 px-3 text-right">Mono-Skill Wage</th>
+                                      <th className="py-2 px-3 text-right">Step Up</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-sky-50 text-slate-700 font-medium">
+                                    {BATTRICK_CONTRIBUTIONS.map((item, idx) => {
+                                      const stepUp = idx > 0 ? item.monoWage - BATTRICK_CONTRIBUTIONS[idx - 1].monoWage : 0;
+                                      const isCurrentPrimary = item.level === calibPrimary.level;
+                                      const isCurrentSecondary = item.level === calibSecondary.level;
+                                      return (
+                                        <tr 
+                                          key={item.level} 
+                                          className={`hover:bg-sky-50/20 transition-colors ${
+                                            isCurrentPrimary ? 'bg-emerald-50/50 text-emerald-950 font-semibold' : 
+                                            isCurrentSecondary ? 'bg-amber-50/35 text-amber-950' : ''
+                                          }`}
+                                        >
+                                          <td className="py-2 px-3 font-semibold capitalize flex items-center gap-1.5">
+                                            {item.name}
+                                            {isCurrentPrimary && <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1 py-0.2 rounded font-mono font-bold uppercase">Primary</span>}
+                                            {isCurrentSecondary && <span className="text-[9px] bg-amber-100 text-amber-800 px-1 py-0.2 rounded font-mono font-bold uppercase">Secondary</span>}
+                                          </td>
+                                          <td className="py-2 px-3 text-center font-mono font-bold">{item.level}</td>
+                                          <td className="py-2 px-3 text-right font-mono">£{item.primaryContrib.toLocaleString()}</td>
+                                          <td className="py-2 px-3 text-right font-mono">£{item.secondaryContrib.toLocaleString()}</td>
+                                          <td className="py-2 px-3 text-right font-mono font-bold">£{item.monoWage.toLocaleString()}</td>
+                                          <td className="py-2 px-3 text-right font-mono text-slate-500 font-bold">
+                                            {idx > 0 ? `+£${stepUp.toLocaleString()}` : '-'}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            );
+
+                            const impliedBandsTable = (
+                              <div className="overflow-x-auto border border-sky-150 rounded-xl bg-white mt-3 shadow-2xs max-h-96">
+                                <table className="min-w-full divide-y divide-sky-100 text-left text-[11px] font-sans">
+                                  <thead className="bg-sky-50/50 text-sky-900 uppercase font-mono font-extrabold text-[10px] sticky top-0 bg-white">
+                                    <tr>
+                                      <th className="py-2 px-3">Skill Level</th>
+                                      <th className="py-2 px-3 text-center">n</th>
+                                      <th className="py-2 px-3 text-right">Primary Residual Band</th>
+                                      <th className="py-2 px-3 text-right">Secondary Residual Band</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-sky-50 text-slate-700 font-medium">
+                                    {impliedSkillBands.map((item) => {
+                                      const isCurrentPrimary = item.level === calibPrimary.level;
+                                      const isCurrentSecondary = item.level === calibSecondary.level;
+                                      return (
+                                        <tr 
+                                          key={item.level} 
+                                          className={`hover:bg-sky-50/20 transition-colors ${
+                                            isCurrentPrimary ? 'bg-emerald-50/50 text-emerald-950 font-semibold' : 
+                                            isCurrentSecondary ? 'bg-amber-50/35 text-amber-950' : ''
+                                          }`}
+                                        >
+                                          <td className="py-2 px-3 capitalize font-semibold flex items-center gap-1.5">
+                                            {item.name}
+                                            {isCurrentPrimary && <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1 py-0.2 rounded font-mono font-bold uppercase">Primary</span>}
+                                            {isCurrentSecondary && <span className="text-[9px] bg-amber-100 text-amber-800 px-1 py-0.2 rounded font-mono font-bold uppercase">Secondary</span>}
+                                          </td>
+                                          <td className="py-2 px-3 text-center font-mono font-bold">{item.level}</td>
+                                          <td className="py-2 px-3 text-right font-mono">
+                                            {item.primFrom === 0 && item.primTo === 0 ? "£0" : 
+                                             item.primTo === Infinity ? `£${item.primFrom.toLocaleString()}+` : 
+                                             `£${item.primFrom.toLocaleString()} - £${item.primTo.toLocaleString()}`}
+                                          </td>
+                                          <td className="py-2 px-3 text-right font-mono">
+                                            {item.secFrom === 0 && item.secTo === 0 ? "£0" : 
+                                             item.secTo === Infinity ? `£${item.secFrom.toLocaleString()}+` : 
+                                             `£${item.secFrom.toLocaleString()} - £${item.secTo.toLocaleString()}`}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            );
+
+                            const decisionRows = [
+                              { rowNo: 1, band: "250 - 260", says: "No skill above woeful, or one at feeble", bt: "Any", profile: "Raw youth pull or filler. Nothing trained yet.", next: "Age and academy rating - only worth keeping if young." },
+                              { rowNo: 2, band: "261 - 400", says: "Top primary around feeble to competent", bt: "Low", profile: "One lightly trained skill, everything else floor. Narrow player.", next: "Which skill he trains - check nets allocation." },
+                              { rowNo: 3, band: "261 - 400", says: "Top primary around feeble to competent", bt: "High", profile: "Skill spread thinly across several low primaries plus secondaries.", next: "Fielding and stamina - cheap skills that lift BT." },
+                              { rowNo: 4, band: "401 - 1,200", says: "Top primary around respectable to proficient", bt: "Low", profile: "Genuine single-skill specialist: one primary doing all the work.", next: "Batting vs bowling - the wage cannot tell you which." },
+                              { rowNo: 5, band: "401 - 1,200", says: "Top primary around respectable to proficient", bt: "In line", profile: "Standard squad player. One main primary plus modest support skills.", next: "Concentration and consistency - they cost little but matter." },
+                              { rowNo: 6, band: "401 - 1,200", says: "Top primary around respectable to proficient", bt: "High", profile: "All-rounder in the making, or strong secondaries carrying the BT.", next: "Keeping - a keeper's skill inflates BT cheaply." },
+                              { rowNo: 7, band: "1,201 - 3,500", says: "Top primary around strong to superb", bt: "Low", profile: "Pure specialist, top-order bat or front-line bowler, little else.", next: "Stamina - a specialist with low stamina is an FC liability." },
+                              { rowNo: 8, band: "1,201 - 3,500", says: "Top primary around strong to superb", bt: "In line", profile: "Solid first-team regular with a balanced supporting set.", next: "Age - wage this high on an older player is poor value." },
+                              { rowNo: 9, band: "1,201 - 3,500", says: "Top primary around strong to superb", bt: "High", profile: "True all-rounder: two mid primaries beat one high primary on BT.", next: "Split the residual wage two ways and test both halves." },
+                              { rowNo: 10, band: "3,501 - 9,000", says: "Top primary around quality to remarkable", bt: "Low / In line", profile: "Elite one-trick specialist. Match-winner in one discipline only.", next: "Consistency - a high wage with poor consistency is a trap." },
+                              { rowNo: 11, band: "3,501 - 9,000", says: "Top primary around quality to remarkable", bt: "High", profile: "Premium all-rounder or a keeper-batsman. Two expensive skills.", next: "Keeping level - the usual explanation at this wage." },
+                              { rowNo: 12, band: "9,001 - 25,000", says: "Top primary around wonderful to sensational", bt: "Low / In line", profile: "Star specialist. Almost all wage sits in a single primary.", next: "Form - BT sags with poor form, so re-read next update." },
+                              { rowNo: 13, band: "9,001 - 25,000", says: "Top primary around wonderful to sensational", bt: "High", profile: "Multi-skilled star. Expect a second primary at strong or better.", next: "Whether you can actually afford the weekly wage bill." },
+                              { rowNo: 14, band: "Above 25,000", says: "Top primary exquisite or higher", bt: "Any", profile: "Marquee player. Wage alone will not separate the skills - BT is essential here.", next: "Run him through the Skill Finder with every known skill entered." }
+                            ];
+
+                            const decisionTableRef = (
+                              <div className="overflow-x-auto border border-sky-150 rounded-xl bg-white mt-3 shadow-2xs max-h-96">
+                                <table className="min-w-full divide-y divide-sky-100 text-left text-[11px] font-sans">
+                                  <thead className="bg-sky-50/50 text-sky-900 uppercase font-mono font-extrabold text-[10px] sticky top-0 bg-white font-black">
+                                    <tr>
+                                      <th className="py-2 px-2 text-center">Row</th>
+                                      <th className="py-2 px-2">Wage Band (£)</th>
+                                      <th className="py-2 px-2">Wage Level Meanings</th>
+                                      <th className="py-2 px-2 text-center">BT Rating Pos.</th>
+                                      <th className="py-2 px-2">Most Likely Skill Profile</th>
+                                      <th className="py-2 px-2 font-mono">What to Check Next</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-sky-50 text-slate-700 font-medium">
+                                    {decisionRows.map((row) => {
+                                      const isMatched = row.rowNo === calibDecision.rowNo;
+                                      return (
+                                        <tr 
+                                          key={row.rowNo} 
+                                          className={`hover:bg-sky-50/20 transition-colors ${
+                                            isMatched ? 'bg-indigo-50 text-indigo-950 font-bold border-l-4 border-l-indigo-600' : ''
+                                          }`}
+                                        >
+                                          <td className="py-2 px-2 text-center font-bold font-mono">{row.rowNo}</td>
+                                          <td className="py-2 px-2 font-mono whitespace-nowrap">{row.band}</td>
+                                          <td className="py-2 px-2">{row.says}</td>
+                                          <td className="py-2 px-2 text-center font-bold text-sky-700">{row.bt}</td>
+                                          <td className="py-2 px-2 text-slate-700">{row.profile}</td>
+                                          <td className="py-2 px-2 text-indigo-900 font-bold">{row.next}</td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            );
+
+                            return (
+                              <div className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  {/* Left: Mathematical Deduction Card */}
+                                  <div className="bg-emerald-50/30 border border-emerald-100 rounded-xl p-4 space-y-2 text-xs">
+                                    <div className="flex items-center gap-1.5 font-mono font-extrabold text-emerald-950 uppercase tracking-wide">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                                      Residual Math Calibration
+                                    </div>
+                                    <div className="space-y-1.5 font-sans font-medium text-slate-700">
+                                      <div className="flex justify-between border-b border-emerald-100/50 pb-1">
+                                        <span>Assumed Weekly Wage:</span>
+                                        <span className="font-mono font-bold text-slate-800">£{currentCalibWage.toLocaleString()}</span>
+                                      </div>
+                                      <div className="flex justify-between border-b border-emerald-100/50 pb-1">
+                                        <span>Battrick Base Deduction:</span>
+                                        <span className="font-mono text-rose-600 font-bold">- £250</span>
+                                      </div>
+                                      <div className="flex justify-between border-b border-emerald-100/30 pb-1 bg-emerald-50/50 px-1.5 py-0.5 rounded">
+                                        <span className="text-emerald-900 font-bold">Calculated Residual Wage:</span>
+                                        <span className="font-mono font-black text-emerald-950">£{calibResidual.toLocaleString()}</span>
+                                      </div>
+                                      <div className="flex justify-between border-b border-emerald-100/50 pb-1 pt-1 items-center">
+                                        <span>Implied Primary Skill:</span>
+                                        <span className="font-black text-emerald-900 capitalize bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded font-mono text-[11px] shadow-3xs">
+                                          {calibPrimary.label} ({calibPrimary.level})
+                                        </span>
+                                      </div>
+                                      <div className="flex justify-between items-center pt-0.5">
+                                        <span>Implied Secondary (if leftover):</span>
+                                        <span className="font-bold text-amber-900 capitalize bg-amber-100 border border-amber-200 px-2 py-0.5 rounded font-mono text-[11px] shadow-3xs">
+                                          {calibSecondary.label} ({calibSecondary.level})
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Right: Decision Table Calibration Card */}
+                                  <div className="bg-indigo-50/30 border border-indigo-100 rounded-xl p-4 space-y-2 text-xs">
+                                    <div className="flex items-center gap-1.5 font-mono font-extrabold text-indigo-950 uppercase tracking-wide">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
+                                      Decision Engine Row #{calibDecision.rowNo} Match
+                                    </div>
+                                    <div className="space-y-1.5 font-sans font-medium text-slate-700">
+                                      <div className="flex justify-between border-b border-indigo-100/50 pb-1">
+                                        <span>Wage Range Bracket:</span>
+                                        <span className="font-mono font-bold text-indigo-950">£{calibDecision.wageBand}</span>
+                                      </div>
+                                      <div className="flex justify-between border-b border-indigo-100/50 pb-1">
+                                        <span>BT Rating Calibration:</span>
+                                        <span className={`font-mono font-black capitalize px-1.5 py-0.2 rounded ${
+                                          calibDecision.btComparison === 'high' ? 'bg-emerald-100 text-emerald-800' : 
+                                          calibDecision.btComparison === 'low' ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-700'
+                                        }`}>
+                                          {calibDecision.btComparison}
+                                        </span>
+                                      </div>
+                                      <div className="border-b border-indigo-100/50 pb-1">
+                                        <span className="block text-[10px] uppercase font-mono font-extrabold text-indigo-900/70 tracking-wider">Wage Signifies:</span>
+                                        <p className="text-slate-800 leading-tight mt-0.5 font-semibold">"{calibDecision.wageSays}"</p>
+                                      </div>
+                                      <div>
+                                        <span className="block text-[10px] uppercase font-mono font-extrabold text-indigo-900/70 tracking-wider">Most Likely Skill Profile:</span>
+                                        <p className="text-indigo-950 font-black leading-snug mt-0.5 text-xs bg-indigo-100/50 border border-indigo-200/50 p-2 rounded-lg">{calibDecision.profile}</p>
+                                      </div>
+                                      <div className="bg-indigo-100 text-indigo-950 p-2.5 rounded-lg border border-indigo-200 mt-1">
+                                        <span className="block text-[9px] uppercase font-mono font-extrabold text-indigo-900">What to check next:</span>
+                                        <p className="text-indigo-950 font-black mt-0.5 leading-snug">{calibDecision.checkNext}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="pt-4 border-t border-sky-200/60 space-y-2">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <span className="text-[11px] font-mono font-extrabold uppercase text-sky-950/70 tracking-wider">
+                                      Battrickipedia Interactive Reference Library:
+                                    </span>
+                                    {selectedRefTab !== 'none' && (
+                                      <button 
+                                        onClick={() => setSelectedRefTab('none')}
+                                        className="text-[10px] font-mono font-extrabold text-slate-500 hover:text-slate-800 underline bg-slate-100 hover:bg-slate-200 px-2.5 py-0.5 rounded-md"
+                                      >
+                                        Close View [×]
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="grid grid-cols-3 gap-2 text-center text-[10px] sm:text-xs font-mono font-bold font-black">
+                                    <button 
+                                      onClick={() => setSelectedRefTab(selectedRefTab === 'scale' ? 'none' : 'scale')}
+                                      className={`py-2 px-1 sm:px-3 border rounded-xl transition-all font-black ${
+                                        selectedRefTab === 'scale' 
+                                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-2xs' 
+                                          : 'bg-white border-sky-200 text-sky-900 hover:bg-sky-50'
+                                      }`}
+                                    >
+                                      1. Contributions Scale
+                                    </button>
+                                    <button 
+                                      onClick={() => setSelectedRefTab(selectedRefTab === 'implied' ? 'none' : 'implied')}
+                                      className={`py-2 px-1 sm:px-3 border rounded-xl transition-all font-black ${
+                                        selectedRefTab === 'implied' 
+                                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-2xs' 
+                                          : 'bg-white border-sky-200 text-sky-900 hover:bg-sky-50'
+                                      }`}
+                                    >
+                                      2. Skill Bands
+                                    </button>
+                                    <button 
+                                      onClick={() => setSelectedRefTab(selectedRefTab === 'decision' ? 'none' : 'decision')}
+                                      className={`py-2 px-1 sm:px-3 border rounded-xl transition-all font-black ${
+                                        selectedRefTab === 'decision' 
+                                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-2xs' 
+                                          : 'bg-white border-sky-200 text-sky-900 hover:bg-sky-50'
+                                      }`}
+                                    >
+                                      3. Decision Table
+                                    </button>
+                                  </div>
+
+                                  {selectedRefTab === 'scale' && contributionsTable}
+                                  {selectedRefTab === 'implied' && impliedBandsTable}
+                                  {selectedRefTab === 'decision' && decisionTableRef}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
 
@@ -3483,87 +3916,123 @@ TACTICAL ORDERS:
                 })()}
 
                 {/* Section B: Tactical Coach Insights */}
-                <div className="pt-4 border-t border-slate-100 space-y-3.5">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
-                    <h4 className="font-serif font-bold text-base text-slate-900">
-                      Tactical Coach Insights & Matchup Playbook
-                    </h4>
-                  </div>
+                {(() => {
+                  const estimation = estimatePlayerSkills(
+                    scoutedPlayer.wage,
+                    scoutedPlayer.btRating,
+                    scoutedPlayer.careerStats?.runs,
+                    scoutedPlayer.careerStats?.overs,
+                    scoutedPlayer.careerStats?.matches,
+                    scoutedPlayer.role || scoutedPlayer.primaryRoleClassifier,
+                    scoutedPlayer.battingAverage,
+                    scoutedPlayer.bowlingAverage
+                  );
+                  const hasHidden = scoutedPlayer.skills.batting === 0 && scoutedPlayer.skills.bowling === 0;
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 text-xs font-medium">
-                    {/* Core Threat Vector */}
-                    <div className="bg-emerald-50/40 border border-emerald-200/80 p-4 rounded-xl space-y-2 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs shrink-0">
-                            ✓
-                          </div>
-                          <strong className="text-emerald-950 font-bold uppercase tracking-wider text-[11px]">Core Threat Vector</strong>
+                  return (
+                    <div className="pt-4 border-t border-slate-100 space-y-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
+                          <h4 className="font-serif font-bold text-base text-slate-900">
+                            Tactical Coach Insights & Matchup Playbook
+                          </h4>
                         </div>
-                        <p className="text-slate-700 leading-relaxed font-sans text-xs">
-                          {(() => {
-                            if (scoutedPlayer.skills.batting >= 10) return `${scoutedPlayer.name} has elite batting skill (${scoutedPlayer.skills.batting}). They can anchor large partnerships and score heavily on flat pitches.`;
-                            if (scoutedPlayer.skills.bowling >= 10) return `Highly dangerous bowling threat with ${scoutedPlayer.skills.bowling} skill level. They will generate high dot ball pressure and pick up top-order wickets easily.`;
-                            const isAllRounder = scoutedPlayer.skills.batting >= 6 && scoutedPlayer.skills.bowling >= 6;
-                            if (isAllRounder) return `Strong all-rounder. Contributes in both departments, representing a dual tactical threat.`;
-                            return `Standard ratings. A useful squad option, but does not present a severe dominant threat vector.`;
-                          })()}
-                        </p>
+                        <span className={`text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full border ${
+                          estimation.tacticalVerdict.threatLevel === 'Extreme'
+                            ? 'bg-rose-100 text-rose-800 border-rose-300'
+                            : estimation.tacticalVerdict.threatLevel === 'High'
+                            ? 'bg-amber-100 text-amber-800 border-amber-300'
+                            : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                        }`}>
+                          Threat Level: {estimation.tacticalVerdict.threatLevel}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 text-xs font-medium">
+                        {/* Core Threat Vector */}
+                        <div className="bg-emerald-50/40 border border-emerald-200/80 p-4 rounded-xl space-y-2 flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs shrink-0">
+                                ✓
+                              </div>
+                              <strong className="text-emerald-950 font-bold uppercase tracking-wider text-[11px]">Core Threat Vector</strong>
+                            </div>
+                            <p className="text-slate-700 leading-relaxed font-sans text-xs">
+                              {(() => {
+                                if (hasHidden) {
+                                  return estimation.tacticalVerdict.threatSummary;
+                                }
+                                if (scoutedPlayer.skills.batting >= 10) return `${scoutedPlayer.name} has elite batting skill (${scoutedPlayer.skills.batting}). They can anchor large partnerships and score heavily on flat pitches.`;
+                                if (scoutedPlayer.skills.bowling >= 10) return `Highly dangerous bowling threat with ${scoutedPlayer.skills.bowling} skill level. They will generate high dot ball pressure and pick up top-order wickets easily.`;
+                                const isAllRounder = scoutedPlayer.skills.batting >= 6 && scoutedPlayer.skills.bowling >= 6;
+                                if (isAllRounder) return `Strong all-rounder. Contributes in both departments, representing a dual tactical threat.`;
+                                return `Standard ratings. A useful squad option, but does not present a severe dominant threat vector.`;
+                              })()}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Tactical Vulnerability */}
+                        <div className="bg-rose-50/40 border border-rose-200/80 p-4 rounded-xl space-y-2 flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <div className="w-5 h-5 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs shrink-0">
+                                !
+                              </div>
+                              <strong className="text-rose-950 font-bold uppercase tracking-wider text-[11px]">Tactical Vulnerability</strong>
+                            </div>
+                            <p className="text-slate-700 leading-relaxed font-sans text-xs">
+                              {(() => {
+                                if (hasHidden) {
+                                  return estimation.tacticalVerdict.vulnerability;
+                                }
+                                const weaknesses: string[] = [];
+                                if (scoutedPlayer.skills.stamina <= 5) weaknesses.push(`Low Stamina (${scoutedPlayer.skills.stamina}) ensures performance decays rapidly in deep match sessions.`);
+                                if (scoutedPlayer.skills.concentration <= 5 && scoutedPlayer.skills.batting >= 5) weaknesses.push(`Low Concentration (${scoutedPlayer.skills.concentration}) makes them prone to throwing away wickets against patient bowling.`);
+                                if (scoutedPlayer.skills.consistency <= 5 && scoutedPlayer.skills.bowling >= 5) weaknesses.push(`Low Consistency (${scoutedPlayer.skills.consistency}) leads to frequent boundary-conceding bad balls.`);
+                                if (weaknesses.length === 0) {
+                                  return `${scoutedPlayer.name} is a balanced, consistent player. No severe skill deficiencies detected.`;
+                                }
+                                return weaknesses.join(' • ');
+                              })()}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Matchup Strategy */}
+                        <div className="bg-indigo-50/40 border border-indigo-200/80 p-4 rounded-xl space-y-2 flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
+                                ★
+                              </div>
+                              <strong className="text-indigo-950 font-bold uppercase tracking-wider text-[11px]">Matchup Strategy</strong>
+                            </div>
+                            <p className="text-slate-700 leading-relaxed font-sans text-xs">
+                              {(() => {
+                                if (hasHidden) {
+                                  return estimation.tacticalVerdict.matchupPlaybook;
+                                }
+                                const isBowler = scoutedPlayer.skills.bowling > scoutedPlayer.skills.batting && scoutedPlayer.skills.bowling >= 6;
+                                const isBatter = scoutedPlayer.skills.batting > scoutedPlayer.skills.bowling && scoutedPlayer.skills.batting >= 6;
+                                
+                                if (isBatter) {
+                                  return `When bowling to ${scoutedPlayer.name}, prioritize bowler consistency. Set defensive fields on flat decks or select high-spin bowlers if on dusty wickets.`;
+                                }
+                                if (isBowler) {
+                                  return `Against ${scoutedPlayer.name}'s bowling spell, advise your batsmen to play defensively or target other bowlers in the line-up.`;
+                                }
+                                return `Standard approach recommended. Exploit stamina decay in secondary spell or play aggressively against their part-time bowlers.`;
+                              })()}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     </div>
-
-                    {/* Tactical Vulnerability */}
-                    <div className="bg-rose-50/40 border border-rose-200/80 p-4 rounded-xl space-y-2 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <div className="w-5 h-5 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs shrink-0">
-                            !
-                          </div>
-                          <strong className="text-rose-950 font-bold uppercase tracking-wider text-[11px]">Tactical Vulnerability</strong>
-                        </div>
-                        <p className="text-slate-700 leading-relaxed font-sans text-xs">
-                          {(() => {
-                            const weaknesses: string[] = [];
-                            if (scoutedPlayer.skills.stamina <= 5) weaknesses.push(`Low Stamina (${scoutedPlayer.skills.stamina}) ensures performance decays rapidly in deep match sessions.`);
-                            if (scoutedPlayer.skills.concentration <= 5 && scoutedPlayer.skills.batting >= 5) weaknesses.push(`Low Concentration (${scoutedPlayer.skills.concentration}) makes them prone to throwing away wickets against patient bowling.`);
-                            if (scoutedPlayer.skills.consistency <= 5 && scoutedPlayer.skills.bowling >= 5) weaknesses.push(`Low Consistency (${scoutedPlayer.skills.consistency}) leads to frequent boundary-conceding bad balls.`);
-                            if (weaknesses.length === 0) {
-                              return `${scoutedPlayer.name} is a balanced, consistent player. No severe skill deficiencies detected.`;
-                            }
-                            return weaknesses.join(' • ');
-                          })()}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Matchup Strategy */}
-                    <div className="bg-indigo-50/40 border border-indigo-200/80 p-4 rounded-xl space-y-2 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
-                            ★
-                          </div>
-                          <strong className="text-indigo-950 font-bold uppercase tracking-wider text-[11px]">Matchup Strategy</strong>
-                        </div>
-                        <p className="text-slate-700 leading-relaxed font-sans text-xs">
-                          {(() => {
-                            const isBowler = scoutedPlayer.skills.bowling > scoutedPlayer.skills.batting && scoutedPlayer.skills.bowling >= 6;
-                            const isBatter = scoutedPlayer.skills.batting > scoutedPlayer.skills.bowling && scoutedPlayer.skills.batting >= 6;
-                            
-                            if (isBatter) {
-                              return `When bowling to ${scoutedPlayer.name}, prioritize bowler consistency. Set defensive fields on flat decks or select high-spin bowlers if on dusty wickets.`;
-                            }
-                            if (isBowler) {
-                              return `Against ${scoutedPlayer.name}'s bowling spell, advise your batsmen to play defensively or target other bowlers in the line-up.`;
-                            }
-                            return `Standard approach recommended. Exploit stamina decay in secondary spell or play aggressively against their part-time bowlers.`;
-                          })()}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                  );
+                })()}
 
               </div>
 

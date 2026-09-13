@@ -79,13 +79,16 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
             const designatedKeeper = keepers[0];
             setIsWicketKeeper(designatedKeeper && designatedKeeper.id === found.id);
 
-            setPlayer(found);
-            setPlannerNets({
-              batting: found.nets?.batting || 0,
-              bowling: found.nets?.bowling || 0,
-              keeping: found.nets?.keeping || 0,
-              stamina: found.nets?.stamina || 0,
-              fielding: found.nets?.fielding || 0,
+            setPlayer(prev => JSON.stringify(prev) === JSON.stringify(found) ? prev : found);
+            setPlannerNets(prev => {
+              const nextNets = {
+                batting: found.nets?.batting || 0,
+                bowling: found.nets?.bowling || 0,
+                keeping: found.nets?.keeping || 0,
+                stamina: found.nets?.stamina || 0,
+                fielding: found.nets?.fielding || 0,
+              };
+              return JSON.stringify(prev) === JSON.stringify(nextNets) ? prev : nextNets;
             });
           }
         } catch (e) {
@@ -316,7 +319,9 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
 
     const activeNetsList = [
       { key: 'batting' as const, label: 'Batting', level: player.skills.batting, isSquad: false },
+      { key: 'batting' as const, label: 'Concentration', level: player.skills.concentration || 0, isSquad: false },
       { key: 'bowling' as const, label: 'Bowling', level: player.skills.bowling, isSquad: false },
+      { key: 'bowling' as const, label: 'Consistency', level: player.skills.consistency || 0, isSquad: false },
       { key: 'keeping' as const, label: 'Wicket Keeping', level: player.skills.keeping, isSquad: false },
       { key: 'stamina' as const, label: 'Stamina', level: player.skills.stamina, isSquad: squadTrainingStamina },
       { key: 'fielding' as const, label: 'Fielding', level: player.skills.fielding || 0, isSquad: squadTrainingFielding },
@@ -347,9 +352,11 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
     forecasts.forEach(f => {
       if (f.skillName === 'Batting' || f.skillName === 'Bowling' || f.skillName === 'Wicket Keeping') {
         btrGain += 1800;
-      } else if (f.skillName === 'Fielding') {
+      } else if (f.skillName === 'Concentration' || f.skillName === 'Consistency') {
+        btrGain += 1200;
+      } else if (f.skillName === 'Fielding' || f.skillName === 'Fielding (Squad)') {
         btrGain += 600;
-      } else if (f.skillName === 'Stamina') {
+      } else if (f.skillName === 'Stamina' || f.skillName === 'Stamina (Squad)') {
         btrGain += 400;
       }
     });

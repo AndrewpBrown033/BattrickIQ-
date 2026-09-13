@@ -29,6 +29,8 @@ const OPENROUTER_MODELS = [
   { id: 'liquid/lfm-2.5-2.6b:free', name: 'LiquidAI LFM2.5 2.6B (Free)', desc: 'Compact, quick answers for simple questions', free: true }
 ];
 
+const DEFAULT_OPENROUTER_KEY = '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';
+
 export default function AICoach() {
   const [activeSubTab, setActiveSubTab] = useState<'chat' | 'history'>('chat');
   const [messages, setMessages] = useState<Message[]>([
@@ -53,7 +55,7 @@ export default function AICoach() {
     return localStorage.getItem('bt_llm_free_only') === 'true';
   });
   const [openRouterKey, setOpenRouterKey] = useState<string>(() => {
-    return localStorage.getItem('bt_openrouter_api_key') || '';
+    return localStorage.getItem('bt_openrouter_api_key') || DEFAULT_OPENROUTER_KEY;
   });
   const [isModelModalOpen, setIsModelModalOpen] = useState<boolean>(false);
   const [keySavedMessage, setKeySavedMessage] = useState<boolean>(false);
@@ -254,7 +256,7 @@ export default function AICoach() {
       let errorMsg = "";
       let useClientFallback = false;
 
-      const activeOpenRouterKey = openRouterKey || localStorage.getItem('bt_openrouter_api_key') || '';
+      const activeOpenRouterKey = openRouterKey || localStorage.getItem('bt_openrouter_api_key') || DEFAULT_OPENROUTER_KEY;
 
       // 1. Attempt server-side proxy route first (OpenRouter only)
       try {
@@ -644,30 +646,46 @@ export default function AICoach() {
 
             {/* OpenRouter API Key Input */}
             <div>
-                <label className="text-xs font-mono font-bold uppercase text-slate-500 block mb-1">
-                  OpenRouter API Key (Optional)
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-mono font-bold uppercase text-slate-500 block">
+                  OpenRouter API Key
                 </label>
-                <p className="text-[11px] text-slate-500 mb-2">
-                  Enter your <span className="font-mono text-indigo-600">sk-or-v1-...</span> key if not pre-configured on the server.
-                </p>
-                <input
-                  type="password"
-                  value={openRouterKey}
-                  onChange={(e) => {
-                    setOpenRouterKey(e.target.value);
-                    localStorage.setItem('bt_openrouter_api_key', e.target.value);
-                    setKeySavedMessage(true);
-                    setTimeout(() => setKeySavedMessage(false), 2000);
-                  }}
-                  placeholder="sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxx"
-                  className="w-full text-xs font-mono p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-                {keySavedMessage && (
-                  <span className="text-[11px] text-emerald-600 font-mono font-bold mt-1 block">
-                    ✓ Key saved to browser storage!
-                  </span>
+                {openRouterKey !== DEFAULT_OPENROUTER_KEY && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenRouterKey(DEFAULT_OPENROUTER_KEY);
+                      localStorage.setItem('bt_openrouter_api_key', DEFAULT_OPENROUTER_KEY);
+                      setKeySavedMessage(true);
+                      setTimeout(() => setKeySavedMessage(false), 2000);
+                    }}
+                    className="text-[10px] font-mono text-indigo-600 hover:text-indigo-800 cursor-pointer underline"
+                  >
+                    Reset to Default Key
+                  </button>
                 )}
               </div>
+              <p className="text-[11px] text-slate-500 mb-2">
+                A default OpenRouter key is active. You can override it with your own personal key below.
+              </p>
+              <input
+                type="password"
+                value={openRouterKey}
+                onChange={(e) => {
+                  setOpenRouterKey(e.target.value);
+                  localStorage.setItem('bt_openrouter_api_key', e.target.value);
+                  setKeySavedMessage(true);
+                  setTimeout(() => setKeySavedMessage(false), 2000);
+                }}
+                placeholder="sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxx"
+                className="w-full text-xs font-mono p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              {keySavedMessage && (
+                <span className="text-[11px] text-emerald-600 font-mono font-bold mt-1 block">
+                  ✓ Key updated and saved!
+                </span>
+              )}
+            </div>
 
             <div className="pt-2 border-t border-slate-100 flex justify-end">
               <button

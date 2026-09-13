@@ -57,18 +57,27 @@ export default function SummaryDashboard({ setActiveTab }: SummaryDashboardProps
 
     const savedSquad = localStorage.getItem('bt_squad');
     if (savedSquad) {
-      try { setSquad(JSON.parse(savedSquad)); } catch (e) { setSquad([]); }
-    } else { setSquad([]); }
+      try { 
+        const parsed = JSON.parse(savedSquad);
+        setSquad(prev => JSON.stringify(prev) === JSON.stringify(parsed) ? prev : parsed);
+      } catch (e) { setSquad(prev => prev.length === 0 ? prev : []); }
+    } else { setSquad(prev => prev.length === 0 ? prev : []); }
 
     const savedFinances = localStorage.getItem('bt_finances');
     if (savedFinances) {
-      try { setFinances(JSON.parse(savedFinances)); } catch (e) { setFinances(null); }
-    } else { setFinances(null); }
+      try { 
+        const parsed = JSON.parse(savedFinances);
+        setFinances(prev => JSON.stringify(prev) === JSON.stringify(parsed) ? prev : parsed);
+      } catch (e) { setFinances(prev => prev === null ? prev : null); }
+    } else { setFinances(prev => prev === null ? prev : null); }
 
     const savedStadium = localStorage.getItem('bt_stadium');
     if (savedStadium) {
-      try { setStadium(JSON.parse(savedStadium)); } catch (e) { setStadium(null); }
-    } else { setStadium(null); }
+      try { 
+        const parsed = JSON.parse(savedStadium);
+        setStadium(prev => JSON.stringify(prev) === JSON.stringify(parsed) ? prev : parsed);
+      } catch (e) { setStadium(prev => prev === null ? prev : null); }
+    } else { setStadium(prev => prev === null ? prev : null); }
 
     const getFixturesFromStorage = (): BattrickGame[] => {
       const keys = ['bt_fixtures', 'bt_league_office_fixtures', 'bt_scout_fixtures'];
@@ -77,7 +86,24 @@ export default function SummaryDashboard({ setActiveTab }: SummaryDashboardProps
         if (raw) {
           try {
             const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const valid = parsed.filter((g: any) => {
+                const opp = (g.opponent || '').toLowerCase().trim();
+                const h = (g.homeTeam || '').toLowerCase().trim();
+                const a = (g.awayTeam || '').toLowerCase().trim();
+                const isDummy = (opp === 'opponent' || opp === 'opponent club') && 
+                                (h === 'home team' || !h) && 
+                                (a === 'away team' || !a) && 
+                                !g.matchId;
+                return !isDummy;
+              });
+              if (valid.length > 0) {
+                if (valid.length !== parsed.length && k === 'bt_fixtures') {
+                  try { localStorage.setItem('bt_fixtures', JSON.stringify(valid)); } catch (e) {}
+                }
+                return valid;
+              }
+            }
           } catch (e) {
             // ignore
           }
@@ -85,20 +111,21 @@ export default function SummaryDashboard({ setActiveTab }: SummaryDashboardProps
       }
       return [];
     };
-    setFixtures(getFixturesFromStorage());
+    const freshFixtures = getFixturesFromStorage();
+    setFixtures(prev => JSON.stringify(prev) === JSON.stringify(freshFixtures) ? prev : freshFixtures);
 
     const savedPavilion = localStorage.getItem('bt_pavilion');
     if (savedPavilion) {
       try {
         const parsedPav = JSON.parse(savedPavilion);
-        setPavilion(parsedPav);
+        setPavilion(prev => JSON.stringify(prev) === JSON.stringify(parsedPav) ? prev : parsedPav);
         if (parsedPav?.groundName && (!localStorage.getItem('bt_team_name') || localStorage.getItem('bt_team_name') === 'My Battrick IQ Club')) {
           setTeamName(parsedPav.groundName);
         }
       } catch (e) {
-        setPavilion(null);
+        setPavilion(prev => prev === null ? prev : null);
       }
-    } else { setPavilion(null); }
+    } else { setPavilion(prev => prev === null ? prev : null); }
   };
 
   const handleRefresh = async (silent = false) => {
@@ -502,9 +529,9 @@ Please analyze my club details and explain:
   const displayMembers = finances?.members ? `${finances.members.toLocaleString()} members` : 'Stadium ground';
 
   const displayFixtures = fixtures.length > 0 ? fixtures.slice(0, 3) : [
-    { opponent: 'Lancashire Lightning', date: '18/07/2026', type: 'One Day', venue: 'Home' as const, result: 'Upcoming' },
-    { opponent: 'Yorkshire Vikings', date: '21/07/2026', type: 'Twenty20', venue: 'Away' as const, result: 'Upcoming' },
-    { opponent: 'Surrey Browns', date: '25/07/2026', type: 'First Class', venue: 'Home' as const, result: 'Upcoming' },
+    { opponent: 'Lancashire Lightning', homeTeam: clubDisplayName, awayTeam: 'Lancashire Lightning', date: '18/07/2026', type: 'One Day', venue: 'Home' as const, result: 'Upcoming' },
+    { opponent: 'Yorkshire Vikings', homeTeam: 'Yorkshire Vikings', awayTeam: clubDisplayName, date: '21/07/2026', type: 'Twenty20', venue: 'Away' as const, result: 'Upcoming' },
+    { opponent: 'Surrey Browns', homeTeam: clubDisplayName, awayTeam: 'Surrey Browns', date: '25/07/2026', type: 'First Class', venue: 'Home' as const, result: 'Upcoming' },
   ];
 
   return (
@@ -817,7 +844,7 @@ Please analyze my club details and explain:
             >
               <div>
                 <h4 className="font-serif font-bold text-base text-slate-900 group-hover:text-blue-600 transition flex items-center gap-2">
-                  <span>{game.opponent}</span>
+                  <span>{game.homeTeam && game.awayTeam ? `${game.homeTeam} v ${game.awayTeam}` : game.opponent}</span>
                   <span className="text-[10px] font-mono text-indigo-600 font-bold bg-indigo-50 px-1.5 py-0.5 rounded group-hover:bg-indigo-100">
                     Scout &gt;
                   </span>
