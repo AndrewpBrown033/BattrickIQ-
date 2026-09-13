@@ -2639,6 +2639,27 @@ TACTICAL ORDERS:
                   </div>
                 </div>
 
+                {/* TIE Fitness Recovery Smart Recommendation */}
+                {dossier.winProbability > 60 && (
+                  <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-emerald-900 font-mono">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span><strong>Jarvis Recommendation:</strong> Weaker Opponent (~{dossier.winProbability}% win chance). Play <strong>Take It Easy (TIE)</strong> to maximize Primary Fitness Level (PFL) recovery for upcoming hard matches.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDossierMatchEffort('take it easy')}
+                      className={`px-2.5 py-1 font-bold rounded-lg text-[11px] shrink-0 transition cursor-pointer ${
+                        dossierMatchEffort === 'take it easy'
+                          ? 'bg-emerald-700 text-white'
+                          : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      }`}
+                    >
+                      {dossierMatchEffort === 'take it easy' ? '✓ TIE Selected' : 'Set TIE Effort'}
+                    </button>
+                  </div>
+                )}
+
                 {/* Grid of predicted sectors (7 Core Battrick Sectors) */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
                   <div className="bg-white border border-slate-200/80 p-3 rounded-xl text-center space-y-1 shadow-2xs">

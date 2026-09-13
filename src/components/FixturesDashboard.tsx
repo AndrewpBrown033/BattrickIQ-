@@ -5,6 +5,7 @@ import { getStoredMatches, fetchAndStoreSingleMatch } from '../utils/matchArchiv
 import MatchArchiveViewer from './MatchArchiveViewer';
 import GameDetailView from './GameDetailView';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
+import { getKnownTeamIdByName } from '../parser';
 import { 
   Calendar, Search, MapPin, Trophy, Shield, Clock, Swords, 
   ArrowUpRight, FileText, BarChart3, MessageSquare, Edit3, Filter,
@@ -14,9 +15,10 @@ import {
 
 interface FixturesDashboardProps {
   setActiveTab: (tab: any) => void;
+  onSelectScoutTeam?: (teamName: string, teamId?: string) => void;
 }
 
-export default function FixturesDashboard({ setActiveTab }: FixturesDashboardProps) {
+export default function FixturesDashboard({ setActiveTab, onSelectScoutTeam }: FixturesDashboardProps) {
   const { username: battrickUser, password: battrickPass, requireAuth, openPrompt } = useBattrickAuth();
   const [fixtures, setFixtures] = useState<BattrickGame[]>([]);
   const [filterType, setFilterType] = useState<string>('All');
@@ -584,17 +586,21 @@ export default function FixturesDashboard({ setActiveTab }: FixturesDashboardPro
                               <button 
                                 type="button"
                                 onClick={() => {
+                                  const resolvedTeamId = game.opponentTeamId || getKnownTeamIdByName(game.opponent) || '';
                                   localStorage.setItem('bt_scout_target_team', JSON.stringify({
                                     teamName: game.opponent,
-                                    teamId: game.opponentTeamId,
+                                    teamId: resolvedTeamId,
                                     matchId: game.matchId,
                                     type: game.type,
                                     venue: game.venue
                                   }));
                                   window.dispatchEvent(new CustomEvent('bt_scout_target_updated', {
-                                    detail: { teamName: game.opponent, teamId: game.opponentTeamId }
+                                    detail: { teamName: game.opponent, teamId: resolvedTeamId }
                                   }));
                                   window.dispatchEvent(new Event('storage'));
+                                  if (onSelectScoutTeam) {
+                                    onSelectScoutTeam(game.opponent, resolvedTeamId);
+                                  }
                                   setActiveTab('scout');
                                 }}
                                 className="inline-flex items-center gap-1 text-xs font-mono font-bold px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200/60 transition cursor-pointer"

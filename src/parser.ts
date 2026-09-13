@@ -3558,6 +3558,21 @@ export function generateOpponentScoutDossier(
     ? 'Set Attacking / Ring fields with 2 slips when batting positions 7–11 arrive at the crease.'
     : 'Standard defensive boundary cover with 1 slip.';
 
+  // Calculate win probability & key threats
+  const ratio = (mySquadAvgBtr || 35000) / (overallSquadPower || 35000);
+  let winProbability = 50;
+  if (ratio >= 1.5) winProbability = 85;
+  else if (ratio >= 1.25) winProbability = 74;
+  else if (ratio >= 1.1) winProbability = 62;
+  else if (ratio >= 0.9) winProbability = 50;
+  else if (ratio >= 0.75) winProbability = 38;
+  else winProbability = 22;
+
+  const keyThreats = {
+    batters: [...top11].sort((a, b) => b.batting - a.batting).slice(0, 3),
+    bowlers: [...top11].sort((a, b) => b.bowling - a.bowling).slice(0, 3)
+  };
+
   return {
     clubName,
     scoutedDate: new Date().toLocaleDateString(),
@@ -3568,6 +3583,8 @@ export function generateOpponentScoutDossier(
     paceAttackRating: parseFloat(paceAttackRating.toFixed(1)),
     spinAttackRating: parseFloat(spinAttackRating.toFixed(1)),
     overallSquadPower,
+    winProbability,
+    keyThreats,
     vulnerabilities,
     recommendedMatchIntensity,
     battingAggressionAdvice,

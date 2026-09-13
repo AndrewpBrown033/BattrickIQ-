@@ -326,6 +326,57 @@ Ask me anything about your lineup against their bowlers, top order targets, 5th 
     return generateOpponentScoutDossier(opponentPlayers, opponentName, pitch, weather, matchFormat, myAvgBtr);
   }, [opponentPlayers, opponentName, pitch, weather, matchFormat, myPlayers]);
 
+  // Squad Fitness & Match Effort computations
+  const squadFitnessStats = useMemo(() => {
+    if (!myPlayers || myPlayers.length === 0) {
+      return { avgFitness: 8.5, lowFitnessPlayers: [], squadCount: 0 };
+    }
+    const xi = myPlayers.slice(0, 11);
+    const totalFit = xi.reduce((acc, p) => acc + (p.fitness || 8), 0);
+    const avgFitness = Math.round((totalFit / xi.length) * 10) / 10;
+    const lowFitnessPlayers = xi.filter(p => (p.fitness || 8) <= 6);
+    return { avgFitness, lowFitnessPlayers, squadCount: xi.length };
+  }, [myPlayers]);
+
+  const effortRecommendation = useMemo(() => {
+    const winProb = scoutDossier?.winProbability || 50;
+    const avgBtrMy = myPlayers.length > 0 ? Math.round(myPlayers.reduce((acc, p) => acc + (p.btRating || 0), 0) / myPlayers.length) : 35000;
+    const avgBtrOpp = opponentPlayers.length > 0 ? Math.round(opponentPlayers.reduce((acc, p) => acc + (p.btRating || 0), 0) / opponentPlayers.length) : 35000;
+    const btrRatio = avgBtrMy / (avgBtrOpp || 1);
+
+    if (winProb >= 60 || btrRatio > 1.15) {
+      return {
+        effort: 'take it easy' as const,
+        label: 'Take It Easy (TIE)',
+        badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30',
+        reason: `Opponent is an easier team (Win Probability: ~${winProb}%). Playing 'Take It Easy' (TIE) drops sector ratings by ~15% (which is still enough to comfortably win), while allowing your key players to recover Primary Fitness Level (PFL) faster for upcoming tough fixtures.`,
+        isEasyTeam: true
+      };
+    } else if (winProb <= 38 || btrRatio < 0.85) {
+      return {
+        effort: 'go for it!' as const,
+        label: 'Go For It! (GFI)',
+        badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-400/30',
+        reason: `${opponentName} is a challenging opponent (Win Probability: ~${winProb}%). 'Go For It' (GFI) boosts sector ratings by ~15% to maximize your win chance, though post-match fitness recovery will be slower.`,
+        isEasyTeam: false
+      };
+    } else {
+      return {
+        effort: 'normal' as const,
+        label: 'Play As Normal (PAN)',
+        badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-400/30',
+        reason: `This match is evenly balanced (Win Probability: ~${winProb}%). Standard effort (PAN) maintains baseline sector ratings without excessive fitness penalty.`,
+        isEasyTeam: false
+      };
+    }
+  }, [scoutDossier, myPlayers, opponentPlayers, opponentName]);
+
+  const [matchEffort, setMatchEffort] = useState<'take it easy' | 'normal' | 'go for it!'>(effortRecommendation.effort);
+
+  useEffect(() => {
+    setMatchEffort(effortRecommendation.effort);
+  }, [effortRecommendation.effort]);
+
   // Send Prompt to Jarvis AI
   const handleSendJarvisPrompt = async (promptText?: string) => {
     const query = (promptText || inputQuery).trim();
@@ -345,7 +396,7 @@ Ask me anything about your lineup against their bowlers, top order targets, 5th 
 
     // Build comprehensive match context
     const mySquadSummary = myPlayers.slice(0, 11).map((p, i) => 
-      `${i+1}. ${p.name} (${p.role}) - BTR: ${p.btRating?.toLocaleString() || 'N/A'}, Bat: ${getSkillLabel('batting', p.skills?.batting || 0)}, Bowl: ${getSkillLabel('bowling', p.skills?.bowling || 0)} (${p.bowlingType || 'N/A'}), Keep: ${p.skills?.keeping || 0}, Form: ${p.form}/10`
+      `${i+1}. ${p.name} (${p.role}) - BTR: ${p.btRating?.toLocaleString() || 'N/A'}, Bat: ${getSkillLabel('batting', p.skills?.batting || 0)}, Bowl: ${getSkillLabel('bowling', p.skills?.bowling || 0)} (${p.bowlingType || 'N/A'}), Keep: ${p.skills?.keeping || 0}, Form: ${p.form}/10, Fitness/PFL: ${p.fitness ? p.fitness + '/10' : (p.fitnessLabel || 'Invigorated')}`
     ).join('\n');
 
     const opponentSummary = opponentPlayers.slice(0, 11).map((p, i) =>
@@ -359,7 +410,13 @@ Format: ${matchFormat}
 Venue: ${fixture.venue} Match
 Pitch Condition: ${pitch}
 Weather: ${weather}
-Result / Status: ${fixture.result || 'Upcoming'}
+Selected Match Effort: ${matchEffort.toUpperCase()}
+
+[SQUAD FITNESS & PFL ANALYSIS]
+- Average XI Fitness: ${squadFitnessStats.avgFitness}/10
+- Tired/Low Fitness XI Players (PFL <= 6): ${squadFitnessStats.lowFitnessPlayers.map(p => `${p.name} (${p.fitness || 6}/10)`).join(', ') || 'None (All fit)'}
+- Recommended Effort Strategy: ${effortRecommendation.label}
+- Strategy Rationale: ${effortRecommendation.reason}
 
 [MY ACTIVE SQUAD / LINEUP (Top 11)]:
 ${mySquadSummary || 'No squad loaded yet (using default squad)'}
@@ -368,6 +425,7 @@ ${mySquadSummary || 'No squad loaded yet (using default squad)'}
 ${opponentSummary || 'No opponent players available'}
 
 [SCOUTING INTELLIGENCE & VULNERABILITIES]:
+- Win Probability: ${scoutDossier.winProbability}%
 - 5th Bowler Vulnerability: ${scoutDossier.vulnerabilities.find(v => v.category === 'fifth_bowler')?.description || 'Moderate'}
 - Tail Vulnerability: ${scoutDossier.vulnerabilities.find(v => v.category === 'batting_tail')?.description || 'Standard'}
 - Key Opponent Batters: ${scoutDossier.keyThreats.batters.map(b => b.name).join(', ') || 'N/A'}
@@ -743,6 +801,142 @@ ${opponentSummary || 'No opponent players available'}
           {/* Left Column: Key Matchup Insights & 5th Bowler Vulnerability */}
           <div className="lg:col-span-7 flex flex-col gap-6">
             
+            {/* Match Effort & Squad Fitness Strategy Planner Card */}
+            <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white border border-slate-800 rounded-2xl p-6 shadow-md space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="p-2 bg-indigo-500/20 text-indigo-300 rounded-xl border border-indigo-400/30">
+                    <Activity className="w-5 h-5" />
+                  </span>
+                  <div>
+                    <h3 className="font-serif font-bold text-white text-lg">
+                      Match Effort &amp; Fitness Strategy Planner
+                    </h3>
+                    <p className="text-xs text-indigo-200/80 font-mono">
+                      Optimize match intensity (TIE / PAN / GFI) &amp; Primary Fitness (PFL) recovery
+                    </p>
+                  </div>
+                </div>
+
+                {/* Effort Selector Pills */}
+                <div className="flex items-center gap-1.5 bg-slate-800/80 border border-slate-700 p-1 rounded-xl shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setMatchEffort('take it easy')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition cursor-pointer ${
+                      matchEffort === 'take it easy'
+                        ? 'bg-emerald-500 text-white shadow-xs'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    🍃 Take It Easy (TIE)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMatchEffort('normal')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition cursor-pointer ${
+                      matchEffort === 'normal'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    ⚖️ Normal (PAN)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMatchEffort('go for it!')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition cursor-pointer ${
+                      matchEffort === 'go for it!'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    🔥 Go For It (GFI)
+                  </button>
+                </div>
+              </div>
+
+              {/* Jarvis Recommendation Banner */}
+              <div className={`p-4 rounded-xl border flex items-start gap-3 ${
+                effortRecommendation.isEasyTeam
+                  ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-100'
+                  : effortRecommendation.effort === 'go for it!'
+                  ? 'bg-rose-950/60 border-rose-500/50 text-rose-100'
+                  : 'bg-indigo-950/60 border-indigo-500/50 text-indigo-100'
+              }`}>
+                <div className="p-2 rounded-lg bg-white/10 shrink-0 mt-0.5">
+                  <Bot className="w-5 h-5 text-indigo-300" />
+                </div>
+                <div className="space-y-1 text-xs leading-relaxed">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold font-mono uppercase text-indigo-300">Jarvis Effort Advice:</span>
+                    <span className={`px-2.5 py-0.5 rounded text-[11px] font-mono font-bold uppercase border ${effortRecommendation.badgeColor}`}>
+                      {effortRecommendation.label}
+                    </span>
+                    {effortRecommendation.isEasyTeam && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                        Easier Opponent • PFL Recovery Boost
+                      </span>
+                    )}
+                  </div>
+                  <p>{effortRecommendation.reason}</p>
+                </div>
+              </div>
+
+              {/* XI Fitness Overview Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                <div className="bg-slate-800/60 border border-slate-700/80 p-3 rounded-xl flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] uppercase font-mono text-slate-400 block">Avg XI Fitness (PFL)</span>
+                    <span className="font-mono font-bold text-sm text-emerald-400">{squadFitnessStats.avgFitness} / 10</span>
+                  </div>
+                  <Award className="w-5 h-5 text-emerald-400 opacity-60" />
+                </div>
+
+                <div className="bg-slate-800/60 border border-slate-700/80 p-3 rounded-xl flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] uppercase font-mono text-slate-400 block">Low Fitness XI Players</span>
+                    <span className={`font-mono font-bold text-sm ${squadFitnessStats.lowFitnessPlayers.length > 0 ? 'text-amber-400' : 'text-slate-300'}`}>
+                      {squadFitnessStats.lowFitnessPlayers.length} Players (≤ 6/10)
+                    </span>
+                  </div>
+                  <Users className="w-5 h-5 text-indigo-400 opacity-60" />
+                </div>
+
+                <div className="bg-slate-800/60 border border-slate-700/80 p-3 rounded-xl flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] uppercase font-mono text-slate-400 block">Effort Rating Impact</span>
+                    <span className="font-mono font-bold text-xs text-indigo-300">
+                      {matchEffort === 'take it easy' && 'Ratings -15% • Max PFL Recovery'}
+                      {matchEffort === 'normal' && 'Ratings 100% • Normal Decay'}
+                      {matchEffort === 'go for it!' && 'Ratings +15% • Heavy PFL Loss'}
+                    </span>
+                  </div>
+                  <Zap className="w-5 h-5 text-amber-400 opacity-60" />
+                </div>
+              </div>
+
+              {/* Quick Action Prompt Buttons */}
+              <div className="flex items-center gap-2 pt-1 overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => handleSendJarvisPrompt(`Is Take It Easy (TIE) recommended against ${opponentName} to let key bowlers recover Primary Fitness (PFL)?`)}
+                  className="text-xs font-mono font-semibold px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-400/40 flex items-center gap-1.5 transition cursor-pointer shrink-0 shadow-2xs"
+                >
+                  <Bot className="w-3.5 h-3.5 text-indigo-200" />
+                  <span>Ask Jarvis about TIE Fitness Recovery</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendJarvisPrompt(`Analyze squad fitness levels across my XI and recommend rotation or match effort strategy.`)}
+                  className="text-xs font-mono font-semibold px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1.5 transition cursor-pointer shrink-0"
+                >
+                  <Users className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Analyze Low-Fitness Players</span>
+                </button>
+              </div>
+            </div>
+
             {/* Quick Tactical Summary Card */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">

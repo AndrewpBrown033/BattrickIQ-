@@ -389,6 +389,11 @@ export interface OpponentScoutDossier {
   paceAttackRating: number;
   spinAttackRating: number;
   overallSquadPower: number;
+  winProbability: number;
+  keyThreats: {
+    batters: OpponentPlayer[];
+    bowlers: OpponentPlayer[];
+  };
   vulnerabilities: OpponentVulnerability[];
   recommendedMatchIntensity: 'Take It Easy' | 'Play As Normal' | 'Go For It';
   battingAggressionAdvice: string;
