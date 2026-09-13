@@ -3676,13 +3676,13 @@ export function parseBattrickMatchSummaryText(rawText: string): {
           if (awayVal) awayRatings.fielding = awayVal;
         } else if (rowLabel.includes('batstat') || rowLabel.includes('bat stats')) {
           const parseNum = (s: string) => {
-            const m = s.replace(/,/g, '').match(/\d{4,8}/);
+            const m = s.replace(/,/g, '').match(/\d+/);
             return m ? parseInt(m[0], 10) : undefined;
           };
           const homeNum = parseNum(homeVal);
           const awayNum = parseNum(awayVal);
-          if (homeNum) homeRatings.batstat = homeNum;
-          if (awayNum) awayRatings.batstat = awayNum;
+          if (homeNum !== undefined) homeRatings.batstat = homeNum;
+          if (awayNum !== undefined) awayRatings.batstat = awayNum;
         }
       }
     }
@@ -3795,11 +3795,9 @@ export function parseBattrickMatchSummaryText(rawText: string): {
       }
     }
 
-    if (!homeRatings.batstat && (lower.includes('batstat') || lower.includes('bat stats') || lower.includes('batstats:'))) {
-      // Isolate numbers that are typically batstats (5-7 digits, e.g., 142,850 or 142850)
-      // Exclude numbers if they appear immediately after 'matchid=' or '#' or 'match #'
+    if (homeRatings.batstat === undefined && (lower.includes('batstat') || lower.includes('bat stats') || lower.includes('batstats:'))) {
       const cleanedLine = line.replace(/match\s*id\D*\d+/gi, '').replace(/#\d+/g, '');
-      const numMatches = cleanedLine.match(/\b\d{1,3}(?:,\d{3})+|\b\d{5,7}\b/g);
+      const numMatches = cleanedLine.match(/\b\d+\b/g);
       if (numMatches && numMatches.length >= 2) {
         homeRatings.batstat = parseInt(numMatches[0].replace(/,/g, ''), 10);
         awayRatings.batstat = parseInt(numMatches[1].replace(/,/g, ''), 10);
@@ -3811,21 +3809,26 @@ export function parseBattrickMatchSummaryText(rawText: string): {
 
   // Construct complete home and away ratings
   const buildSummary = (r: Partial<MatchSummaryRatings>): MatchSummaryRatings | undefined => {
-    if (!r.topOrder && !r.middleOrder && !r.seamBowling && !r.batstat) return undefined;
+    if (!r.topOrder && !r.middleOrder && !r.seamBowling && r.batstat === undefined) return undefined;
+    const topScore = r.topOrderScore || parseRatingTextToScore(r.topOrder || 'competent');
+    const midScore = r.middleOrderScore || parseRatingTextToScore(r.middleOrder || 'competent');
+    const lowScore = r.lowerOrderScore || parseRatingTextToScore(r.lowerOrder || 'abysmal');
+    const calculatedBatstat = Math.round((topScore + midScore + lowScore) * 7);
+
     return {
       topOrder: r.topOrder || 'competent',
-      topOrderScore: parseRatingTextToScore(r.topOrder || 'competent'),
+      topOrderScore: topScore,
       middleOrder: r.middleOrder || 'competent',
-      middleOrderScore: parseRatingTextToScore(r.middleOrder || 'competent'),
+      middleOrderScore: midScore,
       lowerOrder: r.lowerOrder || 'abysmal',
-      lowerOrderScore: parseRatingTextToScore(r.lowerOrder || 'abysmal'),
+      lowerOrderScore: lowScore,
       seamBowling: r.seamBowling || 'competent',
       seamBowlingScore: parseRatingTextToScore(r.seamBowling || 'competent'),
       spinBowling: r.spinBowling || 'abysmal',
       spinBowlingScore: parseRatingTextToScore(r.spinBowling || 'abysmal'),
       fielding: r.fielding || 'competent',
       fieldingScore: parseRatingTextToScore(r.fielding || 'competent'),
-      batstat: r.batstat || 120000,
+      batstat: r.batstat !== undefined ? r.batstat : calculatedBatstat,
     };
   };
 
@@ -4398,7 +4401,82 @@ export function getExampleMatchDataById(
     };
   }
 
-  if (id === '32161738' || id === '32161741') {
+  if (id === '32161741') {
+    return {
+      matchId: '32161741',
+      matchUrl: `https://www.battrick.org/nl/matchinfo.asp?matchID=32161741`,
+      summaryUrl: `https://www.battrick.org/nl/matchinfo.asp?matchID=32161741&action=summary`,
+      matchDate: '11/09/2026',
+      matchType: 'One Day League',
+      homeTeam: 'HairyBeanBags',
+      awayTeam: 'Bulolo Seahawks',
+      venue: 'HairyBeanBags CG',
+      crowd: '41,055',
+      toss: 'HairyBeanBags won the toss and elected to field',
+      pitch: 'Dusty',
+      weather: 'Sunny',
+      result: 'HairyBeanBags won',
+      homeRatings: {
+        topOrder: 'elite',
+        topOrderScore: 17.0,
+        middleOrder: 'remarkable',
+        middleOrderScore: 15.0,
+        lowerOrder: 'woeful',
+        lowerOrderScore: 3.0,
+        seamBowling: 'miraculous',
+        seamBowlingScore: 19.0,
+        spinBowling: 'elite',
+        spinBowlingScore: 17.0,
+        fielding: 'superb',
+        fieldingScore: 10.0,
+        batstat: 233
+      },
+      awayRatings: {
+        topOrder: 'woeful',
+        topOrderScore: 3.0,
+        middleOrder: 'woeful',
+        middleOrderScore: 3.0,
+        lowerOrder: 'worthless',
+        lowerOrderScore: 1.0,
+        seamBowling: 'woeful',
+        seamBowlingScore: 3.0,
+        spinBowling: 'woeful',
+        spinBowlingScore: 3.0,
+        fielding: 'woeful',
+        fieldingScore: 3.0,
+        batstat: 43
+      },
+      innings: [
+        {
+          teamName: 'Bulolo Seahawks',
+          inningsNumber: 1,
+          totalRuns: 62,
+          wickets: 10,
+          overs: '22.4',
+          batters: [
+            { order: 1, name: 'Bot Batter 1', dismissal: 'b Seamer', runs: 12, balls: 24, fours: 1, sixes: 0, strikeRate: 50.0, group: 'Top Order', estimatedSkillGrade: 'Woeful' },
+            { order: 2, name: 'Bot Batter 2', dismissal: 'c Keeper b Spinner', runs: 18, balls: 28, fours: 2, sixes: 0, strikeRate: 64.3, group: 'Top Order', estimatedSkillGrade: 'Woeful' }
+          ],
+          bowlers: [],
+          fallOfWickets: []
+        },
+        {
+          teamName: 'HairyBeanBags',
+          inningsNumber: 2,
+          totalRuns: 63,
+          wickets: 1,
+          overs: '9.2',
+          batters: [
+            { order: 1, name: 'Opener 1', dismissal: 'not out', runs: 38, balls: 31, fours: 5, sixes: 1, strikeRate: 122.6, group: 'Top Order', estimatedSkillGrade: 'Elite' }
+          ],
+          bowlers: [],
+          fallOfWickets: []
+        }
+      ]
+    };
+  }
+
+  if (id === '32161738') {
     return {
       matchId: id,
       matchUrl: `https://www.battrick.org/nl/matchinfo.asp?matchID=${id}`,

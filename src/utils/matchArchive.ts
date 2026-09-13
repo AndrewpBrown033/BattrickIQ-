@@ -426,7 +426,9 @@ export function predictTeamLineupAndSkills(
   const avgSeam = avg(sectorSums.seamBowling) || 10;
   const avgSpin = avg(sectorSums.spinBowling) || 6;
   const avgFielding = avg(sectorSums.fielding) || 9;
-  const avgBatstat = Math.round(avg(sectorSums.batstats)) || 140000;
+  const avgBatstat = sectorSums.batstats.length > 0 
+    ? Math.round(avg(sectorSums.batstats)) 
+    : Math.round((avgTopOrder + avgMiddleOrder + avgLowerOrder) * 7);
 
   // Build Player Role Predictions
   const playerRoles: PredictedPlayerRole[] = Object.values(playerStatsMap).map(p => {
