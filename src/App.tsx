@@ -732,7 +732,27 @@ export default function App() {
             <span className="text-[10px] leading-tight">Overview</span>
           </button>
 
-          {/* 2. Squad */}
+          {/* 2. Draw & Matches */}
+          <button
+            type="button"
+            onClick={() => { setActiveTab('fixtures'); setShowMobileMore(false); }}
+            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer border ${
+              activeTab === 'fixtures' && !showMobileMore
+                ? 'bg-indigo-50/90 text-indigo-950 font-bold border-indigo-200/80 shadow-2xs'
+                : 'border-transparent text-slate-600 hover:text-slate-900 font-medium'
+            }`}
+          >
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center mb-0.5 shrink-0 transition-transform ${
+              activeTab === 'fixtures' && !showMobileMore
+                ? 'bg-indigo-100 text-indigo-700 scale-105 shadow-2xs'
+                : 'bg-indigo-50/80 text-indigo-600'
+            }`}>
+              <Calendar className="w-3.5 h-3.5" />
+            </div>
+            <span className="text-[10px] leading-tight">Draw</span>
+          </button>
+
+          {/* 3. Squad */}
           <button
             type="button"
             onClick={() => { setActiveTab('squad'); setShowMobileMore(false); }}
@@ -752,7 +772,7 @@ export default function App() {
             <span className="text-[10px] leading-tight">Squad</span>
           </button>
 
-          {/* 3. Match XI */}
+          {/* 4. Match XI */}
           <button
             type="button"
             onClick={() => { setActiveTab('lineup'); setShowMobileMore(false); }}
@@ -772,44 +792,24 @@ export default function App() {
             <span className="text-[10px] leading-tight whitespace-nowrap">Match XI</span>
           </button>
 
-          {/* 4. Finances */}
+          {/* 5. Scout */}
           <button
             type="button"
-            onClick={() => { setActiveTab('wage'); setShowMobileMore(false); }}
+            onClick={() => { setActiveTab('scout'); setShowMobileMore(false); }}
             className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer border ${
-              activeTab === 'wage' && !showMobileMore
-                ? 'bg-teal-50/90 text-teal-950 font-bold border-teal-200/80 shadow-2xs'
+              activeTab === 'scout' && !showMobileMore
+                ? 'bg-rose-50/90 text-rose-950 font-bold border-rose-200/80 shadow-2xs'
                 : 'border-transparent text-slate-600 hover:text-slate-900 font-medium'
             }`}
           >
             <div className={`w-7 h-7 rounded-lg flex items-center justify-center mb-0.5 shrink-0 transition-transform ${
-              activeTab === 'wage' && !showMobileMore
-                ? 'bg-teal-100 text-teal-700 scale-105 shadow-2xs'
-                : 'bg-teal-50/80 text-teal-600'
+              activeTab === 'scout' && !showMobileMore
+                ? 'bg-rose-100 text-rose-700 scale-105 shadow-2xs'
+                : 'bg-rose-50/80 text-rose-600'
             }`}>
-              <Wallet className="w-3.5 h-3.5" />
+              <Swords className="w-3.5 h-3.5" />
             </div>
-            <span className="text-[10px] leading-tight">Finances</span>
-          </button>
-
-          {/* 5. Ground */}
-          <button
-            type="button"
-            onClick={() => { setActiveTab('stadium'); setShowMobileMore(false); }}
-            className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer border ${
-              activeTab === 'stadium' && !showMobileMore
-                ? 'bg-cyan-50/90 text-cyan-950 font-bold border-cyan-200/80 shadow-2xs'
-                : 'border-transparent text-slate-600 hover:text-slate-900 font-medium'
-            }`}
-          >
-            <div className={`w-7 h-7 rounded-lg flex items-center justify-center mb-0.5 shrink-0 transition-transform ${
-              activeTab === 'stadium' && !showMobileMore
-                ? 'bg-cyan-100 text-cyan-700 scale-105 shadow-2xs'
-                : 'bg-cyan-50/80 text-cyan-600'
-            }`}>
-              <Landmark className="w-3.5 h-3.5" />
-            </div>
-            <span className="text-[10px] leading-tight">Ground</span>
+            <span className="text-[10px] leading-tight">Scout</span>
           </button>
 
           {/* 6. More */}
@@ -817,15 +817,15 @@ export default function App() {
             type="button"
             onClick={() => setShowMobileMore(prev => !prev)}
             className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer border ${
-              showMobileMore || ['coach', 'sync', 'rules', 'admin', 'scout', 'league'].includes(activeTab)
-                ? 'bg-indigo-50/90 text-indigo-950 font-bold border-indigo-200/80 shadow-2xs'
+              showMobileMore || ['coach', 'sync', 'rules', 'admin', 'league', 'wage', 'stadium'].includes(activeTab)
+                ? 'bg-amber-50/90 text-amber-950 font-bold border-amber-200/80 shadow-2xs'
                 : 'border-transparent text-slate-600 hover:text-slate-900 font-medium'
             }`}
           >
             <div className={`w-7 h-7 rounded-lg flex items-center justify-center mb-0.5 shrink-0 transition-transform ${
-              showMobileMore || ['coach', 'sync', 'rules', 'admin', 'scout', 'league'].includes(activeTab)
-                ? 'bg-indigo-100 text-indigo-700 scale-105 shadow-2xs'
-                : 'bg-indigo-50/80 text-indigo-600'
+              showMobileMore || ['coach', 'sync', 'rules', 'admin', 'league', 'wage', 'stadium'].includes(activeTab)
+                ? 'bg-amber-100 text-amber-700 scale-105 shadow-2xs'
+                : 'bg-amber-50/80 text-amber-600'
             }`}>
               <MoreHorizontal className="w-3.5 h-3.5" />
             </div>
@@ -871,19 +871,19 @@ export default function App() {
               <div className="grid grid-cols-2 gap-2.5 mt-4">
                 <button
                   type="button"
-                  onClick={() => { setActiveTab('scout'); setShowMobileMore(false); }}
+                  onClick={() => { setActiveTab('fixtures'); setShowMobileMore(false); }}
                   className={`flex items-center gap-3 p-3 rounded-xl border text-left transition cursor-pointer ${
-                    activeTab === 'scout'
+                    activeTab === 'fixtures'
                       ? 'bg-blue-50/80 border-blue-200 text-blue-900 font-bold'
                       : 'bg-slate-50/70 border-slate-200/80 text-slate-800 hover:bg-slate-100'
                   }`}
                 >
-                  <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
-                    <Swords className="w-4 h-4" />
+                  <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                    <Calendar className="w-4 h-4" />
                   </div>
                   <div>
-                    <div className="text-xs font-bold">Opponent Scout</div>
-                    <div className="text-[10px] text-slate-500">Tactical Analysis</div>
+                    <div className="text-xs font-bold">Fixtures & Draw</div>
+                    <div className="text-[10px] text-slate-500">Draw & Scorecards</div>
                   </div>
                 </button>
 
@@ -920,6 +920,42 @@ export default function App() {
                   <div>
                     <div className="text-xs font-bold">Tactical AI</div>
                     <div className="text-[10px] text-slate-500">Coach Jarvis</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('wage'); setShowMobileMore(false); }}
+                  className={`flex items-center gap-3 p-3 rounded-xl border text-left transition cursor-pointer ${
+                    activeTab === 'wage'
+                      ? 'bg-blue-50/80 border-blue-200 text-blue-900 font-bold'
+                      : 'bg-slate-50/70 border-slate-200/80 text-slate-800 hover:bg-slate-100'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-teal-100 text-teal-700 flex items-center justify-center shrink-0">
+                    <Wallet className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold">Finances</div>
+                    <div className="text-[10px] text-slate-500">Wages & Cashflow</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('stadium'); setShowMobileMore(false); }}
+                  className={`flex items-center gap-3 p-3 rounded-xl border text-left transition cursor-pointer ${
+                    activeTab === 'stadium'
+                      ? 'bg-blue-50/80 border-blue-200 text-blue-900 font-bold'
+                      : 'bg-slate-50/70 border-slate-200/80 text-slate-800 hover:bg-slate-100'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-cyan-100 text-cyan-700 flex items-center justify-center shrink-0">
+                    <Landmark className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold">Stadium Plan</div>
+                    <div className="text-[10px] text-slate-500">Ground Sizing</div>
                   </div>
                 </button>
 

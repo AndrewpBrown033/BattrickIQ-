@@ -16,7 +16,7 @@ interface FixturesDashboardProps {
 }
 
 export default function FixturesDashboard({ setActiveTab }: FixturesDashboardProps) {
-  const { username: battrickUser, password: battrickPass, requireAuth } = useBattrickAuth();
+  const { username: battrickUser, password: battrickPass, requireAuth, openPrompt } = useBattrickAuth();
   const [fixtures, setFixtures] = useState<BattrickGame[]>([]);
   const [filterType, setFilterType] = useState<string>('All');
   const [sectionFilter, setSectionFilter] = useState<'all' | 'upcoming' | 'previous'>('all');
@@ -67,7 +67,12 @@ export default function FixturesDashboard({ setActiveTab }: FixturesDashboardPro
       });
       loadData();
     } catch (e: any) {
-      alert(e.message || `Failed to sync match #${mId}`);
+      const msg = e.message || `Failed to sync match #${mId}`;
+      if (e.isAuthFailure || msg.includes('Session expired') || msg.includes('re-authenticate')) {
+        openPrompt();
+      } else {
+        alert(msg);
+      }
     } finally {
       setSyncingMatchId(null);
     }

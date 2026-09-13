@@ -78,9 +78,16 @@ export function BattrickAuthProvider({ children }: { children: React.ReactNode }
 
       let data: any = {};
       try {
-        data = await res.json();
+        const text = await res.text();
+        if (text) {
+          try {
+            data = JSON.parse(text);
+          } catch {
+            data = { error: `Server returned non-JSON response (HTTP ${res.status}).` };
+          }
+        }
       } catch {
-        // Non-JSON response (e.g. an HTML error page) - fall through to the generic error below
+        // Fall through to response status handling
       }
 
       if (!res.ok || !data.success) {
@@ -92,7 +99,8 @@ export function BattrickAuthProvider({ children }: { children: React.ReactNode }
         } catch {
           // ignore
         }
-        setError(data.error || 'Authentication failed. Please check your Battrick username and password.');
+        const errorMessage = data.error || (res.status === 401 ? 'Invalid Battrick username or password. Please verify your login details.' : `Authentication failed (HTTP ${res.status}). Please check your connection and credentials.`);
+        setError(errorMessage);
         return false;
       }
 

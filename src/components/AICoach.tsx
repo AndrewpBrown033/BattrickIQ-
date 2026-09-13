@@ -208,6 +208,34 @@ export default function AICoach() {
         contextParts.push("\n[Current Ground & Pitch Condition]:\nNo custom pitch or ground page synced yet. Defaulting to a Flat pitch.");
       }
 
+      // Load Historical Match Performance Intelligence
+      const playedMatchesStr = localStorage.getItem('bt_played_matches_store');
+      if (playedMatchesStr) {
+        try {
+          const playedMatches = JSON.parse(playedMatchesStr);
+          if (Array.isArray(playedMatches) && playedMatches.length > 0) {
+            contextParts.push(`\n[Historical Matches Intelligence (${playedMatches.length} stored matches)]:`);
+            const recent = playedMatches.slice(0, 6);
+            recent.forEach((m: any, idx: number) => {
+              const dateStr = m.date || 'Unknown date';
+              const opp = m.opponent || (m.homeTeam === teamName ? m.awayTeam : m.homeTeam) || 'Opponent';
+              const result = m.result ? `(${m.result})` : '';
+              let matchSummaryText = `${idx + 1}. vs ${opp} ${dateStr} ${result}`;
+              if (m.summaryRatings) {
+                const sr = m.summaryRatings;
+                matchSummaryText += ` - Ratings: TopOrder: ${sr.topOrder?.name || 'N/A'}, MiddleOrder: ${sr.middleOrder?.name || 'N/A'}, LowerOrder: ${sr.lowerOrder?.name || 'N/A'}, Seam: ${sr.seamBowling?.name || 'N/A'}, Spin: ${sr.spinBowling?.name || 'N/A'}`;
+              }
+              if (m.batstatDecomposition?.totalBatstat) {
+                matchSummaryText += ` [Batstat: ${m.batstatDecomposition.totalBatstat}]`;
+              }
+              contextParts.push(matchSummaryText);
+            });
+          }
+        } catch (e) {
+          console.error('Error parsing played matches store for Jarvis context:', e);
+        }
+      }
+
       setTeamContext(contextParts.join('\n'));
     };
 
@@ -387,6 +415,7 @@ export default function AICoach() {
   }, [teamContext]);
 
   const templates = [
+    { label: 'Inline Lineup Recommendation', text: 'Recommend the best tactical starting XI lineup from my squad roster based on our player skills, batting order, and previous match performances. Detail the top 5 batsmen, keeper, all-rounders, and bowling attack distribution (spin vs seam), highlighting who should take the new ball and who can cover as the 5th bowler.' },
     { label: 'Opponent Match & Batstat Analysis', text: 'Analyze our opponent match intelligence (Match ID 32554717). How did Battrick grade and group their top order (#1-3), middle order (#4-6), and lower order tail (#7-11)? What does their Batstat number indicate about where their run scoring is concentrated, and how can we exploit their 5th bowler?' },
     { label: 'Roster Trade Advice', text: 'Evaluate my current squad player list, estimate which prospects are worthy of long-term development, and give recommendations on which high-wage players I should consider listing for trade.' },
     { label: 'Coaching Nets Plan', text: 'Please construct a custom coaching net plan (maximum 10 total nets across my players, up to 4 nets maximum per individual) to optimize my team growth and prevent efficiency penalties.' },

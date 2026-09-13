@@ -3583,17 +3583,26 @@ export function generateOpponentScoutDossier(
 // Convert a Battrick qualitative rating text like "wonderful (high)" to a numeric score (0 to 20)
 export function parseRatingTextToScore(ratingText: string): number {
   if (!ratingText) return 0;
-  const lower = ratingText.toLowerCase().trim();
+  const clean = ratingText.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim();
+  const lower = clean.toLowerCase();
   
   let baseScore = 0;
-  for (let i = 0; i < SKILL_LEVELS.length; i++) {
-    if (lower.includes(SKILL_LEVELS[i])) {
-      baseScore = i;
+  let matchedIndex = -1;
+  // Search backwards so compound / longer skill levels don't get misidentified
+  for (let i = SKILL_LEVELS.length - 1; i >= 0; i--) {
+    const word = SKILL_LEVELS[i];
+    const regex = new RegExp(`(^|[^a-z])${word}([^a-z]|$)`, 'i');
+    if (regex.test(lower)) {
+      matchedIndex = i;
       break;
     }
   }
 
-  // Handle modifiers: (low), (high), (superb), etc.
+  if (matchedIndex >= 0) {
+    baseScore = matchedIndex;
+  }
+
+  // Handle modifiers: (low), (high), (superb), (abysmal)
   if (lower.includes('(low)')) {
     baseScore = Math.max(0, baseScore - 0.3);
   } else if (lower.includes('(high)')) {
@@ -3608,7 +3617,7 @@ export function parseRatingTextToScore(ratingText: string): number {
   return parseFloat(baseScore.toFixed(1));
 }
 
-// Parse Reporter's Summary ratings block
+// Parse Reporter's Summary ratings block from HTML tables or raw plain text
 export function parseBattrickMatchSummaryText(rawText: string): {
   homeRatings?: MatchSummaryRatings;
   awayRatings?: MatchSummaryRatings;
@@ -3618,8 +3627,6 @@ export function parseBattrickMatchSummaryText(rawText: string): {
   toss?: string;
   result?: string;
 } {
-  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
-  
   let homeRatings: Partial<MatchSummaryRatings> = {};
   let awayRatings: Partial<MatchSummaryRatings> = {};
   let pitch: PitchType = 'Flat';
@@ -3627,6 +3634,62 @@ export function parseBattrickMatchSummaryText(rawText: string): {
   let crowd = '';
   let toss = '';
   let result = '';
+
+  // 1. Table-based extraction if rawText contains HTML <tr> elements
+  if (rawText.includes('<tr') || rawText.includes('<td') || rawText.includes('<table')) {
+    const trMatches = rawText.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+    for (const tr of trMatches) {
+      const cellMatches = tr.match(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi) || [];
+      const cells: string[] = [];
+      for (const cell of cellMatches) {
+        const text = cell
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/gi, ' ')
+          .replace(/&amp;/gi, '&')
+          .replace(/\s+/g, ' ')
+          .trim();
+        cells.push(text);
+      }
+
+      if (cells.length >= 2) {
+        const rowLabel = cells[0].toLowerCase();
+        const homeVal = cells[1];
+        const awayVal = cells.length >= 3 ? cells[2] : '';
+
+        if (rowLabel.includes('top order')) {
+          if (homeVal) homeRatings.topOrder = homeVal;
+          if (awayVal) awayRatings.topOrder = awayVal;
+        } else if (rowLabel.includes('middle order')) {
+          if (homeVal) homeRatings.middleOrder = homeVal;
+          if (awayVal) awayRatings.middleOrder = awayVal;
+        } else if (rowLabel.includes('lower order')) {
+          if (homeVal) homeRatings.lowerOrder = homeVal;
+          if (awayVal) awayRatings.lowerOrder = awayVal;
+        } else if (rowLabel.includes('seam bowling')) {
+          if (homeVal) homeRatings.seamBowling = homeVal;
+          if (awayVal) awayRatings.seamBowling = awayVal;
+        } else if (rowLabel.includes('spin bowling')) {
+          if (homeVal) homeRatings.spinBowling = homeVal;
+          if (awayVal) awayRatings.spinBowling = awayVal;
+        } else if (rowLabel.includes('fielding')) {
+          if (homeVal) homeRatings.fielding = homeVal;
+          if (awayVal) awayRatings.fielding = awayVal;
+        } else if (rowLabel.includes('batstat') || rowLabel.includes('bat stats')) {
+          const parseNum = (s: string) => {
+            const m = s.replace(/,/g, '').match(/\d{4,8}/);
+            return m ? parseInt(m[0], 10) : undefined;
+          };
+          const homeNum = parseNum(homeVal);
+          const awayNum = parseNum(awayVal);
+          if (homeNum) homeRatings.batstat = homeNum;
+          if (awayNum) awayRatings.batstat = awayNum;
+        }
+      }
+    }
+  }
+
+  // 2. Line-by-line fallback & environmental conditions (pitch, weather, crowd, toss, result)
+  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -3658,23 +3721,22 @@ export function parseBattrickMatchSummaryText(rawText: string): {
 
     // Toss
     if (lower.includes('toss:') || lower.includes('won the toss')) {
-      toss = line;
+      toss = line.replace(/<[^>]+>/g, '').trim();
     }
 
     // Result
     if (lower.includes('won by') || lower.includes('match tied') || lower.includes('drawn')) {
-      result = line;
+      result = line.replace(/<[^>]+>/g, '').trim();
     }
 
-    // Parse ratings lines: "Top Order: sensational (high)     Top Order: wonderful (low)" or single team lines
+    // Line-based rating fallback if not populated by table parsing
     const parseRatingLine = (label: string) => {
       if (lower.startsWith(label.toLowerCase() + ':') || lower.includes(label.toLowerCase() + ':')) {
-        const parts = line.split(new RegExp(label + ':', 'i')).map(p => p.trim()).filter(Boolean);
+        const cleanLine = line.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ');
+        const parts = cleanLine.split(new RegExp(label + ':', 'i')).map(p => p.trim()).filter(Boolean);
         if (parts.length >= 2) {
-          // Both teams on same line
           return [parts[0], parts[1]];
         } else if (parts.length === 1) {
-          // Single team or colon-separated tabbed line
           const subParts = parts[0].split(/\t+|\s{3,}/);
           if (subParts.length >= 2) {
             return [subParts[0].trim(), subParts[1].trim()];
@@ -3685,56 +3747,64 @@ export function parseBattrickMatchSummaryText(rawText: string): {
       return null;
     };
 
-    // Top Order
-    const topOrderParts = parseRatingLine('Top Order');
-    if (topOrderParts) {
-      if (topOrderParts[0]) homeRatings.topOrder = topOrderParts[0];
-      if (topOrderParts[1]) awayRatings.topOrder = topOrderParts[1];
+    if (!homeRatings.topOrder) {
+      const topOrderParts = parseRatingLine('Top Order');
+      if (topOrderParts) {
+        if (topOrderParts[0]) homeRatings.topOrder = topOrderParts[0];
+        if (topOrderParts[1]) awayRatings.topOrder = topOrderParts[1];
+      }
     }
 
-    // Middle Order
-    const middleOrderParts = parseRatingLine('Middle Order');
-    if (middleOrderParts) {
-      if (middleOrderParts[0]) homeRatings.middleOrder = middleOrderParts[0];
-      if (middleOrderParts[1]) awayRatings.middleOrder = middleOrderParts[1];
+    if (!homeRatings.middleOrder) {
+      const middleOrderParts = parseRatingLine('Middle Order');
+      if (middleOrderParts) {
+        if (middleOrderParts[0]) homeRatings.middleOrder = middleOrderParts[0];
+        if (middleOrderParts[1]) awayRatings.middleOrder = middleOrderParts[1];
+      }
     }
 
-    // Lower Order
-    const lowerOrderParts = parseRatingLine('Lower Order');
-    if (lowerOrderParts) {
-      if (lowerOrderParts[0]) homeRatings.lowerOrder = lowerOrderParts[0];
-      if (lowerOrderParts[1]) awayRatings.lowerOrder = lowerOrderParts[1];
+    if (!homeRatings.lowerOrder) {
+      const lowerOrderParts = parseRatingLine('Lower Order');
+      if (lowerOrderParts) {
+        if (lowerOrderParts[0]) homeRatings.lowerOrder = lowerOrderParts[0];
+        if (lowerOrderParts[1]) awayRatings.lowerOrder = lowerOrderParts[1];
+      }
     }
 
-    // Seam Bowling
-    const seamParts = parseRatingLine('Seam Bowling');
-    if (seamParts) {
-      if (seamParts[0]) homeRatings.seamBowling = seamParts[0];
-      if (seamParts[1]) awayRatings.seamBowling = seamParts[1];
+    if (!homeRatings.seamBowling) {
+      const seamParts = parseRatingLine('Seam Bowling');
+      if (seamParts) {
+        if (seamParts[0]) homeRatings.seamBowling = seamParts[0];
+        if (seamParts[1]) awayRatings.seamBowling = seamParts[1];
+      }
     }
 
-    // Spin Bowling
-    const spinParts = parseRatingLine('Spin Bowling');
-    if (spinParts) {
-      if (spinParts[0]) homeRatings.spinBowling = spinParts[0];
-      if (spinParts[1]) awayRatings.spinBowling = spinParts[1];
+    if (!homeRatings.spinBowling) {
+      const spinParts = parseRatingLine('Spin Bowling');
+      if (spinParts) {
+        if (spinParts[0]) homeRatings.spinBowling = spinParts[0];
+        if (spinParts[1]) awayRatings.spinBowling = spinParts[1];
+      }
     }
 
-    // Fielding
-    const fieldingParts = parseRatingLine('Fielding');
-    if (fieldingParts) {
-      if (fieldingParts[0]) homeRatings.fielding = fieldingParts[0];
-      if (fieldingParts[1]) awayRatings.fielding = fieldingParts[1];
+    if (!homeRatings.fielding) {
+      const fieldingParts = parseRatingLine('Fielding');
+      if (fieldingParts) {
+        if (fieldingParts[0]) homeRatings.fielding = fieldingParts[0];
+        if (fieldingParts[1]) awayRatings.fielding = fieldingParts[1];
+      }
     }
 
-    // Batstats
-    if (lower.includes('batstat') || lower.includes('bat stats') || lower.includes('batstats:')) {
-      const nums = line.match(/[\d,]{4,}/g);
-      if (nums && nums.length >= 2) {
-        homeRatings.batstat = parseInt(nums[0].replace(/,/g, ''), 10);
-        awayRatings.batstat = parseInt(nums[1].replace(/,/g, ''), 10);
-      } else if (nums && nums.length === 1) {
-        homeRatings.batstat = parseInt(nums[0].replace(/,/g, ''), 10);
+    if (!homeRatings.batstat && (lower.includes('batstat') || lower.includes('bat stats') || lower.includes('batstats:'))) {
+      // Isolate numbers that are typically batstats (5-7 digits, e.g., 142,850 or 142850)
+      // Exclude numbers if they appear immediately after 'matchid=' or '#' or 'match #'
+      const cleanedLine = line.replace(/match\s*id\D*\d+/gi, '').replace(/#\d+/g, '');
+      const numMatches = cleanedLine.match(/\b\d{1,3}(?:,\d{3})+|\b\d{5,7}\b/g);
+      if (numMatches && numMatches.length >= 2) {
+        homeRatings.batstat = parseInt(numMatches[0].replace(/,/g, ''), 10);
+        awayRatings.batstat = parseInt(numMatches[1].replace(/,/g, ''), 10);
+      } else if (numMatches && numMatches.length === 1) {
+        homeRatings.batstat = parseInt(numMatches[0].replace(/,/g, ''), 10);
       }
     }
   }

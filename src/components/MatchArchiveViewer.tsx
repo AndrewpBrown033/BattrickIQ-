@@ -306,6 +306,30 @@ export default function MatchArchiveViewer({ fixtures, setActiveTab, onMatchSele
     }
   };
 
+  const handleRefetchCurrentMatch = async (matchId: string) => {
+    if (!requireAuth(`re-fetch Match #${matchId}`)) {
+      return;
+    }
+    setManualFetching(true);
+    setManualError(null);
+    try {
+      const parsed = await fetchAndStoreSingleMatch(matchId, {
+        username: battrickUser,
+        password: battrickPass
+      });
+      setSelectedMatchId(parsed.matchId);
+      loadMatchesFromStorage();
+    } catch (e: any) {
+      const msg = e.message || `Could not re-fetch match #${matchId}`;
+      setManualError(msg);
+      if (e.isAuthFailure || msg.includes('Session expired') || msg.includes('re-authenticate')) {
+        openPrompt();
+      }
+    } finally {
+      setManualFetching(false);
+    }
+  };
+
   const handleExportMatchesJson = () => {
     const jsonStr = JSON.stringify(storedMatches, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json' });
@@ -786,14 +810,14 @@ export default function MatchArchiveViewer({ fixtures, setActiveTab, onMatchSele
                           setSelectedMatchId(m.matchId);
                           setSelectedInningsIdx(0);
                         }}
-                        className={`py-3 px-3 rounded-xl cursor-pointer transition flex flex-col gap-1 ${
+                        className={`py-3 px-3 rounded-xl cursor-pointer transition flex flex-col gap-1.5 ${
                           isSelected 
-                            ? 'bg-indigo-50 border border-indigo-200 shadow-2xs' 
-                            : 'hover:bg-slate-50'
+                            ? 'bg-indigo-50/90 border border-indigo-200 shadow-2xs ring-1 ring-indigo-300' 
+                            : 'hover:bg-slate-50 border border-slate-100'
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-mono font-bold text-slate-400">
+                          <span className="text-[10px] font-mono font-bold text-slate-500">
                             #{m.matchId} • {m.matchType}
                           </span>
                           <span className="text-[10px] font-mono font-bold text-indigo-700">
@@ -805,11 +829,33 @@ export default function MatchArchiveViewer({ fixtures, setActiveTab, onMatchSele
                           {m.homeTeam} v {m.awayTeam}
                         </div>
 
-                        <div className="flex items-center justify-between text-[11px] text-slate-500">
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
                           <span>{m.pitch} • {m.weather}</span>
-                          <span className="text-emerald-700 font-mono font-semibold">
+                          <span className="text-emerald-700 font-mono font-bold">
                             {m.homeRatings?.batstat ? `${m.homeRatings.batstat.toLocaleString()} pts` : ''}
                           </span>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 mt-0.5">
+                          <span className="text-[10px] font-mono font-medium text-slate-500 truncate max-w-[150px]">
+                            {m.result || 'Match Archived'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedMatchId(m.matchId);
+                              setSelectedInningsIdx(0);
+                            }}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold transition ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white shadow-2xs'
+                                : 'bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200'
+                            }`}
+                          >
+                            <FileText className="w-3 h-3" />
+                            {isSelected ? 'Viewing Summary' : 'Open Local Summary'}
+                          </button>
                         </div>
                       </div>
                     );
@@ -856,6 +902,16 @@ export default function MatchArchiveViewer({ fixtures, setActiveTab, onMatchSele
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap self-start sm:self-center">
+                      <button
+                        type="button"
+                        disabled={manualFetching}
+                        onClick={() => handleRefetchCurrentMatch(activeSelectedMatch.matchId)}
+                        className="text-xs font-mono font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition cursor-pointer"
+                        title="Re-fetch scorecard and reporter summary from Battrick to refresh cached Batstats"
+                      >
+                        <RotateCw className={`w-3.5 h-3.5 ${manualFetching ? 'animate-spin' : ''}`} />
+                        <span>Re-sync Summary</span>
+                      </button>
                       <a
                         href={activeSelectedMatch.matchUrl}
                         target="_blank"

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { SKILL_LEVELS, LineupPlayer, BattrickPlayer } from '../types';
-import { Users, Shield, Copy, Check, Info, ChevronDown, ChevronUp, RefreshCw, UserCheck } from 'lucide-react';
+import { Users, Shield, Copy, Check, Info, ChevronDown, ChevronUp, RefreshCw, UserCheck, Sparkles } from 'lucide-react';
 
 const DEFAULT_LINEUP: LineupPlayer[] = [
   { id: '1', name: 'A. Alistair', role: 'Batter', batting: 8, bowling: 0, keeping: 0, fielding: 5, stamina: 6, experience: 7, concentration: 8, consistency: 6, form: 7, fitness: 10, bowlingType: 'None', order: 1 },
@@ -804,6 +804,20 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
             >
               <UserCheck className="w-3.5 h-3.5" />
               Auto-Select Best XI
+            </button>
+          )}
+
+          {setActiveTab && (
+            <button
+              id="btn-jarvis-lineup-recommend"
+              onClick={() => {
+                localStorage.setItem('bt_coach_initial_query', 'Please evaluate our squad player skills, batting order, and previous match performances, and recommend the best tactical starting XI lineup. Detail who should open, who anchors the middle order, keeper selection, and who takes the new ball versus covering the 5th bowler.');
+                setActiveTab('coach');
+              }}
+              className="px-3.5 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-semibold shadow-sm flex items-center gap-1.5 transition"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+              Ask Jarvis Recommendation
             </button>
           )}
 
