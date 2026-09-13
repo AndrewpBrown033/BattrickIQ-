@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { BattrickGame } from '../types';
+import { BattrickGame, DiaryEntry, FinancialProjection } from '../types';
 import { getBattrickDateForString, getCurrentBattrickDate, isGameInNext7Days, parseGameDateToTimestamp, getNext7DaysDateRange } from '../utils/history';
 import { getStoredMatches, fetchAndStoreSingleMatch } from '../utils/matchArchive';
 import MatchArchiveViewer from './MatchArchiveViewer';
@@ -10,7 +10,7 @@ import {
   Calendar, Search, MapPin, Trophy, Shield, Clock, Swords, 
   ArrowUpRight, FileText, BarChart3, MessageSquare, Edit3, Filter,
   CheckCircle, XCircle, HelpCircle, ExternalLink, Zap, RotateCw, Database,
-  Sparkles, Layers, Bot
+  Sparkles, Layers, Bot, Wallet, TrendingUp, TrendingDown, PoundSterling
 } from 'lucide-react';
 
 interface FixturesDashboardProps {
@@ -26,6 +26,11 @@ export default function FixturesDashboard({ setActiveTab, onSelectScoutTeam }: F
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [clubName, setClubName] = useState<string>('My Club');
   const [activeSubTab, setActiveSubTab] = useState<'draw' | 'archive' | 'predictor'>('draw');
+  // Synced club ledger (diary.asp) & the per-fixture projections built from it -
+  // this is what actually tells us the money made per game and the real
+  // running weekly total, as opposed to the single-snapshot finance figures.
+  const [diary, setDiary] = useState<DiaryEntry[]>([]);
+  const [projections, setProjections] = useState<FinancialProjection[]>([]);
   const [selectedGameForDetail, setSelectedGameForDetail] = useState<BattrickGame | null>(null);
   
   // Track stored matches map for instant badge indicator
@@ -49,6 +54,26 @@ export default function FixturesDashboard({ setActiveTab, onSelectScoutTeam }: F
     if (team && team !== 'My Battrick IQ Club') setClubName(team);
 
     setStoredMatchMap(getStoredMatches());
+
+    const savedDiary = localStorage.getItem('bt_diary');
+    if (savedDiary) {
+      try {
+        const parsedDiary = JSON.parse(savedDiary);
+        if (Array.isArray(parsedDiary)) setDiary(parsedDiary);
+      } catch (e) {
+        console.error('Failed to parse diary', e);
+      }
+    }
+
+    const savedProjections = localStorage.getItem('bt_financial_projections');
+    if (savedProjections) {
+      try {
+        const parsedProjections = JSON.parse(savedProjections);
+        if (Array.isArray(parsedProjections)) setProjections(parsedProjections);
+      } catch (e) {
+        console.error('Failed to parse financial projections', e);
+      }
+    }
   };
 
   useEffect(() => {
@@ -145,6 +170,47 @@ export default function FixturesDashboard({ setActiveTab, onSelectScoutTeam }: F
     const tied = fixtures.filter(f => f.result && f.result.toLowerCase().includes('tie')).length;
     return { total, upcoming, won, lost, tied };
   }, [fixtures]);
+
+  // Per-fixture financial projection, keyed by matchId - actual gate receipts
+  // for games with a synced diary entry, projected for games without one yet.
+  const projectionsByMatchId = useMemo(() => {
+    const map = new Map<string, FinancialProjection>();
+    projections.forEach(p => { if (p.matchId) map.set(p.matchId, p); });
+    return map;
+  }, [projections]);
+
+  // Season ledger totals, built directly from the synced diary (all income &
+  // outgoing entries) rather than the single weekly finance snapshot - this
+  // is the actual running total of money in vs money out.
+  const ledgerSummary = useMemo(() => {
+    if (diary.length === 0) return null;
+
+    const totalIncome = diary.reduce((sum, e) => sum + (e.amount > 0 ? e.amount : 0), 0);
+    const totalExpenses = diary.reduce((sum, e) => sum + (e.amount < 0 ? Math.abs(e.amount) : 0), 0);
+
+    // Diary entries come in as parsed (usually oldest-first); sort by week
+    // (falling back to array order) so the running total reads chronologically.
+    const sorted = [...diary].sort((a, b) => (a.week ?? 0) - (b.week ?? 0));
+    let runningTotal = 0;
+    const withRunningTotal = sorted.map(e => {
+      runningTotal += e.amount;
+      return { ...e, runningTotal };
+    });
+    const latest = withRunningTotal[withRunningTotal.length - 1];
+    // Prefer the site's own reported running balance for the "current" figure
+    // when we have one; fall back to our own cumulative sum of amounts.
+    const currentBalance = latest?.balance ?? latest?.runningTotal ?? 0;
+
+    return {
+      totalIncome,
+      totalExpenses,
+      net: totalIncome - totalExpenses,
+      currentBalance,
+      entryCount: diary.length,
+      lastEntryDate: latest?.date,
+      weeklyRunningTotals: withRunningTotal
+    };
+  }, [diary]);
 
   const getResultBadge = (result?: string) => {
     if (!result || result === 'Upcoming') {
@@ -375,6 +441,61 @@ export default function FixturesDashboard({ setActiveTab, onSelectScoutTeam }: F
             </div>
           </div>
 
+          {/* Season Ledger - built from the synced diary (bt_diary), not the
+              single-snapshot finance numbers, so it reflects real money in vs
+              money out per week. */}
+          {ledgerSummary && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 bg-slate-100 text-slate-700 rounded-lg">
+                    <Wallet className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h3 className="font-serif text-base font-bold text-slate-900">Season Ledger</h3>
+                    <p className="text-[11px] text-slate-500">
+                      Running total from {ledgerSummary.entryCount} synced diary {ledgerSummary.entryCount === 1 ? 'entry' : 'entries'}
+                      {ledgerSummary.lastEntryDate ? ` · last entry ${ledgerSummary.lastEntryDate}` : ''}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5">
+                  <span className="text-[10px] uppercase font-mono text-emerald-600 font-bold flex items-center gap-1">
+                    <TrendingUp className="w-3 h-3" /> Money In
+                  </span>
+                  <span className="text-sm font-bold text-emerald-700 font-mono">
+                    +&pound;{ledgerSummary.totalIncome.toLocaleString()}
+                  </span>
+                </div>
+                <div className="bg-rose-50 border border-rose-200 rounded-xl px-3 py-2.5">
+                  <span className="text-[10px] uppercase font-mono text-rose-600 font-bold flex items-center gap-1">
+                    <TrendingDown className="w-3 h-3" /> Money Out
+                  </span>
+                  <span className="text-sm font-bold text-rose-700 font-mono">
+                    -&pound;{ledgerSummary.totalExpenses.toLocaleString()}
+                  </span>
+                </div>
+                <div className={`rounded-xl px-3 py-2.5 border ${ledgerSummary.net >= 0 ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200'}`}>
+                  <span className={`text-[10px] uppercase font-mono font-bold flex items-center gap-1 ${ledgerSummary.net >= 0 ? 'text-blue-600' : 'text-amber-600'}`}>
+                    <PoundSterling className="w-3 h-3" /> Net (In &minus; Out)
+                  </span>
+                  <span className={`text-sm font-bold font-mono ${ledgerSummary.net >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>
+                    {ledgerSummary.net >= 0 ? '+' : '-'}&pound;{Math.abs(ledgerSummary.net).toLocaleString()}
+                  </span>
+                </div>
+                <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5">
+                  <span className="text-[10px] uppercase font-mono text-slate-500 font-bold block">Current Balance</span>
+                  <span className="text-sm font-bold text-slate-800 font-mono">
+                    &pound;{ledgerSummary.currentBalance.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Fixtures Table Card */}
           <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
             {fixtures.length === 0 ? (
@@ -410,6 +531,7 @@ export default function FixturesDashboard({ setActiveTab, onSelectScoutTeam }: F
                       <th className="py-3 px-4 text-xs font-mono font-bold uppercase tracking-wider">Date &amp; Time</th>
                       <th className="py-3 px-4 text-xs font-mono font-bold uppercase tracking-wider">Matchup</th>
                       <th className="py-3 px-4 text-xs font-mono font-bold uppercase tracking-wider">Format / League</th>
+                      <th className="py-3 px-4 text-xs font-mono font-bold uppercase tracking-wider">Match Finances</th>
                       <th className="py-3 px-4 text-xs font-mono font-bold uppercase tracking-wider">Match Links &amp; Tools</th>
                       <th className="py-3 px-4 text-xs font-mono font-bold uppercase tracking-wider text-right">Result &amp; Archive</th>
                     </tr>
@@ -591,6 +713,37 @@ export default function FixturesDashboard({ setActiveTab, onSelectScoutTeam }: F
                                 </span>
                               )}
                             </div>
+                          </td>
+
+                          {/* Match Finances - actual gate receipts once synced from the
+                              diary/ledger, or a projected figure for games not played yet */}
+                          <td className="py-3.5 px-4 whitespace-nowrap align-top">
+                            {(() => {
+                              const proj = game.matchId ? projectionsByMatchId.get(game.matchId) : undefined;
+                              if (!proj) {
+                                return <span className="text-[11px] text-slate-300 font-mono">&mdash;</span>;
+                              }
+                              if (proj.actualGateReceipts != null) {
+                                return (
+                                  <div className="flex flex-col gap-0.5" title="Actual gate receipts from your synced diary">
+                                    <span className="text-xs font-bold text-emerald-700 font-mono">
+                                      +&pound;{proj.actualGateReceipts.toLocaleString()}
+                                    </span>
+                                    <span className="text-[10px] text-emerald-600 font-mono uppercase tracking-wide">Actual</span>
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div className="flex flex-col gap-0.5" title={`Projected from ${proj.basedOnEntries} similar synced ${proj.basedOnEntries === 1 ? 'entry' : 'entries'}`}>
+                                  <span className="text-xs font-bold text-slate-500 font-mono">
+                                    ~&pound;{proj.projectedGateReceipts.toLocaleString()}
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wide">
+                                    Projected &middot; {proj.confidence}
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </td>
 
                           {/* Match Links & Action Tools */}
