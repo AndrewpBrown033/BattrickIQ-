@@ -466,6 +466,11 @@ export default function FixturesDashboard({ setActiveTab, onSelectScoutTeam }: F
                               const homeId = game.homeTeamId || (game.venue === 'Away' ? game.opponentTeamId : undefined) || getKnownTeamIdByName(homeName) || '';
                               const awayId = game.awayTeamId || (game.venue === 'Home' ? game.opponentTeamId : undefined) || getKnownTeamIdByName(awayName) || '';
 
+                              // My team is whichever side matches this fixture's venue - never the scout target.
+                              const isHomeMyTeam = game.venue === 'Home';
+                              const isAwayMyTeam = game.venue === 'Away';
+                              const myTeamId = isHomeMyTeam ? homeId : awayId;
+
                               const handleScoutTeam = (teamName: string, teamId: string, targetVenue?: 'Home' | 'Away') => {
                                 const resolvedTeamId = teamId || getKnownTeamIdByName(teamName) || '';
                                 localStorage.setItem('bt_scout_target_team', JSON.stringify({
@@ -473,7 +478,8 @@ export default function FixturesDashboard({ setActiveTab, onSelectScoutTeam }: F
                                   teamId: resolvedTeamId,
                                   matchId: game.matchId,
                                   type: game.type,
-                                  venue: targetVenue || game.venue
+                                  venue: targetVenue || game.venue,
+                                  myTeamId
                                 }));
                                 window.dispatchEvent(new CustomEvent('bt_scout_target_updated', {
                                   detail: { teamName, teamId: resolvedTeamId }
@@ -488,31 +494,49 @@ export default function FixturesDashboard({ setActiveTab, onSelectScoutTeam }: F
                               return (
                                 <div className="flex flex-col gap-1">
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleScoutTeam(homeName, homeId, 'Home')}
-                                      className={`text-sm font-bold transition hover:text-indigo-600 hover:underline cursor-pointer flex items-center gap-1.5 text-left ${
-                                        game.venue === 'Home' ? 'text-blue-900 font-extrabold' : 'text-slate-800'
-                                      }`}
-                                      title={`Click to scout ${homeName}${homeId ? ` (Team ID: ${homeId})` : ''}`}
-                                    >
-                                      <span>{homeName}</span>
-                                      {homeId && <span className="text-[10.5px] font-mono text-slate-400 font-medium">({homeId})</span>}
-                                    </button>
+                                    {isHomeMyTeam ? (
+                                      <span
+                                        className="text-sm font-extrabold text-blue-900 flex items-center gap-1.5"
+                                        title={`${homeName} is your team${homeId ? ` (Team ID: ${homeId})` : ''} \u2014 not scoutable`}
+                                      >
+                                        <span>{homeName}</span>
+                                        {homeId && <span className="text-[10.5px] font-mono text-slate-400 font-medium">({homeId})</span>}
+                                        <span className="text-[9px] uppercase tracking-wider font-bold text-blue-500">You</span>
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleScoutTeam(homeName, homeId, 'Home')}
+                                        className="text-sm font-bold text-slate-800 transition hover:text-indigo-600 hover:underline cursor-pointer flex items-center gap-1.5 text-left"
+                                        title={`Click to scout ${homeName}${homeId ? ` (Team ID: ${homeId})` : ''}`}
+                                      >
+                                        <span>{homeName}</span>
+                                        {homeId && <span className="text-[10.5px] font-mono text-slate-400 font-medium">({homeId})</span>}
+                                      </button>
+                                    )}
                                     
                                     <span className="text-xs text-slate-400 font-mono font-bold">v</span>
                                     
-                                    <button
-                                      type="button"
-                                      onClick={() => handleScoutTeam(awayName, awayId, 'Away')}
-                                      className={`text-sm font-bold transition hover:text-indigo-600 hover:underline cursor-pointer flex items-center gap-1.5 text-left ${
-                                        game.venue === 'Away' ? 'text-blue-900 font-extrabold' : 'text-slate-800'
-                                      }`}
-                                      title={`Click to scout ${awayName}${awayId ? ` (Team ID: ${awayId})` : ''}`}
-                                    >
-                                      <span>{awayName}</span>
-                                      {awayId && <span className="text-[10.5px] font-mono text-slate-400 font-medium">({awayId})</span>}
-                                    </button>
+                                    {isAwayMyTeam ? (
+                                      <span
+                                        className="text-sm font-extrabold text-blue-900 flex items-center gap-1.5"
+                                        title={`${awayName} is your team${awayId ? ` (Team ID: ${awayId})` : ''} \u2014 not scoutable`}
+                                      >
+                                        <span>{awayName}</span>
+                                        {awayId && <span className="text-[10.5px] font-mono text-slate-400 font-medium">({awayId})</span>}
+                                        <span className="text-[9px] uppercase tracking-wider font-bold text-blue-500">You</span>
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleScoutTeam(awayName, awayId, 'Away')}
+                                        className="text-sm font-bold text-slate-800 transition hover:text-indigo-600 hover:underline cursor-pointer flex items-center gap-1.5 text-left"
+                                        title={`Click to scout ${awayName}${awayId ? ` (Team ID: ${awayId})` : ''}`}
+                                      >
+                                        <span>{awayName}</span>
+                                        {awayId && <span className="text-[10.5px] font-mono text-slate-400 font-medium">({awayId})</span>}
+                                      </button>
+                                    )}
 
                                     {game.isBot && (
                                       <span className="text-[9px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.2 rounded" title="This team is unmanaged (bot)">

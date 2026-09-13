@@ -26,8 +26,8 @@ export default function SummaryDashboard({ setActiveTab, onSelectScoutTeam }: Su
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<CustomUser | null>(getCustomUser());
-  const [isCloudSyncing, setIsCloudSyncing] = useState<boolean>(false);
-  const [hasInitialSyncCompleted, setHasInitialSyncCompleted] = useState<boolean>(true);
+  const [isCloudSyncing, setIsCloudSyncing] = useState<boolean>(true);
+  const [hasInitialSyncCompleted, setHasInitialSyncCompleted] = useState<boolean>(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
 
   useEffect(() => {
@@ -574,7 +574,7 @@ Please analyze my club details and explain:
                 {getSeasonWeekDisplay()}
               </span>
 
-              {(isCloudSyncing || refreshing) ? (
+              {isPendingSync ? (
                 <span className="text-[11px] font-mono font-bold text-amber-200 bg-amber-900/60 border border-amber-500/40 px-3 py-1 rounded-full flex items-center gap-1.5">
                   <RefreshCw className="w-3 h-3 animate-spin text-amber-300" />
                   Syncing Live Data...
