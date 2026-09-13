@@ -13,7 +13,7 @@ import {
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend
 } from 'recharts';
-import { generateRealisticHistory, getWeeklyChanges } from '../utils/history';
+import { generateRealisticHistory, getWeeklyChanges, getCurrentBattrickDate } from '../utils/history';
 import { getPlayerStats } from '../utils/playerStats';
 import PlayerSkillProjectionChart from './PlayerSkillProjectionChart';
 
@@ -274,11 +274,12 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
   // Prediction panel (Skills tab) and the projected bars appended to the
   // Rating & Salary Growth chart (History tab), so the two stay consistent.
   const trainingForecast = (() => {
+    const today = getCurrentBattrickDate();
     const lastHistory = player.history && player.history.length > 0
       ? player.history[player.history.length - 1]
-      : { season: 65, week: 10 };
-    const currentSeason = lastHistory.season || 65;
-    const currentWeek = lastHistory.week || 10;
+      : today;
+    const currentSeason = lastHistory.season || today.season;
+    const currentWeek = lastHistory.week || today.week;
 
     function addWeeks(s: number, w: number, add: number): { season: number, week: number } {
       const roundedAdd = Math.round(add);

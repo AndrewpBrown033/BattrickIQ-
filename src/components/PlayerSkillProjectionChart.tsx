@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { BattrickPlayer, getSkillLabel } from '../types';
 import { estimateWeeksToNextLevel } from '../parser';
+import { getCurrentBattrickDate } from '../utils/history';
 import {
   ResponsiveContainer,
   LineChart,
@@ -224,11 +225,12 @@ export default function PlayerSkillProjectionChart({
 
   // Determine current baseline season and week
   const currentSeasonWeek = useMemo(() => {
+    const today = getCurrentBattrickDate();
     if (chronologicalHistory.length > 0) {
       const last = chronologicalHistory[chronologicalHistory.length - 1];
-      return { season: last.season || 65, week: last.week || 10 };
+      return { season: last.season || today.season, week: last.week || today.week };
     }
-    return { season: 65, week: 10 };
+    return today;
   }, [chronologicalHistory]);
 
   // Construct chart timeline merging actual historical snapshots + future projections

@@ -21,13 +21,53 @@ export interface PlayerHistoryEntry {
   note?: string;
 }
 
+export function getCurrentBattrickDate(): { season: number; week: number } {
+  // Season 69, Week 1 started on Monday, July 27, 2026 (UTC)
+  const anchorDate = Date.UTC(2026, 6, 27); // Month is 0-indexed, so 6 is July
+  const now = Date.now();
+  
+  const daysSinceAnchor = Math.floor((now - anchorDate) / (1000 * 60 * 60 * 24));
+  const weeksSinceAnchor = Math.floor(daysSinceAnchor / 7);
+  
+  const season = 69 + Math.floor(weeksSinceAnchor / 16);
+  const week = ((weeksSinceAnchor % 16) + 16) % 16 + 1;
+  
+  return { season, week };
+}
+
+export function getBattrickDateForString(dateStr: string): { season: number; week: number } | null {
+  if (!dateStr) return null;
+  let parsedDate = NaN;
+  
+  if (dateStr.includes('/')) {
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+       parsedDate = Date.UTC(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+    }
+  } else {
+    parsedDate = Date.parse(dateStr);
+  }
+
+  if (isNaN(parsedDate)) return null;
+
+  const anchorDate = Date.UTC(2026, 6, 27);
+  // Add 12 hours to safely put it in the middle of the day before division
+  const daysSinceAnchor = Math.floor((parsedDate + (12*60*60*1000) - anchorDate) / (1000 * 60 * 60 * 24));
+  const weeksSinceAnchor = Math.floor(daysSinceAnchor / 7);
+  
+  const season = 69 + Math.floor(weeksSinceAnchor / 16);
+  const week = ((weeksSinceAnchor % 16) + 16) % 16 + 1;
+  
+  return { season, week };
+}
+
 // Generate beautiful, realistic, historical weekly logs for a player going back 15 weeks
 export function generateRealisticHistory(player: BattrickPlayer): PlayerHistoryEntry[] {
   const history: PlayerHistoryEntry[] = [];
   
-  // Let's assume current week is Season 65, Week 10
-  const currentSeason = 65;
-  const currentWeek = 10;
+  const battrickDate = getCurrentBattrickDate();
+  const currentSeason = battrickDate.season;
+  const currentWeek = battrickDate.week;
   
   // Copy current skills to start reverse simulation
   const tempSkills = { ...player.skills };

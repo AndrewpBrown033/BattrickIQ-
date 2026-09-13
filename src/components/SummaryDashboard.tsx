@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BattrickPlayer, ClubFinances, BattrickGame, StadiumConfig, PavilionInfo } from '../types';
+import { getCurrentBattrickDate, getBattrickDateForString } from '../utils/history';
 import AIAssistantTasks from './AIAssistantTasks';
 import { getCustomUser, onCustomAuthStateChanged, CustomUser } from '../lib/customAuth';
 import { 
@@ -528,7 +529,11 @@ Please analyze my club details and explain:
   const displayCapacity = effectiveCapacity > 0 ? effectiveCapacity.toLocaleString() : '0';
   const displayMembers = finances?.members ? `${finances.members.toLocaleString()} members` : 'Stadium ground';
 
-  const displayFixtures = fixtures.length > 0 ? fixtures.slice(0, 3) : [
+  const currentBattrickDate = getCurrentBattrickDate();
+  const displayFixtures = fixtures.length > 0 ? fixtures.filter(f => {
+    const fDate = getBattrickDateForString(f.date);
+    return fDate && fDate.season === currentBattrickDate.season && fDate.week === currentBattrickDate.week;
+  }) : [
     { opponent: 'Lancashire Lightning', homeTeam: clubDisplayName, awayTeam: 'Lancashire Lightning', date: '18/07/2026', type: 'One Day', venue: 'Home' as const, result: 'Upcoming' },
     { opponent: 'Yorkshire Vikings', homeTeam: 'Yorkshire Vikings', awayTeam: clubDisplayName, date: '21/07/2026', type: 'Twenty20', venue: 'Away' as const, result: 'Upcoming' },
     { opponent: 'Surrey Browns', homeTeam: clubDisplayName, awayTeam: 'Surrey Browns', date: '25/07/2026', type: 'First Class', venue: 'Home' as const, result: 'Upcoming' },
@@ -804,6 +809,14 @@ Please analyze my club details and explain:
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => setActiveTab('fixtures')}
+              className="text-xs font-mono font-bold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200/60 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Full Draw</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveTab('scout')}
               className="text-xs font-mono font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/60 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
             >
@@ -821,6 +834,11 @@ Please analyze my club details and explain:
           </div>
         </div>
         <div className="divide-y divide-slate-100">
+          {displayFixtures.length === 0 && (
+            <div className="py-6 text-center text-slate-500 text-sm">
+              No matches scheduled for this week.
+            </div>
+          )}
           {displayFixtures.map((game, idx) => (
             <div 
               key={idx}

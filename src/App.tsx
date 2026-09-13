@@ -11,14 +11,15 @@ import BusinessRules from './components/BusinessRules';
 import LoginPage from './components/LoginPage';
 import AdminDashboard from './components/AdminDashboard';
 import PlayerDetails from './components/PlayerDetails';
+import FixturesDashboard from './components/FixturesDashboard';
 import OpponentScout from './components/OpponentScout';
 import BattrickAuthBar from './components/BattrickAuthBar';
 import { LeagueStandings } from './components/LeagueStandings';
 import { onCustomAuthStateChanged, customSignOut, getCustomUser, CustomUser } from './lib/customAuth';
-import { Award, Calculator, Users, FolderOpen, Heart, RefreshCw, Landmark, Bot, BookOpen, Trophy, Clock, ShieldAlert, LogOut, Eye, Activity, History, LayoutGrid, Wallet, MoreHorizontal, X, ChevronUp, Swords } from 'lucide-react';
+import { Award, Calculator, Users, FolderOpen, Heart, RefreshCw, Landmark, Bot, BookOpen, Trophy, Clock, ShieldAlert, LogOut, Eye, Activity, History, LayoutGrid, Wallet, MoreHorizontal, X, ChevronUp, Swords, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-type TabType = 'summary' | 'sync' | 'squad' | 'lineup' | 'scout' | 'league' | 'wage' | 'stadium' | 'coach' | 'coach-history' | 'rules' | 'admin' | 'player-details';
+type TabType = 'summary' | 'sync' | 'squad' | 'lineup' | 'scout' | 'league' | 'wage' | 'stadium' | 'coach' | 'coach-history' | 'rules' | 'admin' | 'player-details' | 'fixtures';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('summary');
@@ -202,8 +203,18 @@ export default function App() {
       activeClass: 'bg-blue-50/90 border-blue-200 text-blue-950',
     },
     { 
-      id: 'squad' as TabType, 
+      id: 'fixtures' as TabType, 
       step: '02', 
+      label: 'Fixtures & Draw', 
+      icon: <Calendar className="w-4 h-4" />, 
+      desc: 'Season draw & results', 
+      status: 'Matches',
+      badgeClass: 'bg-indigo-100 text-indigo-700',
+      activeClass: 'bg-indigo-50/90 border-indigo-200 text-indigo-950',
+    },
+    { 
+      id: 'squad' as TabType, 
+      step: '03', 
       label: 'Squad & Pops', 
       icon: <FolderOpen className="w-4 h-4" />, 
       desc: 'Roster & Skill Pops', 
@@ -582,6 +593,7 @@ export default function App() {
                 <div>
                   <h2 className="text-lg font-display font-black text-slate-900 tracking-tight flex items-center gap-2">
                     {activeTab === 'summary' && "Club Overview & Health Analyzer"}
+                    {activeTab === 'fixtures' && "Season Draw & Match Results"}
                     {activeTab === 'sync' && "Club Sync & Status Hub"}
                     {activeTab === 'squad' && "Squad Roster & Training"}
                     {activeTab === 'lineup' && "Matchday XI Rating Optimizer"}
@@ -595,6 +607,7 @@ export default function App() {
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
                     {activeTab === 'summary' && "Evaluate your club's overall health score, including stadium sizing, squad depth, and financial vitality at a glance."}
+                    {activeTab === 'fixtures' && "View your club's full season draw, track past results, and scout upcoming opponents."}
                     {activeTab === 'sync' && "Paste raw Battrick page source codes or text to sync your squad roster, fixtures, pavilion, and finances instantly."}
                     {activeTab === 'squad' && "Analyze player skills, track training pops, view BTR ratings, and verify hold/develop/sell advice."}
                     {activeTab === 'lineup' && "Formulate your match starting XI and model expected ratings for different pitches."}
@@ -629,6 +642,7 @@ export default function App() {
                   transition={{ duration: 0.15 }}
                 >
                   {activeTab === 'summary' && <SummaryDashboard setActiveTab={setActiveTab} />}
+                  {activeTab === 'fixtures' && <FixturesDashboard setActiveTab={setActiveTab} />}
                   {activeTab === 'sync' && <SyncHub setActiveTab={setActiveTab} />}
                   {activeTab === 'squad' && (
                     <SquadDashboard 
