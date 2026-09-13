@@ -29,14 +29,12 @@ const OPENROUTER_MODELS = [
   { id: 'liquid/lfm-2.5-2.6b:free', name: 'LiquidAI LFM2.5 2.6B (Free)', desc: 'Compact, quick answers for simple questions', free: true }
 ];
 
-const DEFAULT_OPENROUTER_KEY = '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';
-
 export default function AICoach() {
   const [activeSubTab, setActiveSubTab] = useState<'chat' | 'history'>('chat');
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content: "Hello Manager! I am **Coach Jarvis**, your strategic advisor powered by OpenRouter LLMs. I have loaded your live squad roster, weekly finances, stadium capacities, and opponent match intelligence to provide bespoke assessments. Ask me anything, or choose a shortcut template below."
+      content: "Hello Manager! I am **Coach Jarvis**, your strategic advisor powered by OpenRouter LLMs. I analyze your live squad roster, weekly finances, stadium capacities, and opponent match intelligence to provide bespoke assessments. Ask me anything, or choose a shortcut template below."
     }
   ]);
   const [input, setInput] = useState<string>('');
@@ -55,7 +53,7 @@ export default function AICoach() {
     return localStorage.getItem('bt_llm_free_only') === 'true';
   });
   const [openRouterKey, setOpenRouterKey] = useState<string>(() => {
-    return localStorage.getItem('bt_openrouter_api_key') || DEFAULT_OPENROUTER_KEY;
+    return localStorage.getItem('bt_openrouter_api_key') || '';
   });
   const [isModelModalOpen, setIsModelModalOpen] = useState<boolean>(false);
   const [keySavedMessage, setKeySavedMessage] = useState<boolean>(false);
@@ -256,7 +254,20 @@ export default function AICoach() {
       let errorMsg = "";
       let useClientFallback = false;
 
-      const activeOpenRouterKey = openRouterKey || localStorage.getItem('bt_openrouter_api_key') || DEFAULT_OPENROUTER_KEY;
+      const activeOpenRouterKey = openRouterKey || localStorage.getItem('bt_openrouter_api_key') || '';
+
+      if (!activeOpenRouterKey) {
+        setLoading(false);
+        setIsModelModalOpen(true);
+        setMessages(prev => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: "⚠️ **OpenRouter API Key Required**: Please configure your OpenRouter API key in **Model Settings** to enable Coach Jarvis. You can obtain a free API key at [openrouter.ai/keys](https://openrouter.ai/keys)."
+          }
+        ]);
+        return;
+      }
 
       // 1. Attempt server-side proxy route first (OpenRouter only)
       try {
@@ -645,44 +656,61 @@ export default function AICoach() {
             </div>
 
             {/* OpenRouter API Key Input */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-mono font-bold uppercase text-slate-500 block">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-mono font-bold uppercase text-slate-700 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-indigo-600" />
                   OpenRouter API Key
                 </label>
-                {openRouterKey !== DEFAULT_OPENROUTER_KEY && (
+                {openRouterKey && (
                   <button
                     type="button"
                     onClick={() => {
-                      setOpenRouterKey(DEFAULT_OPENROUTER_KEY);
-                      localStorage.setItem('bt_openrouter_api_key', DEFAULT_OPENROUTER_KEY);
+                      setOpenRouterKey('');
+                      localStorage.removeItem('bt_openrouter_api_key');
                       setKeySavedMessage(true);
                       setTimeout(() => setKeySavedMessage(false), 2000);
                     }}
-                    className="text-[10px] font-mono text-indigo-600 hover:text-indigo-800 cursor-pointer underline"
+                    className="text-[10px] font-mono text-rose-600 hover:text-rose-800 cursor-pointer underline"
                   >
-                    Reset to Default Key
+                    Clear Key
                   </button>
                 )}
               </div>
-              <p className="text-[11px] text-slate-500 mb-2">
-                A default OpenRouter key is active. You can override it with your own personal key below.
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Enter your personal OpenRouter API key. Your key is stored securely in your browser session/settings and used for tactical advice and opponent scouting.
+                Get a key at{' '}
+                <a 
+                  href="https://openrouter.ai/keys" 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  className="text-indigo-600 font-bold underline hover:text-indigo-800"
+                >
+                  openrouter.ai/keys
+                </a>.
               </p>
-              <input
-                type="password"
-                value={openRouterKey}
-                onChange={(e) => {
-                  setOpenRouterKey(e.target.value);
-                  localStorage.setItem('bt_openrouter_api_key', e.target.value);
-                  setKeySavedMessage(true);
-                  setTimeout(() => setKeySavedMessage(false), 2000);
-                }}
-                placeholder="sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxx"
-                className="w-full text-xs font-mono p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={openRouterKey}
+                  onChange={(e) => {
+                    const val = e.target.value.trim();
+                    setOpenRouterKey(val);
+                    if (val) {
+                      localStorage.setItem('bt_openrouter_api_key', val);
+                    } else {
+                      localStorage.removeItem('bt_openrouter_api_key');
+                    }
+                    setKeySavedMessage(true);
+                    setTimeout(() => setKeySavedMessage(false), 2000);
+                  }}
+                  placeholder="sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxx"
+                  className="flex-1 text-xs font-mono p-2.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
               {keySavedMessage && (
-                <span className="text-[11px] text-emerald-600 font-mono font-bold mt-1 block">
-                  ✓ Key updated and saved!
+                <span className="text-[11px] text-emerald-600 font-mono font-bold block">
+                  ✓ OpenRouter key preference updated!
                 </span>
               )}
             </div>

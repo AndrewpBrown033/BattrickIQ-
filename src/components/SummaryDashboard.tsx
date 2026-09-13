@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { BattrickPlayer, ClubFinances, BattrickGame, StadiumConfig, PavilionInfo } from '../types';
-import { getCurrentBattrickDate, getBattrickDateForString } from '../utils/history';
+import { getCurrentBattrickDate, getBattrickDateForString, isGameInNext7Days, parseGameDateToTimestamp, getNext7DaysDateRange } from '../utils/history';
 import AIAssistantTasks from './AIAssistantTasks';
 import { getCustomUser, onCustomAuthStateChanged, CustomUser } from '../lib/customAuth';
 import { 
@@ -529,15 +529,31 @@ Please analyze my club details and explain:
   const displayCapacity = effectiveCapacity > 0 ? effectiveCapacity.toLocaleString() : '0';
   const displayMembers = finances?.members ? `${finances.members.toLocaleString()} members` : 'Stadium ground';
 
-  const currentBattrickDate = getCurrentBattrickDate();
-  const displayFixtures = fixtures.length > 0 ? fixtures.filter(f => {
-    const fDate = getBattrickDateForString(f.date);
-    return fDate && fDate.season === currentBattrickDate.season && fDate.week === currentBattrickDate.week;
-  }) : [
-    { opponent: 'Lancashire Lightning', homeTeam: clubDisplayName, awayTeam: 'Lancashire Lightning', date: '18/07/2026', type: 'One Day', venue: 'Home' as const, result: 'Upcoming' },
-    { opponent: 'Yorkshire Vikings', homeTeam: 'Yorkshire Vikings', awayTeam: clubDisplayName, date: '21/07/2026', type: 'Twenty20', venue: 'Away' as const, result: 'Upcoming' },
-    { opponent: 'Surrey Browns', homeTeam: clubDisplayName, awayTeam: 'Surrey Browns', date: '25/07/2026', type: 'First Class', venue: 'Home' as const, result: 'Upcoming' },
-  ];
+  const next7DaysRange = useMemo(() => getNext7DaysDateRange(), []);
+  
+  const displayFixtures = useMemo(() => {
+    if (fixtures.length === 0) {
+      return [
+        { opponent: 'Bulolo Seahawks', homeTeam: clubDisplayName, awayTeam: 'Bulolo Seahawks', date: '11/09/2026', time: '00:30', type: 'One Day', venue: 'Home' as const, result: 'Upcoming', matchId: '32161741', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32161741', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32161741&action=summary', isBot: true },
+        { opponent: 'Royal West Herts GC', homeTeam: 'Royal West Herts GC', awayTeam: clubDisplayName, date: '15/09/2026', time: '11:45', type: 'Twenty20', venue: 'Away' as const, result: 'Upcoming', matchId: '32383795', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383795', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383795&action=summary' },
+        { opponent: 'Atlanta Braves', homeTeam: 'Atlanta Braves', awayTeam: clubDisplayName, date: '16/09/2026', time: '00:30', type: 'Twenty20', venue: 'Away' as const, result: 'Upcoming', matchId: '32383799', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383799', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383799&action=summary' },
+      ];
+    }
+
+    // Filter games taking place within next 7 days from today forward
+    const next7 = fixtures.filter(f => isGameInNext7Days(f.date, f.time));
+    if (next7.length > 0) {
+      return next7.sort((a, b) => (parseGameDateToTimestamp(a.date, a.time) || 0) - (parseGameDateToTimestamp(b.date, b.time) || 0));
+    }
+
+    // Fallback if no games in next 7 days: show the nearest upcoming fixtures
+    const upcoming = fixtures.filter(f => !f.result || f.result === 'Upcoming');
+    if (upcoming.length > 0) {
+      return upcoming.slice(0, 4);
+    }
+
+    return fixtures.slice(0, 4);
+  }, [fixtures, clubDisplayName]);
 
   return (
     <div className="flex flex-col gap-6" id="summary-dashboard-view">
@@ -802,31 +818,36 @@ Please analyze my club details and explain:
         </div>
       </div>
 
-      {/* "This week" Card */}
+      {/* "Next 7 Days" Matches Card */}
       <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-2xs">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-serif font-bold text-2xl text-slate-900">This week</h3>
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h3 className="font-serif font-bold text-2xl text-slate-900">Next 7 Days</h3>
+            <span className="text-xs font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200/70 px-2.5 py-0.5 rounded-full">
+              {next7DaysRange.label}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
               onClick={() => setActiveTab('fixtures')}
-              className="text-xs font-mono font-bold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200/60 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
+              className="text-xs font-mono font-bold text-slate-700 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer transition shadow-2xs"
             >
-              <Calendar className="w-3.5 h-3.5" />
-              <span>Full Draw</span>
+              <Calendar className="w-3.5 h-3.5 text-blue-600" />
+              <span>Full Draw & Results</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('scout')}
-              className="text-xs font-mono font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/60 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
+              className="text-xs font-mono font-bold text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/80 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer transition shadow-2xs"
             >
-              <Swords className="w-3.5 h-3.5" />
+              <Swords className="w-3.5 h-3.5 text-indigo-600" />
               <span>Scout Opponent</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('lineup')}
-              className="text-xs font-mono font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
+              className="text-xs font-mono font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer pl-1"
             >
               <span>Match XI</span>
               <ChevronRight className="w-3.5 h-3.5" />
@@ -835,47 +856,129 @@ Please analyze my club details and explain:
         </div>
         <div className="divide-y divide-slate-100">
           {displayFixtures.length === 0 && (
-            <div className="py-6 text-center text-slate-500 text-sm">
-              No matches scheduled for this week.
+            <div className="py-8 text-center text-slate-500 text-sm bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+              <Calendar className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p className="font-semibold text-slate-700">No matches scheduled in the next 7 days.</p>
+              <p className="text-xs text-slate-400 mt-1">Check the full season draw for upcoming fixtures.</p>
+              <button
+                type="button"
+                onClick={() => setActiveTab('fixtures')}
+                className="mt-3 text-xs font-mono font-bold text-blue-600 hover:underline"
+              >
+                Open Fixtures & Draw &rarr;
+              </button>
             </div>
           )}
-          {displayFixtures.map((game, idx) => (
-            <div 
-              key={idx}
-              onClick={() => {
-                if (game.opponent) {
-                  localStorage.setItem('bt_scout_target_team', JSON.stringify({
-                    teamName: game.opponent,
-                    teamId: game.opponentTeamId,
-                    matchId: game.matchId,
-                    type: game.type,
-                    venue: game.venue
-                  }));
-                  window.dispatchEvent(new CustomEvent('bt_scout_target_updated', {
-                    detail: { teamName: game.opponent, teamId: game.opponentTeamId }
-                  }));
-                  window.dispatchEvent(new Event('storage'));
-                }
-                setActiveTab('scout');
-              }}
-              className="flex items-center justify-between py-3.5 first:pt-1 last:pb-1 group hover:bg-slate-50 -mx-3 px-3 rounded-xl transition cursor-pointer"
-            >
-              <div>
-                <h4 className="font-serif font-bold text-base text-slate-900 group-hover:text-blue-600 transition flex items-center gap-2">
-                  <span>{game.homeTeam && game.awayTeam ? `${game.homeTeam} v ${game.awayTeam}` : game.opponent}</span>
-                  <span className="text-[10px] font-mono text-indigo-600 font-bold bg-indigo-50 px-1.5 py-0.5 rounded group-hover:bg-indigo-100">
-                    Scout &gt;
+          {displayFixtures.map((game, idx) => {
+            const hasMatchUrl = Boolean(game.matchUrl || game.matchId);
+            const matchInfoUrl = game.matchUrl || (game.matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${game.matchId}` : undefined);
+            const summaryUrl = game.summaryUrl || (game.matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${game.matchId}&action=summary` : undefined);
+            const ordersUrl = game.ordersUrl || (game.matchId ? `https://www.battrick.org/nl/matchorders.asp?matchID=${game.matchId}` : undefined);
+
+            return (
+              <div 
+                key={idx}
+                className="flex flex-col sm:flex-row sm:items-center justify-between py-3.5 first:pt-1 last:pb-1 gap-3 group hover:bg-slate-50/80 -mx-3 px-3 rounded-xl transition"
+              >
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="font-serif font-bold text-base text-slate-900 group-hover:text-blue-600 transition">
+                      {game.homeTeam && game.awayTeam ? `${game.homeTeam} v ${game.awayTeam}` : game.opponent}
+                    </h4>
+                    {game.isBot && (
+                      <span className="text-[10px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded">
+                        BOT
+                      </span>
+                    )}
+                    <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                      {game.type}
+                    </span>
+                    <span className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded ${game.venue === 'Home' ? 'bg-blue-50 text-blue-700 font-bold' : 'bg-slate-100 text-slate-500'}`}>
+                      {game.venue}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 font-normal flex-wrap">
+                    <span className="font-mono font-medium text-slate-700">{game.date}{game.time ? ` ${game.time}` : ''}</span>
+                    
+                    {/* Action Links */}
+                    {matchInfoUrl && (
+                      <a
+                        href={matchInfoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-600 hover:text-blue-800 underline font-medium flex items-center gap-0.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Match Info
+                        <ArrowUpRight className="w-3 h-3" />
+                      </a>
+                    )}
+                    {summaryUrl && (
+                      <a
+                        href={summaryUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-emerald-600 hover:text-emerald-800 underline font-medium flex items-center gap-0.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Summary & Batstats
+                        <ArrowUpRight className="w-3 h-3" />
+                      </a>
+                    )}
+                    {ordersUrl && (!game.result || game.result === 'Upcoming') && (
+                      <a
+                        href={ordersUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-amber-600 hover:text-amber-800 underline font-medium flex items-center gap-0.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Orders
+                        <ArrowUpRight className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (game.opponent) {
+                        localStorage.setItem('bt_scout_target_team', JSON.stringify({
+                          teamName: game.opponent,
+                          teamId: game.opponentTeamId,
+                          matchId: game.matchId,
+                          type: game.type,
+                          venue: game.venue
+                        }));
+                        window.dispatchEvent(new CustomEvent('bt_scout_target_updated', {
+                          detail: { teamName: game.opponent, teamId: game.opponentTeamId }
+                        }));
+                        window.dispatchEvent(new Event('storage'));
+                      }
+                      setActiveTab('scout');
+                    }}
+                    className="text-[11px] font-mono font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/80 px-2.5 py-1 rounded-lg flex items-center gap-1 transition"
+                  >
+                    <Swords className="w-3 h-3" />
+                    <span>Scout</span>
+                  </button>
+
+                  <span className={`text-[10px] font-mono font-bold tracking-wider px-2.5 py-1 rounded-md border uppercase shrink-0 ${
+                    game.result && game.result.toLowerCase().includes('won')
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : game.result && game.result.toLowerCase().includes('lost')
+                      ? 'bg-rose-50 text-rose-700 border-rose-200'
+                      : 'bg-blue-50/80 text-blue-700 border-blue-200/60'
+                  }`}>
+                    {game.result && game.result !== 'Upcoming' ? game.result : 'UPCOMING'}
                   </span>
-                </h4>
-                <p className="text-xs text-slate-500 mt-0.5 font-normal">
-                  {game.date} • {game.type} • {game.venue}
-                </p>
+                </div>
               </div>
-              <span className="text-[10px] font-mono font-bold tracking-wider px-2.5 py-1 rounded-md bg-blue-50/80 text-blue-700 border border-blue-200/60 uppercase shrink-0">
-                {game.result && game.result !== 'Upcoming' ? game.result : 'UPCOMING'}
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

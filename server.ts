@@ -1135,7 +1135,7 @@ async function startServer() {
 
   // API Route to inspect available LLM providers
   app.get("/api/llm-config", (req, res) => {
-    const defaultOpenRouterKey = process.env.OPENROUTER_API_KEY?.trim() || "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";
+    const defaultOpenRouterKey = process.env.OPENROUTER_API_KEY?.trim() || "";
     const hasOpenRouter = !!(defaultOpenRouterKey && defaultOpenRouterKey !== "");
     const hasGemini = !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== "");
     res.json({
@@ -1187,13 +1187,13 @@ Your expertise includes:
 Respond with supportive, highly specialized, yet easy-to-read formatting. Use Markdown lists, bold highlights, and clean spacing.`;
 
     // 1. OPENROUTER FLOW
-    const effectiveOpenRouterKey = openRouterApiKey?.trim() || process.env.OPENROUTER_API_KEY?.trim() || "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";
+    const effectiveOpenRouterKey = openRouterApiKey?.trim() || process.env.OPENROUTER_API_KEY?.trim() || "";
     const effectiveProvider = provider === "openrouter" || (effectiveOpenRouterKey && provider !== "gemini") ? "openrouter" : "gemini";
 
     if (effectiveProvider === "openrouter") {
       if (!effectiveOpenRouterKey) {
         res.status(401).json({ 
-          error: "OpenRouter API Key is missing. Please enter your OpenRouter key in the AI Coach settings or configure OPENROUTER_API_KEY in the environment secrets." 
+          error: "OpenRouter API Key is not set. Please click 'Model Settings' in Coach Jarvis to enter and save your personal OpenRouter API key." 
         });
         return;
       }

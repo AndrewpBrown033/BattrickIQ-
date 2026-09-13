@@ -1928,6 +1928,36 @@ export function parseFixtures(content: string): BattrickGame[] {
           matchTitle = matchLink.textContent?.trim() || '';
         }
 
+        // Extract Summary Link (Reporter's Summary)
+        const summaryLink = item.querySelector('a[href*="action=summary"], a.icon-summary');
+        let summaryUrl = '';
+        if (summaryLink) {
+          const href = summaryLink.getAttribute('href') || '';
+          summaryUrl = `https://www.battrick.org/nl/${href.replace(/^\//, '')}`;
+        } else if (matchId) {
+          summaryUrl = `https://www.battrick.org/nl/matchinfo.asp?matchID=${matchId}&action=summary`;
+        }
+
+        // Extract Match Graphs Link
+        const graphsLink = item.querySelector('a[href*="matchgraphs.asp"], a.icon-graphs');
+        let graphsUrl = '';
+        if (graphsLink) {
+          const href = graphsLink.getAttribute('href') || '';
+          graphsUrl = `https://www.battrick.org/nl/${href.replace(/^\//, '')}`;
+        } else if (matchId) {
+          graphsUrl = `https://www.battrick.org/nl/matchgraphs.asp?matchID=${matchId}`;
+        }
+
+        // Extract Commentary Link
+        const commsLink = item.querySelector('a[href*="matchcomms.asp"], a.icon-commentary');
+        let commentaryUrl = '';
+        if (commsLink) {
+          const href = commsLink.getAttribute('href') || '';
+          commentaryUrl = `https://www.battrick.org/nl/${href.replace(/^\//, '')}`;
+        } else if (matchId) {
+          commentaryUrl = `https://www.battrick.org/nl/matchcomms.asp?matchID=${matchId}`;
+        }
+
         // Extract Orders Link
         const ordersLink = item.querySelector('a[href*="matchorders.asp"]');
         let ordersUrl = '';
@@ -1936,6 +1966,36 @@ export function parseFixtures(content: string): BattrickGame[] {
           ordersUrl = `https://www.battrick.org/nl/${href.replace(/^\//, '')}`;
         } else if (matchId) {
           ordersUrl = `https://www.battrick.org/nl/matchorders.asp?matchID=${matchId}`;
+        }
+
+        // Extract League Link & League ID
+        const leagueLink = item.querySelector('a[href*="leagues.asp?leagueID="], a[href*="leagues.asp?leagueid="]');
+        let leagueId = '';
+        let leagueUrl = '';
+        let league = '';
+        if (leagueLink) {
+          const href = leagueLink.getAttribute('href') || '';
+          const lIdMatch = href.match(/leagueID=(\d+)/i) || href.match(/leagueid=(\d+)/i);
+          if (lIdMatch) leagueId = lIdMatch[1];
+          leagueUrl = `https://www.battrick.org/nl/${href.replace(/^\//, '')}`;
+          league = leagueLink.getAttribute('title') || leagueLink.textContent?.trim() || '';
+        }
+
+        // Determine Section (Previous Matches vs Upcoming Matches)
+        let section: 'previous' | 'upcoming' | undefined;
+        let prevSibling: Element | null = item.parentElement;
+        while (prevSibling) {
+          const prevH2 = prevSibling.querySelector?.('#previousmatches, h2[id*="previous"]') || (prevSibling.id === 'previousmatches' ? prevSibling : null);
+          const upH2 = prevSibling.querySelector?.('#upcomingmatches, h2[id*="upcoming"]') || (prevSibling.id === 'upcomingmatches' ? prevSibling : null);
+          if (prevH2) {
+            section = 'previous';
+            break;
+          }
+          if (upH2) {
+            section = 'upcoming';
+            break;
+          }
+          prevSibling = prevSibling.previousElementSibling;
         }
 
         // Check if opponent is bot
@@ -2018,11 +2078,27 @@ export function parseFixtures(content: string): BattrickGame[] {
 
         // Parse result
         let result = 'Upcoming';
-        const itemLower = (item.textContent || '').toLowerCase();
-        if (itemLower.includes('won by') || /\bwon\b/.test(itemLower)) result = 'Won';
-        else if (itemLower.includes('lost by') || /\blost\b/.test(itemLower)) result = 'Lost';
-        else if (itemLower.includes('tied') || /\btie\b/.test(itemLower)) result = 'Tied';
-        else if (itemLower.includes('drawn') || /\bdraw\b/.test(itemLower)) result = 'Drawn';
+        const wonSpan = item.querySelector('span.won, .won');
+        const lostSpan = item.querySelector('span.lost, .lost');
+        const tiedSpan = item.querySelector('span.tied, .tied');
+        const drawnSpan = item.querySelector('span.drawn, .drawn');
+        if (wonSpan) result = wonSpan.textContent?.trim() || 'Won';
+        else if (lostSpan) result = lostSpan.textContent?.trim() || 'Lost';
+        else if (tiedSpan) result = tiedSpan.textContent?.trim() || 'Tied';
+        else if (drawnSpan) result = drawnSpan.textContent?.trim() || 'Drawn';
+        else {
+          const itemLower = (item.textContent || '').toLowerCase();
+          if (itemLower.includes('won by') || /\bwon\b/.test(itemLower)) result = 'Won';
+          else if (itemLower.includes('lost by') || /\blost\b/.test(itemLower)) result = 'Lost';
+          else if (itemLower.includes('tied') || /\btie\b/.test(itemLower)) result = 'Tied';
+          else if (itemLower.includes('drawn') || /\bdraw\b/.test(itemLower)) result = 'Drawn';
+        }
+
+        if (result !== 'Upcoming') {
+          section = 'previous';
+        } else if (!section) {
+          section = 'upcoming';
+        }
 
         // Guard: A list item must represent an actual game, meaning it must have either a matchId or real team names
         if (!matchId && (!homeTeam || !awayTeam)) {
@@ -2032,8 +2108,14 @@ export function parseFixtures(content: string): BattrickGame[] {
         if (homeTeam && awayTeam) {
           games.push({
             matchId: matchId || undefined,
-            matchUrl: matchUrl || undefined,
-            ordersUrl: ordersUrl || undefined,
+            matchUrl: matchUrl || (matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${matchId}` : undefined),
+            summaryUrl: summaryUrl || (matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${matchId}&action=summary` : undefined),
+            graphsUrl: graphsUrl || (matchId ? `https://www.battrick.org/nl/matchgraphs.asp?matchID=${matchId}` : undefined),
+            commentaryUrl: commentaryUrl || (matchId ? `https://www.battrick.org/nl/matchcomms.asp?matchID=${matchId}` : undefined),
+            ordersUrl: ordersUrl || (matchId ? `https://www.battrick.org/nl/matchorders.asp?matchID=${matchId}` : undefined),
+            leagueId: leagueId || undefined,
+            leagueUrl: leagueUrl || undefined,
+            league: league || undefined,
             date,
             time: time || undefined,
             opponent: awayTeam, // will be re-oriented below relative to user's club
@@ -2045,7 +2127,8 @@ export function parseFixtures(content: string): BattrickGame[] {
             type,
             venue,
             result,
-            isBot
+            isBot,
+            section
           });
         }
       });
@@ -2115,7 +2198,11 @@ export function parseFixtures(content: string): BattrickGame[] {
             if (homeTeam && awayTeam) {
               games.push({ 
                 matchId: matchId || undefined,
-                matchUrl: matchUrl || undefined,
+                matchUrl: matchUrl || (matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${matchId}` : undefined),
+                summaryUrl: matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${matchId}&action=summary` : undefined,
+                graphsUrl: matchId ? `https://www.battrick.org/nl/matchgraphs.asp?matchID=${matchId}` : undefined,
+                commentaryUrl: matchId ? `https://www.battrick.org/nl/matchcomms.asp?matchID=${matchId}` : undefined,
+                ordersUrl: matchId ? `https://www.battrick.org/nl/matchorders.asp?matchID=${matchId}` : undefined,
                 date,
                 time: time || undefined,
                 opponent: awayTeam,
@@ -2182,6 +2269,9 @@ export function parseFixtures(content: string): BattrickGame[] {
           games.push({ 
             matchId,
             matchUrl: matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${matchId}` : undefined,
+            summaryUrl: matchId ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${matchId}&action=summary` : undefined,
+            graphsUrl: matchId ? `https://www.battrick.org/nl/matchgraphs.asp?matchID=${matchId}` : undefined,
+            commentaryUrl: matchId ? `https://www.battrick.org/nl/matchcomms.asp?matchID=${matchId}` : undefined,
             ordersUrl: matchId ? `https://www.battrick.org/nl/matchorders.asp?matchID=${matchId}` : undefined,
             date, 
             time: time || undefined,
@@ -2276,11 +2366,11 @@ export function parseFixtures(content: string): BattrickGame[] {
 
   // Fallback demo games if completely empty
   return [
-    { matchId: '32557622', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32557622', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32557622', date: '06/09/2026', time: '00:30', opponent: 'Steve', homeTeam: 'Steve', awayTeam: 'HairyBeanBags', type: 'Cup', venue: 'Away', result: 'Upcoming' },
-    { matchId: '32194563', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32194563', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32194563', date: '08/09/2026', time: '00:30', opponent: 'Sandshoe Crushers', homeTeam: 'Sandshoe Crushers', awayTeam: 'HairyBeanBags', type: 'First Class', venue: 'Away', result: 'Upcoming' },
-    { matchId: '32161741', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32161741', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32161741', date: '11/09/2026', time: '00:30', opponent: 'Bulolo Seahawks', homeTeam: 'HairyBeanBags', awayTeam: 'Bulolo Seahawks', type: 'One Day', venue: 'Home', result: 'Upcoming', isBot: true },
-    { matchId: '32383795', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383795', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32383795', date: '15/09/2026', time: '11:45', opponent: 'Royal West Herts GC', homeTeam: 'Royal West Herts GC', awayTeam: 'HairyBeanBags', type: 'Twenty20', venue: 'Away', result: 'Upcoming' },
-    { matchId: '32383799', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383799', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32383799', date: '16/09/2026', time: '00:30', opponent: 'Atlanta Braves', homeTeam: 'Atlanta Braves', awayTeam: 'HairyBeanBags', type: 'Twenty20', venue: 'Away', result: 'Upcoming' }
+    { matchId: '32557622', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32557622', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32557622&action=summary', graphsUrl: 'https://www.battrick.org/nl/matchgraphs.asp?matchID=32557622', commentaryUrl: 'https://www.battrick.org/nl/matchcomms.asp?matchID=32557622', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32557622', date: '06/09/2026', time: '00:30', opponent: 'Steve', homeTeam: 'Steve', awayTeam: 'HairyBeanBags', type: 'Cup', venue: 'Away', result: 'Won', section: 'previous' },
+    { matchId: '32194563', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32194563', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32194563&action=summary', graphsUrl: 'https://www.battrick.org/nl/matchgraphs.asp?matchID=32194563', commentaryUrl: 'https://www.battrick.org/nl/matchcomms.asp?matchID=32194563', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32194563', date: '08/09/2026', time: '00:30', opponent: 'Sandshoe Crushers', homeTeam: 'Sandshoe Crushers', awayTeam: 'HairyBeanBags', type: 'First Class', venue: 'Away', result: 'Won', section: 'previous' },
+    { matchId: '32161741', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32161741', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32161741&action=summary', graphsUrl: 'https://www.battrick.org/nl/matchgraphs.asp?matchID=32161741', commentaryUrl: 'https://www.battrick.org/nl/matchcomms.asp?matchID=32161741', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32161741', date: '11/09/2026', time: '00:30', opponent: 'Bulolo Seahawks', homeTeam: 'HairyBeanBags', awayTeam: 'Bulolo Seahawks', type: 'One Day', venue: 'Home', result: 'Won', isBot: true, section: 'previous' },
+    { matchId: '32383795', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383795', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383795&action=summary', graphsUrl: 'https://www.battrick.org/nl/matchgraphs.asp?matchID=32383795', commentaryUrl: 'https://www.battrick.org/nl/matchcomms.asp?matchID=32383795', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32383795', date: '15/09/2026', time: '11:45', opponent: 'Royal West Herts GC', homeTeam: 'Royal West Herts GC', awayTeam: 'HairyBeanBags', type: 'Twenty20', venue: 'Away', result: 'Upcoming', section: 'upcoming' },
+    { matchId: '32383799', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383799', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383799&action=summary', graphsUrl: 'https://www.battrick.org/nl/matchgraphs.asp?matchID=32383799', commentaryUrl: 'https://www.battrick.org/nl/matchcomms.asp?matchID=32383799', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32383799', date: '16/09/2026', time: '00:30', opponent: 'Atlanta Braves', homeTeam: 'Atlanta Braves', awayTeam: 'HairyBeanBags', type: 'Twenty20', venue: 'Away', result: 'Upcoming', section: 'upcoming' }
   ];
 }
 

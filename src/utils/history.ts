@@ -35,6 +35,65 @@ export function getCurrentBattrickDate(): { season: number; week: number } {
   return { season, week };
 }
 
+// Converts date string (e.g. "11/09/2026" or "11/09/2026 00:30" or "2026-09-11") to a millisecond timestamp
+export function parseGameDateToTimestamp(dateStr?: string, timeStr?: string): number | null {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  let d = dateStr.trim();
+  let time = timeStr?.trim() || '';
+
+  // Handle embedded time in dateStr like "11/09/2026 00:30"
+  if (d.includes(' ')) {
+    const parts = d.split(/\s+/);
+    d = parts[0];
+    if (!time && parts[1]) time = parts[1];
+  }
+
+  // Handle standard Battrick DD/MM/YYYY
+  if (d.includes('/')) {
+    const parts = d.split('/');
+    if (parts.length === 3) {
+      const day = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const year = parseInt(parts[2], 10);
+      let hours = 0;
+      let minutes = 0;
+      if (time && time.includes(':')) {
+        const tParts = time.split(':');
+        hours = parseInt(tParts[0], 10) || 0;
+        minutes = parseInt(tParts[1], 10) || 0;
+      }
+      const dt = new Date(year, month, day, hours, minutes, 0, 0);
+      return isNaN(dt.getTime()) ? null : dt.getTime();
+    }
+  }
+
+  const parsed = Date.parse(`${d} ${time}`.trim());
+  return isNaN(parsed) ? null : parsed;
+}
+
+// Checks if a fixture takes place from today (start of day) forward 7 days in advance
+export function isGameInNext7Days(dateStr?: string, timeStr?: string): boolean {
+  const gameTs = parseGameDateToTimestamp(dateStr, timeStr);
+  if (!gameTs) return false;
+
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+  // 7 full days forward (inclusive of day 7 through 23:59:59)
+  const endOf7Days = startOfToday + (7 * 24 * 60 * 60 * 1000) + (24 * 60 * 60 * 1000 - 1);
+
+  return gameTs >= startOfToday && gameTs <= endOf7Days;
+}
+
+export function getNext7DaysDateRange(): { start: Date; end: Date; label: string } {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const end = new Date(start.getTime() + (7 * 24 * 60 * 60 * 1000));
+  
+  const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+  const label = `${start.toLocaleDateString(undefined, options)} - ${end.toLocaleDateString(undefined, options)}`;
+  return { start, end, label };
+}
+
 export function getBattrickDateForString(dateStr: string): { season: number; week: number } | null {
   if (!dateStr) return null;
   let parsedDate = NaN;

@@ -155,6 +155,9 @@ export interface StadiumConfig {
 export interface BattrickGame {
   matchId?: string;
   matchUrl?: string;
+  summaryUrl?: string;
+  graphsUrl?: string;
+  commentaryUrl?: string;
   ordersUrl?: string;
   date: string;
   time?: string;
@@ -166,9 +169,12 @@ export interface BattrickGame {
   awayTeamId?: string;
   type: string;
   league?: string;
+  leagueId?: string;
+  leagueUrl?: string;
   venue: 'Home' | 'Away';
   result?: string;
   isBot?: boolean;
+  section?: 'previous' | 'upcoming';
 }
 
 export interface LeagueLinkInfo {
