@@ -2016,17 +2016,14 @@ export function parseFixtures(content: string): BattrickGame[] {
 
         // Extract any club links in this item
         const teamLinks = Array.from(item.querySelectorAll('a[href*="teamID="], a[href*="teamid="], a[href*="club.asp"], a[href*="squad.asp"]'));
+        const extractedLinks: { text: string; id: string }[] = [];
         for (const tl of teamLinks) {
           const href = tl.getAttribute('href') || '';
-          const tIdMatch = href.match(/teamID=(\d+)/i) || href.match(/teamid=(\d+)/i);
+          const tIdMatch = href.match(/teamID=(\d+)/i) || href.match(/teamid=(\d+)/i) || href.match(/id=(\d+)/i);
           if (tIdMatch) {
             const linkText = tl.textContent?.trim() || '';
             const tId = tIdMatch[1];
-            if (detectedUserTeam && linkText.toLowerCase().includes(detectedUserTeam.toLowerCase())) {
-              // This is the user's team
-            } else if (!opponentTeamId) {
-              opponentTeamId = tId;
-            }
+            extractedLinks.push({ text: linkText, id: tId });
           }
         }
 
@@ -2064,19 +2061,36 @@ export function parseFixtures(content: string): BattrickGame[] {
           }
         }
 
-        // Match team links to home/away/opponent
-        for (const tl of teamLinks) {
-          const href = tl.getAttribute('href') || '';
-          const tIdMatch = href.match(/teamID=(\d+)/i) || href.match(/teamid=(\d+)/i);
-          if (tIdMatch) {
-            const linkText = tl.textContent?.trim() || '';
-            const tId = tIdMatch[1];
-            if (homeTeam && linkText.toLowerCase().includes(homeTeam.toLowerCase())) {
-              homeTeamId = tId;
-            } else if (awayTeam && linkText.toLowerCase().includes(awayTeam.toLowerCase())) {
-              awayTeamId = tId;
-            }
+        // Match extracted team links to home/away
+        if (extractedLinks.length >= 2) {
+          if (!homeTeam && extractedLinks[0].text) homeTeam = cleanTeamNameCandidate(extractedLinks[0].text);
+          if (!awayTeam && extractedLinks[1].text) awayTeam = cleanTeamNameCandidate(extractedLinks[1].text);
+          homeTeamId = extractedLinks[0].id;
+          awayTeamId = extractedLinks[1].id;
+        } else if (extractedLinks.length === 1) {
+          const single = extractedLinks[0];
+          const singleClean = cleanTeamNameCandidate(single.text).toLowerCase();
+          if (homeTeam && singleClean && (homeTeam.toLowerCase().includes(singleClean) || singleClean.includes(homeTeam.toLowerCase()))) {
+            homeTeamId = single.id;
+          } else if (awayTeam && singleClean && (awayTeam.toLowerCase().includes(singleClean) || singleClean.includes(awayTeam.toLowerCase()))) {
+            awayTeamId = single.id;
+          } else if (detectedUserTeam && singleClean.includes(detectedUserTeam.toLowerCase())) {
+            // It's the user's team link
+            if (homeTeam.toLowerCase().includes(detectedUserTeam.toLowerCase())) homeTeamId = single.id;
+            else awayTeamId = single.id;
+          } else {
+            // It's the opponent's team link
+            opponentTeamId = single.id;
+            if (homeTeam.toLowerCase().includes(detectedUserTeam?.toLowerCase() || '')) awayTeamId = single.id;
+            else homeTeamId = single.id;
           }
+        }
+
+        // Fallback resolve IDs
+        if (!homeTeamId && homeTeam) homeTeamId = getKnownTeamIdByName(homeTeam) || '';
+        if (!awayTeamId && awayTeam) awayTeamId = getKnownTeamIdByName(awayTeam) || '';
+        if (!opponentTeamId) {
+          opponentTeamId = awayTeamId || homeTeamId || '';
         }
 
         // Parse result
@@ -2325,11 +2339,17 @@ export function parseFixtures(content: string): BattrickGame[] {
 
     // Re-orient venue and opponent for each game relative to user's club
     const uName = (detectedUserTeam || localStorage.getItem('bt_team_name') || '').trim().toLowerCase();
+    const userClubId = (typeof localStorage !== 'undefined' ? localStorage.getItem('bt_team_id') : '') || '5250';
+
     games.forEach(g => {
       const hName = (g.homeTeam || '').trim();
       const aName = (g.awayTeam || '').trim();
       const hLower = hName.toLowerCase();
       const aLower = aName.toLowerCase();
+
+      // Ensure homeTeamId and awayTeamId are resolved
+      if (!g.homeTeamId && hName) g.homeTeamId = getKnownTeamIdByName(hName) || undefined;
+      if (!g.awayTeamId && aName) g.awayTeamId = getKnownTeamIdByName(aName) || undefined;
 
       if (uName && uName !== 'my club' && uName !== 'my battrick iq club') {
         const isHomeUser = hLower === uName || (hLower.length > 3 && hLower.includes(uName)) || (uName.length > 3 && uName.includes(hLower));
@@ -2338,14 +2358,20 @@ export function parseFixtures(content: string): BattrickGame[] {
         if (isHomeUser && !isAwayUser) {
           g.venue = 'Home';
           g.opponent = aName;
+          g.opponentTeamId = g.awayTeamId || getKnownTeamIdByName(aName) || undefined;
+          if (userClubId && !g.homeTeamId) g.homeTeamId = userClubId;
         } else if (isAwayUser && !isHomeUser) {
           g.venue = 'Away';
           g.opponent = hName;
+          g.opponentTeamId = g.homeTeamId || getKnownTeamIdByName(hName) || undefined;
+          if (userClubId && !g.awayTeamId) g.awayTeamId = userClubId;
         } else {
           g.opponent = g.venue === 'Away' ? hName : aName;
+          g.opponentTeamId = g.venue === 'Away' ? (g.homeTeamId || getKnownTeamIdByName(hName) || undefined) : (g.awayTeamId || getKnownTeamIdByName(aName) || undefined);
         }
       } else {
         g.opponent = g.venue === 'Away' ? hName : aName;
+        g.opponentTeamId = g.venue === 'Away' ? (g.homeTeamId || getKnownTeamIdByName(hName) || undefined) : (g.awayTeamId || getKnownTeamIdByName(aName) || undefined);
       }
     });
 
@@ -2369,11 +2395,11 @@ export function parseFixtures(content: string): BattrickGame[] {
 
   // Fallback demo games if completely empty
   return [
-    { matchId: '32557622', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32557622', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32557622&action=summary', graphsUrl: 'https://www.battrick.org/nl/matchgraphs.asp?matchID=32557622', commentaryUrl: 'https://www.battrick.org/nl/matchcomms.asp?matchID=32557622', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32557622', date: '06/09/2026', time: '00:30', opponent: 'Steve', homeTeam: 'Steve', awayTeam: 'HairyBeanBags', type: 'Cup', venue: 'Away', result: 'Won', section: 'previous' },
-    { matchId: '32194563', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32194563', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32194563&action=summary', graphsUrl: 'https://www.battrick.org/nl/matchgraphs.asp?matchID=32194563', commentaryUrl: 'https://www.battrick.org/nl/matchcomms.asp?matchID=32194563', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32194563', date: '08/09/2026', time: '00:30', opponent: 'Sandshoe Crushers', homeTeam: 'Sandshoe Crushers', awayTeam: 'HairyBeanBags', type: 'First Class', venue: 'Away', result: 'Won', section: 'previous' },
-    { matchId: '32161741', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32161741', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32161741&action=summary', graphsUrl: 'https://www.battrick.org/nl/matchgraphs.asp?matchID=32161741', commentaryUrl: 'https://www.battrick.org/nl/matchcomms.asp?matchID=32161741', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32161741', date: '11/09/2026', time: '00:30', opponent: 'Bulolo Seahawks', homeTeam: 'HairyBeanBags', awayTeam: 'Bulolo Seahawks', type: 'One Day', venue: 'Home', result: 'Won', isBot: true, section: 'previous' },
-    { matchId: '32383795', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383795', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383795&action=summary', graphsUrl: 'https://www.battrick.org/nl/matchgraphs.asp?matchID=32383795', commentaryUrl: 'https://www.battrick.org/nl/matchcomms.asp?matchID=32383795', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32383795', date: '15/09/2026', time: '11:45', opponent: 'Royal West Herts GC', homeTeam: 'Royal West Herts GC', awayTeam: 'HairyBeanBags', type: 'Twenty20', venue: 'Away', result: 'Upcoming', section: 'upcoming' },
-    { matchId: '32383799', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383799', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383799&action=summary', graphsUrl: 'https://www.battrick.org/nl/matchgraphs.asp?matchID=32383799', commentaryUrl: 'https://www.battrick.org/nl/matchcomms.asp?matchID=32383799', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32383799', date: '16/09/2026', time: '00:30', opponent: 'Atlanta Braves', homeTeam: 'Atlanta Braves', awayTeam: 'HairyBeanBags', type: 'Twenty20', venue: 'Away', result: 'Upcoming', section: 'upcoming' }
+    { matchId: '32557622', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32557622', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32557622&action=summary', graphsUrl: 'https://www.battrick.org/nl/matchgraphs.asp?matchID=32557622', commentaryUrl: 'https://www.battrick.org/nl/matchcomms.asp?matchID=32557622', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32557622', date: '06/09/2026', time: '00:30', opponent: 'Steve', homeTeam: 'Steve', awayTeam: 'HairyBeanBags', homeTeamId: '825', awayTeamId: '5250', opponentTeamId: '825', type: 'Cup', venue: 'Away', result: 'Won', section: 'previous' },
+    { matchId: '32194563', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32194563', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32194563&action=summary', graphsUrl: 'https://www.battrick.org/nl/matchgraphs.asp?matchID=32194563', commentaryUrl: 'https://www.battrick.org/nl/matchcomms.asp?matchID=32194563', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32194563', date: '08/09/2026', time: '00:30', opponent: 'Sandshoe Crushers', homeTeam: 'Sandshoe Crushers', awayTeam: 'HairyBeanBags', homeTeamId: '32194', awayTeamId: '5250', opponentTeamId: '32194', type: 'First Class', venue: 'Away', result: 'Won', section: 'previous' },
+    { matchId: '32161741', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32161741', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32161741&action=summary', graphsUrl: 'https://www.battrick.org/nl/matchgraphs.asp?matchID=32161741', commentaryUrl: 'https://www.battrick.org/nl/matchcomms.asp?matchID=32161741', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32161741', date: '11/09/2026', time: '00:30', opponent: 'Bulolo Seahawks', homeTeam: 'HairyBeanBags', awayTeam: 'Bulolo Seahawks', homeTeamId: '5250', awayTeamId: '32161', opponentTeamId: '32161', type: 'One Day', venue: 'Home', result: 'Won', isBot: true, section: 'previous' },
+    { matchId: '32383795', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383795', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383795&action=summary', graphsUrl: 'https://www.battrick.org/nl/matchgraphs.asp?matchID=32383795', commentaryUrl: 'https://www.battrick.org/nl/matchcomms.asp?matchID=32383795', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32383795', date: '15/09/2026', time: '11:45', opponent: 'Royal West Herts GC', homeTeam: 'Royal West Herts GC', awayTeam: 'HairyBeanBags', homeTeamId: '32383', awayTeamId: '5250', opponentTeamId: '32383', type: 'Twenty20', venue: 'Away', result: 'Upcoming', section: 'upcoming' },
+    { matchId: '32383799', matchUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383799', summaryUrl: 'https://www.battrick.org/nl/matchinfo.asp?matchID=32383799&action=summary', graphsUrl: 'https://www.battrick.org/nl/matchgraphs.asp?matchID=32383799', commentaryUrl: 'https://www.battrick.org/nl/matchcomms.asp?matchID=32383799', ordersUrl: 'https://www.battrick.org/nl/matchorders.asp?matchID=32383799', date: '16/09/2026', time: '00:30', opponent: 'Atlanta Braves', homeTeam: 'Atlanta Braves', awayTeam: 'HairyBeanBags', homeTeamId: '32384', awayTeamId: '5250', opponentTeamId: '32384', type: 'Twenty20', venue: 'Away', result: 'Upcoming', section: 'upcoming' }
   ];
 }
 
@@ -3059,11 +3085,75 @@ export const KNOWN_OPPONENT_CLUBS: KnownOpponentClub[] = [
   { teamId: '7501', teamName: 'Cyclone Strikers', league: 'BT20 League', isBot: false },
   { teamId: '7502', teamName: 'Gold Coast Titans', league: 'BT20 League', isBot: false },
   { teamId: '674', teamName: 'RosenPens XI', league: 'Australia', isBot: false },
+  { teamId: '5250', teamName: 'HairyBeanBags', league: 'One Day League', isBot: false },
 ];
 
 export function getKnownTeamNameById(teamId: string | number): string | null {
   const idStr = String(teamId).trim();
   if (!idStr) return null;
+
+  // 1. Check dynamic local storage caches
+  if (typeof localStorage !== 'undefined') {
+    try {
+      // Check user's own team ID
+      const myTeamId = localStorage.getItem('bt_team_id');
+      const myTeamName = localStorage.getItem('bt_team_name');
+      if (myTeamId && String(myTeamId).trim() === idStr && myTeamName && myTeamName !== 'My Club') {
+        return myTeamName;
+      }
+
+      // Check current league
+      const savedLeague = localStorage.getItem('bt_league');
+      if (savedLeague) {
+        const parsed = JSON.parse(savedLeague);
+        if (Array.isArray(parsed?.teams)) {
+          const match = parsed.teams.find((t: any) => String(t?.teamId).trim() === idStr);
+          if (match?.teamName) return match.teamName;
+        }
+      }
+
+      // Check all saved leagues
+      const savedLeagues = localStorage.getItem('bt_saved_leagues') || localStorage.getItem('bt_leagues');
+      if (savedLeagues) {
+        const parsedLeagues = JSON.parse(savedLeagues);
+        if (Array.isArray(parsedLeagues)) {
+          for (const l of parsedLeagues) {
+            if (Array.isArray(l?.teams)) {
+              const match = l.teams.find((t: any) => String(t?.teamId).trim() === idStr);
+              if (match?.teamName) return match.teamName;
+            }
+          }
+        }
+      }
+
+      // Check fixtures
+      const savedFixtures = localStorage.getItem('bt_fixtures');
+      if (savedFixtures) {
+        const parsedFix = JSON.parse(savedFixtures);
+        if (Array.isArray(parsedFix)) {
+          for (const f of parsedFix) {
+            if (String(f.homeTeamId).trim() === idStr && f.homeTeam) return f.homeTeam;
+            if (String(f.awayTeamId).trim() === idStr && f.awayTeam) return f.awayTeam;
+            if (String(f.opponentTeamId).trim() === idStr && f.opponent) return f.opponent;
+          }
+        }
+      }
+
+      // Check match archives
+      const savedMatches = localStorage.getItem('bt_matches') || localStorage.getItem('bt_played_matches_store');
+      if (savedMatches) {
+        const parsedMatches = JSON.parse(savedMatches);
+        if (typeof parsedMatches === 'object' && parsedMatches !== null) {
+          for (const m of Object.values(parsedMatches) as any[]) {
+            if (String(m.homeTeamId).trim() === idStr && m.homeTeam) return m.homeTeam;
+            if (String(m.awayTeamId).trim() === idStr && m.awayTeam) return m.awayTeam;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Check static known opponent registry
   const match = KNOWN_OPPONENT_CLUBS.find(c => c.teamId === idStr);
   return match ? match.teamName : null;
 }
@@ -3071,7 +3161,97 @@ export function getKnownTeamNameById(teamId: string | number): string | null {
 export function getKnownTeamIdByName(teamName: string): string | null {
   if (!teamName) return null;
   const clean = teamName.replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
-  const match = KNOWN_OPPONENT_CLUBS.find(c => c.teamName.toLowerCase() === clean || clean.includes(c.teamName.toLowerCase()));
+  if (!clean || clean === 'unknown' || clean === 'my club' || clean === 'my battrick iq club') return null;
+
+  // 1. Check dynamic local storage caches
+  if (typeof localStorage !== 'undefined') {
+    try {
+      // Check user's own team name
+      const myTeamName = (localStorage.getItem('bt_team_name') || '').replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
+      const myTeamId = localStorage.getItem('bt_team_id');
+      if (myTeamId && myTeamName && (myTeamName === clean || myTeamName.includes(clean) || clean.includes(myTeamName))) {
+        return String(myTeamId).trim();
+      }
+
+      // Check active league table
+      const savedLeague = localStorage.getItem('bt_league');
+      if (savedLeague) {
+        const parsed = JSON.parse(savedLeague);
+        if (Array.isArray(parsed?.teams)) {
+          const match = parsed.teams.find((t: any) => {
+            if (!t?.teamName || !t?.teamId) return false;
+            const tClean = t.teamName.replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
+            return tClean === clean || tClean.includes(clean) || clean.includes(tClean);
+          });
+          if (match?.teamId) return String(match.teamId).trim();
+        }
+      }
+
+      // Check all saved leagues
+      const savedLeagues = localStorage.getItem('bt_saved_leagues') || localStorage.getItem('bt_leagues');
+      if (savedLeagues) {
+        const parsedLeagues = JSON.parse(savedLeagues);
+        if (Array.isArray(parsedLeagues)) {
+          for (const l of parsedLeagues) {
+            if (Array.isArray(l?.teams)) {
+              const match = l.teams.find((t: any) => {
+                if (!t?.teamName || !t?.teamId) return false;
+                const tClean = t.teamName.replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
+                return tClean === clean || tClean.includes(clean) || clean.includes(tClean);
+              });
+              if (match?.teamId) return String(match.teamId).trim();
+            }
+          }
+        }
+      }
+
+      // Check saved fixtures
+      const savedFixtures = localStorage.getItem('bt_fixtures');
+      if (savedFixtures) {
+        const parsedFix = JSON.parse(savedFixtures);
+        if (Array.isArray(parsedFix)) {
+          for (const f of parsedFix) {
+            const hClean = (f.homeTeam || '').replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
+            const aClean = (f.awayTeam || '').replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
+            const oClean = (f.opponent || '').replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
+            if ((hClean === clean || hClean.includes(clean) || clean.includes(hClean)) && f.homeTeamId) {
+              return String(f.homeTeamId).trim();
+            }
+            if ((aClean === clean || aClean.includes(clean) || clean.includes(aClean)) && f.awayTeamId) {
+              return String(f.awayTeamId).trim();
+            }
+            if ((oClean === clean || oClean.includes(clean) || clean.includes(oClean)) && f.opponentTeamId) {
+              return String(f.opponentTeamId).trim();
+            }
+          }
+        }
+      }
+
+      // Check saved match archives
+      const savedMatches = localStorage.getItem('bt_matches') || localStorage.getItem('bt_played_matches_store');
+      if (savedMatches) {
+        const parsedMatches = JSON.parse(savedMatches);
+        if (typeof parsedMatches === 'object' && parsedMatches !== null) {
+          for (const m of Object.values(parsedMatches) as any[]) {
+            const hClean = (m.homeTeam || '').replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
+            const aClean = (m.awayTeam || '').replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
+            if ((hClean === clean || hClean.includes(clean) || clean.includes(hClean)) && m.homeTeamId) {
+              return String(m.homeTeamId).trim();
+            }
+            if ((aClean === clean || aClean.includes(clean) || clean.includes(aClean)) && m.awayTeamId) {
+              return String(m.awayTeamId).trim();
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Check static known opponent registry
+  const match = KNOWN_OPPONENT_CLUBS.find(c => {
+    const cClean = c.teamName.replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
+    return cClean === clean || clean.includes(cClean) || cClean.includes(clean);
+  });
   return match ? match.teamId : null;
 }
 
