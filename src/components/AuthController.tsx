@@ -10,6 +10,7 @@ import {
 } from '../lib/customAuth';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { Lock, Mail, ShieldAlert, Sparkles, LogOut, CheckCircle, RefreshCw, Trophy } from 'lucide-react';
+import { syncMatchesFromFirestore, saveMultipleStoredMatches, getStoredMatchesList } from '../utils/matchArchive';
 
 export default function AuthController() {
   const [user, setUser] = useState<CustomUser | null>(null);
@@ -138,78 +139,109 @@ export default function AuthController() {
           }
 
           if (data.squad) {
-          const res = updateLocalIfChanged('bt_squad', data.squad);
-          if (res.changed) changed = true;
-          if (res.shouldPush) pushRequired = true;
-        } else if (localStorage.getItem('bt_squad')) {
-          pushRequired = true;
-        }
-
-        if (data.finances) {
-          const res = updateLocalIfChanged('bt_finances', data.finances);
-          if (res.changed) changed = true;
-          if (res.shouldPush) pushRequired = true;
-        } else if (localStorage.getItem('bt_finances')) {
-          pushRequired = true;
-        }
-
-        if (data.stadium) {
-          const res = updateLocalIfChanged('bt_stadium', data.stadium);
-          if (res.changed) changed = true;
-          if (res.shouldPush) pushRequired = true;
-        } else if (localStorage.getItem('bt_stadium')) {
-          pushRequired = true;
-        }
-
-        if (data.fixtures) {
-          const res = updateLocalIfChanged('bt_fixtures', data.fixtures);
-          if (res.changed) changed = true;
-          if (res.shouldPush) pushRequired = true;
-        } else if (localStorage.getItem('bt_fixtures')) {
-          pushRequired = true;
-        }
-
-        if (data.pavilion) {
-          const res = updateLocalIfChanged('bt_pavilion', data.pavilion);
-          if (res.changed) changed = true;
-          if (res.shouldPush) pushRequired = true;
-        } else if (localStorage.getItem('bt_pavilion')) {
-          pushRequired = true;
-        }
-
-        if (data.teamName) {
-          const res = updateLocalIfChanged('bt_team_name', data.teamName);
-          if (res.changed) {
-            changed = true;
-            setTeamName(data.teamName);
+            const res = updateLocalIfChanged('bt_squad', data.squad);
+            if (res.changed) changed = true;
+            if (res.shouldPush) pushRequired = true;
+          } else if (localStorage.getItem('bt_squad')) {
+            pushRequired = true;
           }
+
+          if (data.finances) {
+            const res = updateLocalIfChanged('bt_finances', data.finances);
+            if (res.changed) changed = true;
+            if (res.shouldPush) pushRequired = true;
+          } else if (localStorage.getItem('bt_finances')) {
+            pushRequired = true;
+          }
+
+          if (data.stadium) {
+            const res = updateLocalIfChanged('bt_stadium', data.stadium);
+            if (res.changed) changed = true;
+            if (res.shouldPush) pushRequired = true;
+          } else if (localStorage.getItem('bt_stadium')) {
+            pushRequired = true;
+          }
+
+          if (data.fixtures) {
+            const res = updateLocalIfChanged('bt_fixtures', data.fixtures);
+            if (res.changed) changed = true;
+            if (res.shouldPush) pushRequired = true;
+          } else if (localStorage.getItem('bt_fixtures')) {
+            pushRequired = true;
+          }
+
+          if (data.pavilion) {
+            const res = updateLocalIfChanged('bt_pavilion', data.pavilion);
+            if (res.changed) changed = true;
+            if (res.shouldPush) pushRequired = true;
+          } else if (localStorage.getItem('bt_pavilion')) {
+            pushRequired = true;
+          }
+
+          if (data.diary) {
+            const res = updateLocalIfChanged('bt_diary', data.diary);
+            if (res.changed) changed = true;
+            if (res.shouldPush) pushRequired = true;
+          } else if (localStorage.getItem('bt_diary')) {
+            pushRequired = true;
+          }
+
+          if (data.scoutTargetTeam) {
+            const res = updateLocalIfChanged('bt_scout_target_team', data.scoutTargetTeam);
+            if (res.changed) changed = true;
+            if (res.shouldPush) pushRequired = true;
+          } else if (localStorage.getItem('bt_scout_target_team')) {
+            pushRequired = true;
+          }
+
+          if (data.tacticalNotes) {
+            const res = updateLocalIfChanged('bt_tactical_notes', data.tacticalNotes);
+            if (res.changed) changed = true;
+            if (res.shouldPush) pushRequired = true;
+          } else if (localStorage.getItem('bt_tactical_notes')) {
+            pushRequired = true;
+          }
+
+          if (data.teamName) {
+            const res = updateLocalIfChanged('bt_team_name', data.teamName);
+            if (res.changed) {
+              changed = true;
+              setTeamName(data.teamName);
+            }
+          }
+
+          // Sync full matches subcollection from Firestore
+          syncMatchesFromFirestore().then((cnt) => {
+            if (cnt > 0) {
+              window.dispatchEvent(new Event('storage'));
+            }
+          });
+
+          // Only dispatch storage event if something actually changed to prevent infinite loops / flashing
+          if (changed) {
+            window.dispatchEvent(new Event('storage'));
+          }
+
+          // If local has guest data but cloud has empty state, push local -> cloud in background
+          if (pushRequired) {
+            console.log("[AuthController] Guest data detected. Merging and uploading to cloud...");
+            pushLocalDataToCloud(true);
+          }
+
+          setCloudSynced(true);
+        } else {
+          // Create initial cloud doc if it doesn't exist yet
+          saveToCloudInitial(user.uid, user.email || '');
         }
+        setSyncing(false);
+      }, (error) => {
+        console.error("Firestore snapshot error:", error);
+        setSyncing(false);
+        handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+      });
 
-        // Only dispatch storage event if something actually changed to prevent infinite loops / flashing
-        if (changed) {
-          window.dispatchEvent(new Event('storage'));
-        }
-
-        // If local has guest data but cloud has empty state, push local -> cloud in background
-        if (pushRequired) {
-          console.log("[AuthController] Guest data detected. Merging and uploading to cloud...");
-          pushLocalDataToCloud(true);
-        }
-
-        setCloudSynced(true);
-      } else {
-        // Create initial cloud doc if it doesn't exist yet
-        saveToCloudInitial(user.uid, user.email || '');
-      }
-      setSyncing(false);
-    }, (error) => {
-      console.error("Firestore snapshot error:", error);
-      setSyncing(false);
-      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
-    });
-
-    return () => unsubscribe();
-  }, [user]);
+      return () => unsubscribe();
+    }, [user]);
 
   const saveToCloudInitial = async (uid: string, userEmail: string) => {
     try {
@@ -219,6 +251,9 @@ export default function AuthController() {
       const localStadium = localStorage.getItem('bt_stadium');
       const localFixtures = localStorage.getItem('bt_fixtures');
       const localPavilion = localStorage.getItem('bt_pavilion');
+      const localDiary = localStorage.getItem('bt_diary');
+      const localScout = localStorage.getItem('bt_scout_target_team');
+      const localTactical = localStorage.getItem('bt_tactical_notes');
       const localTeamName = localStorage.getItem('bt_team_name') || 'My Battrick IQ Club';
 
       const initialData = {
@@ -257,9 +292,19 @@ export default function AuthController() {
           capacity: 10000
         },
         fixtures: localFixtures ? JSON.parse(localFixtures) : [],
-        pavilion: localPavilion ? JSON.parse(localPavilion) : null
+        pavilion: localPavilion ? JSON.parse(localPavilion) : null,
+        diary: localDiary ? JSON.parse(localDiary) : [],
+        scoutTargetTeam: localScout ? JSON.parse(localScout) : null,
+        tacticalNotes: localTactical ? JSON.parse(localTactical) : null
       };
       await setDoc(userDocRef, initialData);
+
+      // Save any cached matches to subcollection
+      const storedMatches = getStoredMatchesList();
+      if (storedMatches.length > 0) {
+        await saveMultipleStoredMatches(storedMatches);
+      }
+
       setCloudSynced(true);
     } catch (e: any) {
       console.error("Error creating initial profile:", e);
@@ -277,6 +322,9 @@ export default function AuthController() {
       const localStadium = localStorage.getItem('bt_stadium');
       const localFixtures = localStorage.getItem('bt_fixtures');
       const localPavilion = localStorage.getItem('bt_pavilion');
+      const localDiary = localStorage.getItem('bt_diary');
+      const localScout = localStorage.getItem('bt_scout_target_team');
+      const localTactical = localStorage.getItem('bt_tactical_notes');
       const localTeamName = localStorage.getItem('bt_team_name') || teamName || 'My Battrick IQ Club';
       const isWiping = localStorage.getItem('bt_wiping') === 'true';
 
@@ -296,6 +344,9 @@ export default function AuthController() {
         };
         updatePayload.fixtures = [];
         updatePayload.pavilion = null;
+        updatePayload.diary = [];
+        updatePayload.scoutTargetTeam = null;
+        updatePayload.tacticalNotes = null;
       } else {
         if (localSquad !== null) {
           updatePayload.squad = JSON.parse(localSquad);
@@ -312,10 +363,25 @@ export default function AuthController() {
         if (localPavilion !== null) {
           updatePayload.pavilion = JSON.parse(localPavilion);
         }
+        if (localDiary !== null) {
+          updatePayload.diary = JSON.parse(localDiary);
+        }
+        if (localScout !== null) {
+          updatePayload.scoutTargetTeam = JSON.parse(localScout);
+        }
+        if (localTactical !== null) {
+          updatePayload.tacticalNotes = JSON.parse(localTactical);
+        }
       }
 
       const userDocRef = doc(db, 'users', user.uid);
       await setDoc(userDocRef, updatePayload, { merge: true });
+
+      // Save any local cached matches to subcollection
+      const storedMatches = getStoredMatchesList();
+      if (storedMatches.length > 0) {
+        await saveMultipleStoredMatches(storedMatches);
+      }
 
       setCloudSynced(true);
       localStorage.removeItem('bt_wiping');

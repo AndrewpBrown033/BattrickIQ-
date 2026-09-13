@@ -111,8 +111,21 @@ export function getStoredMatches(): Record<string, ParsedBattrickMatch> {
 export function getStoredMatchesList(): ParsedBattrickMatch[] {
   const map = getStoredMatches();
   return Object.values(map).sort((a, b) => {
-    // Sort descending by match date or ID
-    return parseInt(b.matchId, 10) - parseInt(a.matchId, 10);
+    // Sort descending by numerical matchId (newer matches first)
+    const numA = parseInt(a.matchId || '0', 10);
+    const numB = parseInt(b.matchId || '0', 10);
+    if (!isNaN(numA) && !isNaN(numB) && numA !== numB) {
+      return numB - numA;
+    }
+    // Fallback: sort by date descending
+    if (a.matchDate && b.matchDate) {
+      const dateA = new Date(a.matchDate).getTime();
+      const dateB = new Date(b.matchDate).getTime();
+      if (!isNaN(dateA) && !isNaN(dateB)) {
+        return dateB - dateA;
+      }
+    }
+    return 0;
   });
 }
 
@@ -220,17 +233,61 @@ export async function clearAllStoredMatches(): Promise<void> {
   }
 }
 
+export async function syncMatchesFromFirestore(): Promise<number> {
+  try {
+    const user = getCustomUser();
+    if (!user || !user.uid || !db) return 0;
+    
+    const matchesCol = collection(db, 'users_data', user.uid, 'matches');
+    const snap = await getDocs(matchesCol);
+    if (snap.empty) return 0;
+
+    const currentMap = getStoredMatches();
+    let updatedCount = 0;
+
+    snap.forEach(docSnap => {
+      const data = docSnap.data() as ParsedBattrickMatch;
+      if (data && data.matchId) {
+        if (!currentMap[data.matchId] || JSON.stringify(currentMap[data.matchId]) !== JSON.stringify(data)) {
+          currentMap[data.matchId] = data;
+          updatedCount++;
+        }
+      }
+    });
+
+    if (updatedCount > 0) {
+      localStorage.setItem(MATCH_STORAGE_KEY, JSON.stringify(currentMap));
+      window.dispatchEvent(new CustomEvent('bt_matches_updated', { detail: { count: updatedCount } }));
+      window.dispatchEvent(new Event('storage'));
+    }
+    return updatedCount;
+  } catch (err) {
+    console.warn('Failed to sync matches from Firestore:', err);
+    return 0;
+  }
+}
+
 // -------------------------------------------------------------
 // Match Retrieval & Parsing Engine
 // -------------------------------------------------------------
 
 export async function fetchAndStoreSingleMatch(
   matchId: string, 
-  credentials?: { username?: string; password?: string; sessionToken?: string }
+  credentials?: { username?: string; password?: string; sessionToken?: string },
+  forceRefresh: boolean = false
 ): Promise<ParsedBattrickMatch> {
   const targetId = matchId.trim();
   if (!targetId) {
     throw new Error('Valid Match ID is required.');
+  }
+
+  // Check local/cloud cache first if forceRefresh is false
+  if (!forceRefresh) {
+    const cachedMatch = getStoredMatchById(targetId);
+    if (cachedMatch && ((cachedMatch.innings && cachedMatch.innings.length > 0) || cachedMatch.homeRatings)) {
+      console.log(`[MatchArchive] Match #${targetId} found in local/cloud cache. Skipping remote sync.`);
+      return cachedMatch;
+    }
   }
 
   const username = credentials?.username || localStorage.getItem('bt_direct_user') || '';

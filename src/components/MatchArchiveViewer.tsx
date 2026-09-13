@@ -10,6 +10,7 @@ import {
 import { 
   getStoredMatches, 
   getStoredMatchesList, 
+  getStoredMatchById,
   saveStoredMatch, 
   saveMultipleStoredMatches, 
   deleteStoredMatch, 
@@ -153,7 +154,7 @@ export default function MatchArchiveViewer({ fixtures, setActiveTab, onMatchSele
   // Queue & Batch Retrieval Execution
   // -------------------------------------------------------------
 
-  const handleStartQueue = async (customMatchIds?: string[]) => {
+  const handleStartQueue = async (customMatchIds?: string[], forceRefreshAll: boolean = false) => {
     let idsToQueue: { matchId: string; opponent?: string; homeTeam?: string; awayTeam?: string; date?: string; type?: string }[] = [];
 
     if (customMatchIds && customMatchIds.length > 0) {
@@ -177,21 +178,31 @@ export default function MatchArchiveViewer({ fixtures, setActiveTab, onMatchSele
       return;
     }
 
-    // Require Direct Sync credentials
-    if (!requireAuth('batch queue and retrieve match scorecards & summaries')) {
+    // Check if any match needs remote fetching
+    const needsRemote = idsToQueue.some(item => {
+      if (forceRefreshAll) return true;
+      const cached = storedMatches[item.matchId] || getStoredMatchById(item.matchId);
+      return !cached || (!cached.innings || cached.innings.length === 0);
+    });
+
+    // Require Direct Sync credentials only if we actually need to hit the Battrick server
+    if (needsRemote && !requireAuth('batch queue and retrieve match scorecards & summaries')) {
       return;
     }
 
-    const initialQueue: MatchQueueItem[] = idsToQueue.map(item => ({
-      matchId: item.matchId,
-      opponent: item.opponent,
-      homeTeam: item.homeTeam,
-      awayTeam: item.awayTeam,
-      date: item.date,
-      type: item.type,
-      status: storedMatches[item.matchId] ? 'success' : 'pending',
-      matchData: storedMatches[item.matchId]
-    }));
+    const initialQueue: MatchQueueItem[] = idsToQueue.map(item => {
+      const cached = storedMatches[item.matchId] || getStoredMatchById(item.matchId);
+      return {
+        matchId: item.matchId,
+        opponent: item.opponent,
+        homeTeam: item.homeTeam,
+        awayTeam: item.awayTeam,
+        date: item.date,
+        type: item.type,
+        status: (cached && !forceRefreshAll) ? 'success' : 'pending',
+        matchData: cached || undefined
+      };
+    });
 
     setQueueItems(initialQueue);
     setIsQueueRunning(true);
@@ -202,13 +213,33 @@ export default function MatchArchiveViewer({ fixtures, setActiveTab, onMatchSele
     const password = battrickPass;
     let sessionToken = localStorage.getItem('bt_sync_session') || '';
 
-    let completedCount = 0;
+    let newCount = 0;
+    let cachedCount = 0;
     const updatedQueue = [...initialQueue];
 
     for (let i = 0; i < updatedQueue.length; i++) {
       const item = updatedQueue[i];
       setCurrentProcessingId(item.matchId);
-      setQueueStatusMsg(`[${i + 1}/${updatedQueue.length}] Fetching Match #${item.matchId} (Scorecard + Reporter's Summary)...`);
+
+      const existingMatch = storedMatches[item.matchId] || getStoredMatchById(item.matchId);
+      if (!forceRefreshAll && existingMatch && ((existingMatch.innings && existingMatch.innings.length > 0) || existingMatch.homeRatings)) {
+        setQueueStatusMsg(`[${i + 1}/${updatedQueue.length}] Loaded Match #${item.matchId} from local cache.`);
+        updatedQueue[i] = {
+          ...item,
+          status: 'success',
+          matchData: existingMatch
+        };
+        cachedCount++;
+        setQueueItems([...updatedQueue]);
+        setQueueProgress({
+          current: i + 1,
+          total: updatedQueue.length,
+          percent: Math.round(((i + 1) / updatedQueue.length) * 100)
+        });
+        continue;
+      }
+
+      setQueueStatusMsg(`[${i + 1}/${updatedQueue.length}] Fetching Match #${item.matchId} (Scorecard + Summary) from Battrick...`);
       
       updatedQueue[i] = { ...item, status: 'fetching' };
       setQueueItems([...updatedQueue]);
@@ -247,7 +278,7 @@ export default function MatchArchiveViewer({ fixtures, setActiveTab, onMatchSele
           status: 'success',
           matchData: parsed
         };
-        completedCount++;
+        newCount++;
       } catch (err: any) {
         console.error(`Failed to fetch match ${item.matchId}:`, err);
         updatedQueue[i] = {
@@ -264,7 +295,7 @@ export default function MatchArchiveViewer({ fixtures, setActiveTab, onMatchSele
         percent: Math.round(((i + 1) / updatedQueue.length) * 100)
       });
 
-      // Pacing interval: wait 2.5 seconds between matches to avoid Battrick HTTP 429
+      // Pacing interval: wait 2.5 seconds between remote fetches to avoid Battrick HTTP 429
       if (i < updatedQueue.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 2500));
       }
@@ -272,7 +303,7 @@ export default function MatchArchiveViewer({ fixtures, setActiveTab, onMatchSele
 
     setIsQueueRunning(false);
     setCurrentProcessingId(null);
-    setQueueStatusMsg(`✓ Batch complete! Synced ${completedCount} match scorecards & summaries.`);
+    setQueueStatusMsg(`✓ Batch complete! ${cachedCount} matches loaded from cache, ${newCount} new scorecards synced.`);
     loadMatchesFromStorage();
   };
 
@@ -280,6 +311,15 @@ export default function MatchArchiveViewer({ fixtures, setActiveTab, onMatchSele
     const id = manualMatchId.trim();
     if (!id) {
       setManualError('Please enter a valid Battrick Match ID (e.g. 32161741).');
+      return;
+    }
+
+    const existingMatch = getStoredMatchById(id);
+    if (existingMatch) {
+      setSelectedMatchId(existingMatch.matchId);
+      setManualMatchId('');
+      loadMatchesFromStorage();
+      setViewMode('matches');
       return;
     }
 
@@ -316,7 +356,7 @@ export default function MatchArchiveViewer({ fixtures, setActiveTab, onMatchSele
       const parsed = await fetchAndStoreSingleMatch(matchId, {
         username: battrickUser,
         password: battrickPass
-      });
+      }, true); // Force remote re-fetch
       setSelectedMatchId(parsed.matchId);
       loadMatchesFromStorage();
     } catch (e: any) {
@@ -394,19 +434,31 @@ export default function MatchArchiveViewer({ fixtures, setActiveTab, onMatchSele
 
           {/* Quick Action Buttons */}
           <div className="flex items-center gap-2.5 flex-wrap">
-            <button
-              type="button"
-              disabled={isQueueRunning}
-              onClick={() => handleStartQueue()}
-              className={`text-xs font-mono font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition cursor-pointer shadow-sm ${
-                isQueueRunning
-                  ? 'bg-amber-600 text-white animate-pulse'
-                  : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-              }`}
-            >
-              <Zap className="w-4 h-4" />
-              <span>{isQueueRunning ? 'Retrieving Queue...' : `Queue All Played Games (${playedFixtures.length})`}</span>
-            </button>
+            <div className="inline-flex rounded-xl shadow-sm border border-slate-700 overflow-hidden">
+              <button
+                type="button"
+                disabled={isQueueRunning}
+                onClick={() => handleStartQueue()}
+                className={`text-xs font-mono font-bold px-4 py-2.5 flex items-center gap-2 transition cursor-pointer ${
+                  isQueueRunning
+                    ? 'bg-amber-600 text-white animate-pulse'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                }`}
+              >
+                <Zap className="w-4 h-4" />
+                <span>{isQueueRunning ? 'Syncing Queue...' : `Sync Played Games (${playedFixtures.length})`}</span>
+              </button>
+              <button
+                type="button"
+                disabled={isQueueRunning}
+                onClick={() => handleStartQueue(undefined, true)}
+                title="Force re-fetch all matches directly from Battrick, overwriting local cache"
+                className="text-[11px] font-mono font-bold px-2.5 py-2.5 bg-emerald-800 hover:bg-emerald-700 text-emerald-100 border-l border-emerald-500/40 transition cursor-pointer flex items-center gap-1"
+              >
+                <RotateCw className="w-3 h-3" />
+                <span>Force Re-fetch</span>
+              </button>
+            </div>
 
             <button
               type="button"
