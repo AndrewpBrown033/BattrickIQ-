@@ -641,7 +641,14 @@ export default function App() {
                   exit={{ opacity: 0, y: -8 }}
                   transition={{ duration: 0.15 }}
                 >
-                  {activeTab === 'summary' && <SummaryDashboard setActiveTab={setActiveTab} />}
+                  {activeTab === 'summary' && (
+                    <SummaryDashboard 
+                      setActiveTab={setActiveTab} 
+                      onSelectScoutTeam={(teamName, teamId) => {
+                        setScoutTarget({ teamName, teamId, nonce: Date.now() });
+                      }}
+                    />
+                  )}
                   {activeTab === 'fixtures' && (
                     <FixturesDashboard 
                       setActiveTab={setActiveTab} 

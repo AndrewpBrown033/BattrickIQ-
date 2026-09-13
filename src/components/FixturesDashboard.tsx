@@ -459,36 +459,84 @@ export default function FixturesDashboard({ setActiveTab, onSelectScoutTeam }: F
 
                           {/* Matchup Teams */}
                           <td className="py-3.5 px-4 align-top">
-                            <div className="flex flex-col gap-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className={`text-sm font-bold ${game.venue === 'Home' ? 'text-blue-900 font-extrabold' : 'text-slate-800'}`}>
-                                  {game.homeTeam || (game.venue === 'Home' ? clubName : game.opponent)}
-                                </span>
-                                <span className="text-xs text-slate-400 font-mono font-bold">v</span>
-                                <span className={`text-sm font-bold ${game.venue === 'Away' ? 'text-blue-900 font-extrabold' : 'text-slate-800'}`}>
-                                  {game.awayTeam || (game.venue === 'Away' ? clubName : game.opponent)}
-                                </span>
-                                {game.isBot && (
-                                  <span className="text-[9px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.2 rounded" title="This team is unmanaged (bot)">
-                                    BOT
-                                  </span>
-                                )}
-                              </div>
+                            {(() => {
+                              const homeName = game.homeTeam || (game.venue === 'Home' ? clubName : (game.opponent || 'Home Team'));
+                              const awayName = game.awayTeam || (game.venue === 'Away' ? clubName : (game.opponent || 'Away Team'));
+                              
+                              const homeId = game.homeTeamId || (game.venue === 'Away' ? game.opponentTeamId : undefined) || getKnownTeamIdByName(homeName) || '';
+                              const awayId = game.awayTeamId || (game.venue === 'Home' ? game.opponentTeamId : undefined) || getKnownTeamIdByName(awayName) || '';
 
-                              <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
-                                <div className="flex items-center gap-1">
-                                  <MapPin className="w-3 h-3 text-slate-400" />
-                                  <span className={`font-medium ${game.venue === 'Home' ? 'text-blue-700 font-bold' : ''}`}>
-                                    {game.venue} Match
-                                  </span>
+                              const handleScoutTeam = (teamName: string, teamId: string, targetVenue?: 'Home' | 'Away') => {
+                                const resolvedTeamId = teamId || getKnownTeamIdByName(teamName) || '';
+                                localStorage.setItem('bt_scout_target_team', JSON.stringify({
+                                  teamName,
+                                  teamId: resolvedTeamId,
+                                  matchId: game.matchId,
+                                  type: game.type,
+                                  venue: targetVenue || game.venue
+                                }));
+                                window.dispatchEvent(new CustomEvent('bt_scout_target_updated', {
+                                  detail: { teamName, teamId: resolvedTeamId }
+                                }));
+                                window.dispatchEvent(new Event('storage'));
+                                if (onSelectScoutTeam) {
+                                  onSelectScoutTeam(teamName, resolvedTeamId);
+                                }
+                                setActiveTab('scout');
+                              };
+
+                              return (
+                                <div className="flex flex-col gap-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleScoutTeam(homeName, homeId, 'Home')}
+                                      className={`text-sm font-bold transition hover:text-indigo-600 hover:underline cursor-pointer flex items-center gap-1.5 text-left ${
+                                        game.venue === 'Home' ? 'text-blue-900 font-extrabold' : 'text-slate-800'
+                                      }`}
+                                      title={`Click to scout ${homeName}${homeId ? ` (Team ID: ${homeId})` : ''}`}
+                                    >
+                                      <span>{homeName}</span>
+                                      {homeId && <span className="text-[10.5px] font-mono text-slate-400 font-medium">({homeId})</span>}
+                                    </button>
+                                    
+                                    <span className="text-xs text-slate-400 font-mono font-bold">v</span>
+                                    
+                                    <button
+                                      type="button"
+                                      onClick={() => handleScoutTeam(awayName, awayId, 'Away')}
+                                      className={`text-sm font-bold transition hover:text-indigo-600 hover:underline cursor-pointer flex items-center gap-1.5 text-left ${
+                                        game.venue === 'Away' ? 'text-blue-900 font-extrabold' : 'text-slate-800'
+                                      }`}
+                                      title={`Click to scout ${awayName}${awayId ? ` (Team ID: ${awayId})` : ''}`}
+                                    >
+                                      <span>{awayName}</span>
+                                      {awayId && <span className="text-[10.5px] font-mono text-slate-400 font-medium">({awayId})</span>}
+                                    </button>
+
+                                    {game.isBot && (
+                                      <span className="text-[9px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.2 rounded" title="This team is unmanaged (bot)">
+                                        BOT
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
+                                    <div className="flex items-center gap-1">
+                                      <MapPin className="w-3 h-3 text-slate-400" />
+                                      <span className={`font-medium ${game.venue === 'Home' ? 'text-blue-700 font-bold' : ''}`}>
+                                        {game.venue} Match
+                                      </span>
+                                    </div>
+                                    {game.matchId && (
+                                      <span className="font-mono text-[10.5px] text-slate-400">
+                                        ID: {game.matchId}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
-                                {game.matchId && (
-                                  <span className="font-mono text-[10.5px] text-slate-400">
-                                    ID: {game.matchId}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
+                              );
+                            })()}
                           </td>
 
                           {/* Format & League */}

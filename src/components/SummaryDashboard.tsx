@@ -13,9 +13,10 @@ import { motion, AnimatePresence } from 'motion/react';
 
 interface SummaryDashboardProps {
   setActiveTab: (tab: any) => void;
+  onSelectScoutTeam?: (teamName: string, teamId?: string) => void;
 }
 
-export default function SummaryDashboard({ setActiveTab }: SummaryDashboardProps) {
+export default function SummaryDashboard({ setActiveTab, onSelectScoutTeam }: SummaryDashboardProps) {
   const [squad, setSquad] = useState<BattrickPlayer[]>([]);
   const [finances, setFinances] = useState<ClubFinances | null>(null);
   const [stadium, setStadium] = useState<StadiumConfig | null>(null);
@@ -957,6 +958,9 @@ Please analyze my club details and explain:
                           detail: { teamName: game.opponent, teamId: game.opponentTeamId }
                         }));
                         window.dispatchEvent(new Event('storage'));
+                        if (onSelectScoutTeam) {
+                          onSelectScoutTeam(game.opponent, game.opponentTeamId);
+                        }
                       }
                       setActiveTab('scout');
                     }}

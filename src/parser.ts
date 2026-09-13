@@ -139,10 +139,13 @@ function isGenericTeamNoise(s: string): boolean {
 }
 
 function cleanTeamNameCandidate(s: string): string {
-  return s
-    .replace(/(?:First Class|Twenty20|One Day|BT20|FC|OD|Cup|Match|Orders|View|Scorecard|Summary|Upcoming|Score)/gi, '')
+  if (!s) return '';
+  const textOnly = s.replace(/<[^>]*>/g, '');
+  return textOnly
+    .replace(/\b(?:First Class|Twenty20|One Day|BT20|FC|OD|Cup|Match|Orders|View|Scorecard|Summary|Upcoming|Score)\b/gi, '')
     .replace(/[\(\)\[\]]/g, '')
-    .replace(/[:\-#]/g, '')
+    .replace(/^[:\-#\s]+|[:\-#\s]+$/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
