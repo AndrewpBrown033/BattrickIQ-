@@ -954,6 +954,18 @@ export default function MatchArchiveViewer({ fixtures, setActiveTab, onMatchSele
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap self-start sm:self-center">
+                      {onMatchSelected && (
+                        <button
+                          type="button"
+                          onClick={() => onMatchSelected(activeSelectedMatch)}
+                          className="text-xs font-mono font-bold text-white bg-indigo-600 hover:bg-indigo-700 border border-indigo-500 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                          title="Drill into detailed game view and ask Jarvis AI tactical questions"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
+                          <span>Drill Into Game &amp; Jarvis AI</span>
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         disabled={manualFetching}

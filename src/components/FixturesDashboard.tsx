@@ -3,12 +3,13 @@ import { BattrickGame } from '../types';
 import { getBattrickDateForString, getCurrentBattrickDate, isGameInNext7Days, parseGameDateToTimestamp, getNext7DaysDateRange } from '../utils/history';
 import { getStoredMatches, fetchAndStoreSingleMatch } from '../utils/matchArchive';
 import MatchArchiveViewer from './MatchArchiveViewer';
+import GameDetailView from './GameDetailView';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
 import { 
   Calendar, Search, MapPin, Trophy, Shield, Clock, Swords, 
   ArrowUpRight, FileText, BarChart3, MessageSquare, Edit3, Filter,
   CheckCircle, XCircle, HelpCircle, ExternalLink, Zap, RotateCw, Database,
-  Sparkles, Layers
+  Sparkles, Layers, Bot
 } from 'lucide-react';
 
 interface FixturesDashboardProps {
@@ -23,6 +24,7 @@ export default function FixturesDashboard({ setActiveTab }: FixturesDashboardPro
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [clubName, setClubName] = useState<string>('My Club');
   const [activeSubTab, setActiveSubTab] = useState<'draw' | 'archive' | 'predictor'>('draw');
+  const [selectedGameForDetail, setSelectedGameForDetail] = useState<BattrickGame | null>(null);
   
   // Track stored matches map for instant badge indicator
   const [storedMatchMap, setStoredMatchMap] = useState<Record<string, any>>({});
@@ -182,6 +184,16 @@ export default function FixturesDashboard({ setActiveTab }: FixturesDashboardPro
     );
   };
 
+  if (selectedGameForDetail) {
+    return (
+      <GameDetailView
+        fixture={selectedGameForDetail}
+        onBack={() => setSelectedGameForDetail(null)}
+        setActiveTab={setActiveTab}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6" id="fixtures-dashboard-view">
       
@@ -228,6 +240,18 @@ export default function FixturesDashboard({ setActiveTab }: FixturesDashboardPro
         <MatchArchiveViewer 
           fixtures={fixtures} 
           setActiveTab={setActiveTab} 
+          onMatchSelected={(m) => {
+            setSelectedGameForDetail({
+              matchId: m.matchId,
+              date: m.matchDate || 'Archived Game',
+              opponent: m.awayTeam?.toLowerCase().includes(clubName.toLowerCase()) ? m.homeTeam : m.awayTeam,
+              homeTeam: m.homeTeam,
+              awayTeam: m.awayTeam,
+              type: m.matchType || 'One Day',
+              venue: m.homeTeam?.toLowerCase().includes(clubName.toLowerCase()) ? 'Home' : 'Away',
+              result: m.result || `${m.homeTeam} vs ${m.awayTeam}`
+            });
+          }}
         />
       ) : (
         <>
@@ -546,6 +570,16 @@ export default function FixturesDashboard({ setActiveTab }: FixturesDashboardPro
                                   Orders
                                 </a>
                               )}
+
+                              <button 
+                                type="button"
+                                onClick={() => setSelectedGameForDetail(game)}
+                                className="inline-flex items-center gap-1.5 text-xs font-mono font-bold px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition cursor-pointer"
+                                title="Drill into match view, fetch opponent player details, and ask Jarvis AI"
+                              >
+                                <Bot className="w-3.5 h-3.5 text-indigo-200" />
+                                <span>Drill Into Game &amp; Jarvis</span>
+                              </button>
 
                               <button 
                                 type="button"
