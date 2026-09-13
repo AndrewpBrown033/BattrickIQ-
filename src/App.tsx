@@ -207,7 +207,7 @@ export default function App() {
       step: '02', 
       label: 'Fixtures & Draw', 
       icon: <Calendar className="w-4 h-4" />, 
-      desc: 'Season draw & results', 
+      desc: 'Draw, Scorecards & Skill Predictor', 
       status: 'Matches',
       badgeClass: 'bg-indigo-100 text-indigo-700',
       activeClass: 'bg-indigo-50/90 border-indigo-200 text-indigo-950',
