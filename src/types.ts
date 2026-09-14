@@ -506,11 +506,10 @@ export interface ParsedBattrickMatch {
   batstatAnalysis?: BatstatDecomposition[];
 }
 
-export type LLMProvider = 'openrouter' | 'gemini';
+export type LLMProvider = 'openrouter';
 
 export interface LLMConfig {
   provider: LLMProvider;
   model: string;
   openRouterApiKey?: string;
-  geminiApiKey?: string;
 } 

@@ -18,8 +18,8 @@ export default function AdminDashboard({ currentUserUid }: AdminDashboardProps) 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'metrics' | 'teams' | 'ai_config'>('metrics');
   
-  // Custom Gemini Key Settings
-  const [customApiKey, setCustomApiKey] = useState<string>(() => localStorage.getItem('bt_custom_api_key') || '');
+  // Custom OpenRouter Key Settings
+  const [customApiKey, setCustomApiKey] = useState<string>(() => localStorage.getItem('bt_openrouter_api_key') || '');
   const [showKey, setShowKey] = useState<boolean>(false);
   const [testingKey, setTestingKey] = useState<boolean>(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -125,14 +125,14 @@ export default function AdminDashboard({ currentUserUid }: AdminDashboardProps) 
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
 
   const handleSaveApiKey = () => {
-    localStorage.setItem('bt_custom_api_key', customApiKey.trim());
+    localStorage.setItem('bt_openrouter_api_key', customApiKey.trim());
     window.dispatchEvent(new Event('storage'));
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
   };
 
   const handleClearApiKey = () => {
-    localStorage.removeItem('bt_custom_api_key');
+    localStorage.removeItem('bt_openrouter_api_key');
     window.dispatchEvent(new Event('storage'));
     setCustomApiKey('');
     setTestStatus('idle');
@@ -157,7 +157,7 @@ export default function AdminDashboard({ currentUserUid }: AdminDashboardProps) 
         body: JSON.stringify({
           message: 'This is an automated connection test. Please reply with: "API verified and working successfully!"',
           context: '',
-          customApiKey: customApiKey.trim()
+          openRouterApiKey: customApiKey.trim()
         })
       });
 
@@ -535,8 +535,8 @@ export default function AdminDashboard({ currentUserUid }: AdminDashboardProps) 
                 <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3 mb-4">
                   <Key className="w-5 h-5 text-indigo-600" />
                   <div>
-                    <h4 className="font-display font-bold text-sm text-slate-800">Custom Gemini API Key Configuration</h4>
-                    <p className="text-[11px] text-slate-500">Provide your own personal Gemini API key to avoid 503 high-demand rate limit blocks on Coach Jarvis.</p>
+                    <h4 className="font-display font-bold text-sm text-slate-800">Custom OpenRouter API Key Configuration</h4>
+                    <p className="text-[11px] text-slate-500">Provide your own personal OpenRouter API key to avoid rate limit blocks on Coach Jarvis. Coach Jarvis runs exclusively through OpenRouter.</p>
                   </div>
                 </div>
 
@@ -544,20 +544,20 @@ export default function AdminDashboard({ currentUserUid }: AdminDashboardProps) 
                   <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 text-xs text-indigo-950 flex flex-col gap-1.5 leading-relaxed animate-fade-in">
                     <span className="font-bold">Why use a Custom API Key?</span>
                     <span>
-                      BattrickIQ provides a shared hosting API key for convenience. However, during high-demand peak cricket hours, the shared key may experience 503 Service Unavailable errors. 
+                      BattrickIQ provides a shared hosting API key for convenience. However, during high-demand peak cricket hours, the shared key may experience rate limit errors.
                     </span>
                     <span>
-                      Adding your own <strong>Gemini API key</strong> (which has a generous free tier) routes your Coach Jarvis inquiries directly and securely through your own project, guaranteeing instant, 100% reliable responses!
+                      Adding your own <strong>OpenRouter API key</strong> routes your Coach Jarvis inquiries directly and securely through your own account, guaranteeing instant, reliable responses across any OpenRouter-hosted model (Claude, GPT-4o, Llama, DeepSeek, and more)!
                     </span>
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[11px] text-slate-500 font-bold uppercase tracking-wider font-mono">Gemini API Key</label>
+                    <label className="text-[11px] text-slate-500 font-bold uppercase tracking-wider font-mono">OpenRouter API Key</label>
                     <div className="relative flex items-center">
                       <input
                         id="custom-api-key-input"
                         type={showKey ? 'text' : 'password'}
-                        placeholder="Enter your AI Studio API Key (AIzaSy...)"
+                        placeholder="Enter your OpenRouter API Key (sk-or-v1-...)"
                         value={customApiKey}
                         onChange={(e) => setCustomApiKey(e.target.value)}
                         className="w-full pl-3 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500 transition font-mono text-xs"
@@ -628,13 +628,13 @@ export default function AdminDashboard({ currentUserUid }: AdminDashboardProps) 
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 flex flex-col gap-2.5">
                 <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
                   <Bot className="w-4 h-4 text-indigo-600" />
-                  How to get your free Gemini API key?
+                  How to get your OpenRouter API key?
                 </span>
                 <ol className="list-decimal pl-5 text-xs text-slate-600 space-y-1.5 leading-relaxed">
-                  <li>Go to the <a href="https://aistudio.google.com/" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-semibold">Google AI Studio</a>.</li>
-                  <li>Log in with your standard Google Account.</li>
-                  <li>Click on the prominent <strong>"Get API Key"</strong> button at the top left.</li>
-                  <li>Create a new API key (choose any existing project or create a free sandbox project).</li>
+                  <li>Go to <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline font-semibold">openrouter.ai/keys</a>.</li>
+                  <li>Sign in or create a free OpenRouter account.</li>
+                  <li>Click <strong>"Create Key"</strong> and give it a name (e.g. "BattrickIQ").</li>
+                  <li>Optionally add credits to your OpenRouter account to use paid models like Claude 3.5 Sonnet or GPT-4o.</li>
                   <li>Copy your generated key, paste it in the field above, and click <strong>"Save API Key"</strong>!</li>
                 </ol>
               </div>

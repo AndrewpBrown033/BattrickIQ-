@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { BattrickPlayer, ClubFinances, BattrickGame, StadiumConfig } from '../types';
+import { BattrickPlayer, ClubFinances, BattrickGame, StadiumConfig, DiaryEntry } from '../types';
+import { buildFinancialProjections } from '../parser';
 import { 
   DollarSign, Shield, TrendingUp, Info, Calendar, Landmark, 
   ArrowUpRight, ArrowDownRight, Scale, Coins, BarChart3, LineChart as LineIcon,
@@ -25,6 +26,7 @@ export default function WageCalculator() {
   const [importedPlayers, setImportedPlayers] = useState<BattrickPlayer[]>([]);
   const [finances, setFinances] = useState<ClubFinances | null>(null);
   const [fixtures, setFixtures] = useState<BattrickGame[]>([]);
+  const [diary, setDiary] = useState<DiaryEntry[]>([]);
 
   // Simulation staff overrides for the Optimizer panel
   const [simPR, setSimPR] = useState<number>(0);
@@ -376,6 +378,21 @@ export default function WageCalculator() {
     } else {
       setFixtures([]);
     }
+
+    const savedDiary = localStorage.getItem('bt_diary');
+    if (savedDiary) {
+      try {
+        const parsed = JSON.parse(savedDiary);
+        if (Array.isArray(parsed)) {
+          setDiary(parsed);
+        }
+      } catch (e) {
+        console.error('Error loading club diary:', e);
+        setDiary([]);
+      }
+    } else {
+      setDiary([]);
+    }
   };
 
   useEffect(() => {
@@ -518,6 +535,16 @@ export default function WageCalculator() {
                           (stadium.seats * 0.50) + 
                           (stadium.boxes * 10.00);
 
+  // Real, per-fixture financial projections built from the synced Club Diary (diary.asp),
+  // correlated by exact matchId against played/upcoming fixtures. This gives actual gate
+  // receipts for games already played, and historically-averaged (by venue+match type)
+  // projections for games not yet played — real games mapped to real income, not a guess.
+  const financialProjections = (diary.length > 0 && fixtures.length > 0)
+    ? buildFinancialProjections(diary, fixtures)
+    : [];
+  const projectionsByMatchId = new Map(financialProjections.map(p => [p.matchId, p]));
+  const realDataWeekCount = financialProjections.filter(p => p.actualGateReceipts !== undefined).length;
+
   // Helper to resolve attendance occupancy factor for a match type
   const getAttendanceRate = (type: string) => {
     const t = type.toLowerCase();
@@ -528,10 +555,25 @@ export default function WageCalculator() {
     return odAttendanceRate / 100; // Standard One Day/OD default
   };
 
-  // Helper to calculate gate receipts based on game details and ticketing variables
-  const calculateGateReceipts = (isHome: boolean, matchType: string) => {
+  // Helper to calculate gate receipts based on game details and ticketing variables.
+  // When `weekNum` still reflects the club's originally-synced fixture for that week (the
+  // user hasn't overridden the opponent via the sliders below), and the Club Diary gives us
+  // a real, matchId-correlated projection for that exact fixture, we use that real figure
+  // directly instead of the attendance-rate estimate.
+  const calculateGateReceipts = (isHome: boolean, matchType: string, weekNum?: number) => {
     if (!isHome) return 0;
-    
+
+    if (weekNum !== undefined) {
+      const originalFixture = fixtures[weekNum - 1];
+      const isUnmodified = !!originalFixture && customOpponents[weekNum] === (originalFixture.opponent || 'Opponent Club');
+      if (isUnmodified && originalFixture.matchId) {
+        const proj = projectionsByMatchId.get(originalFixture.matchId);
+        if (proj && proj.projectedGateReceipts > 0) {
+          return proj.projectedGateReceipts;
+        }
+      }
+    }
+
     const rate = getAttendanceRate(matchType);
     const tSeats = Math.round(stadium.terracing * rate);
     const gSeats = Math.round(stadium.grass * rate);
@@ -593,7 +635,7 @@ export default function WageCalculator() {
     
     // Revenue parameters (Sponsors and interest update dynamically based on staff and reserves)
     const sponsors = simSponsorsIncome;
-    const gate = calculateGateReceipts(isHome, matchType);
+    const gate = calculateGateReceipts(isHome, matchType, weekNum);
     const interest = Math.floor(Math.min(10000000, runningCash) * (0.0005 + 0.0005 * simFA));
     const totalRev = sponsors + gate + interest;
 
@@ -636,7 +678,7 @@ export default function WageCalculator() {
     const matchType = customTypes[weekNum] || 'One Day';
     
     const sponsors = currentSponsorsIncome;
-    const gate = calculateGateReceipts(isHome, matchType);
+    const gate = calculateGateReceipts(isHome, matchType, weekNum);
     const interest = Math.floor(Math.min(10000000, runningCashCurrent) * (0.0005 + 0.0005 * currentFA));
     const totalRev = sponsors + gate + interest;
 
@@ -791,6 +833,20 @@ export default function WageCalculator() {
                   <span className="leading-relaxed">To view your actual club projections, go to the <strong className="text-indigo-900">Roster Sync</strong> tab and paste your Club Finances ledger. Showing a standard Battrick club scenario below for planning.</span>
                 </div>
               </div>
+            ) : financialProjections.length > 0 ? (
+              <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-emerald-950 shadow-sm">
+                <Shield className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold block mb-0.5">Club Diary Synced — Real Per-Fixture Income!</span>
+                  <span className="leading-relaxed">
+                    Cash, sponsors, interest, and wages come from your synced ledger. Gate receipts below are mapped directly to your{' '}
+                    <strong>Club Diary</strong> (diary.asp) — <strong>{realDataWeekCount}</strong> of the fixtures shown already have their
+                    <strong> actual</strong> reported gate receipts, and the rest use a historical average from real games you've played at that
+                    venue/match type, rather than a generic guess. If you change a week's opponent, venue, or type below, that week falls back to
+                    the ticket-price/occupancy estimate since there's no matching real result for a hypothetical fixture.
+                  </span>
+                </div>
+              </div>
             ) : attendanceCalibration ? (
               <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-emerald-950 shadow-sm">
                 <Shield className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
@@ -800,7 +856,8 @@ export default function WageCalculator() {
                     Cash, sponsors, interest, and wages are pulled directly from your synced ledger. Attendance rates below have also been calibrated
                     from your <strong>actual last reported gate receipts of £{attendanceCalibration.sourceReceipts.toLocaleString()}</strong> against
                     your real stadium's seating draw (£{terracingPrice}/£{grassPrice}/£{seatsPrice}/£{boxesPrice} pricing) — implying roughly{' '}
-                    <strong>{attendanceCalibration.impliedPct}%</strong> occupancy for a standard One Day fixture, rather than a generic guess. Feel free to fine-tune further below!
+                    <strong>{attendanceCalibration.impliedPct}%</strong> occupancy for a standard One Day fixture, rather than a generic guess.{' '}
+                    For real per-fixture gate receipts instead of an estimate, sync your <strong>Club Diary</strong> from the Roster Sync tab.
                   </span>
                 </div>
               </div>

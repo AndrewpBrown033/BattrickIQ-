@@ -1,21 +1,5 @@
 import express from "express";
 import path from "path";
-import { GoogleGenAI } from "@google/genai";
-
-function getAiClient(customKey?: string) {
-  const key = customKey?.trim() || process.env.GEMINI_API_KEY;
-  if (!key) {
-    throw new Error("GEMINI_API_KEY is not configured in the server environment. Please configure it in your Settings > Secrets panel.");
-  }
-  return new GoogleGenAI({ 
-    apiKey: key,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      }
-    }
-  });
-}
 
 async function startServer() {
   const app = express();
@@ -655,6 +639,12 @@ async function startServer() {
         finance: 'https://www.battrick.org/nl/finances.asp',
         'finances.asp': 'https://www.battrick.org/nl/finances.asp',
 
+        financeshistory: 'https://www.battrick.org/nl/finances.asp?range=std',
+        financehistory: 'https://www.battrick.org/nl/finances.asp?range=std',
+        'finance-history': 'https://www.battrick.org/nl/finances.asp?range=std',
+        'finances-history': 'https://www.battrick.org/nl/finances.asp?range=std',
+        'finances.asp?range=std': 'https://www.battrick.org/nl/finances.asp?range=std',
+
         diary: 'https://www.battrick.org/nl/diary.asp',
         'club diary': 'https://www.battrick.org/nl/diary.asp',
         'diary.asp': 'https://www.battrick.org/nl/diary.asp',
@@ -1137,26 +1127,23 @@ async function startServer() {
   app.get("/api/llm-config", (req, res) => {
     const defaultOpenRouterKey = process.env.OPENROUTER_API_KEY?.trim() || "";
     const hasOpenRouter = !!(defaultOpenRouterKey && defaultOpenRouterKey !== "");
-    const hasGemini = !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== "");
     res.json({
       hasOpenRouter,
-      hasGemini,
-      defaultProvider: hasOpenRouter ? "openrouter" : "gemini",
+      defaultProvider: "openrouter",
       supportedModels: [
         { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet (Recommended)", provider: "openrouter" },
         { id: "meta-llama/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct", provider: "openrouter" },
         { id: "openai/gpt-4o", name: "GPT-4o", provider: "openrouter" },
         { id: "deepseek/deepseek-chat", name: "DeepSeek V3", provider: "openrouter" },
         { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash (via OpenRouter)", provider: "openrouter" },
-        { id: "mistralai/mistral-large-2407", name: "Mistral Large", provider: "openrouter" },
-        { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash (Direct Google SDK)", provider: "gemini" }
+        { id: "mistralai/mistral-large-2407", name: "Mistral Large", provider: "openrouter" }
       ]
     });
   });
 
-  // API Route for AI Coach Assistance (supports OpenRouter & Gemini)
+  // API Route for AI Coach Assistance (OpenRouter only)
   app.post("/api/coach-chat", async (req, res) => {
-    const { message, context, provider = "openrouter", model, customApiKey, openRouterApiKey } = req.body;
+    const { message, context, model, openRouterApiKey } = req.body;
 
     if (!message) {
       res.status(400).json({ error: "A message is required." });
@@ -1199,93 +1186,60 @@ Your expertise includes:
 
 Respond with supportive, highly specialized, yet easy-to-read formatting. Use Markdown lists, bold highlights, and clean spacing.`;
 
-    // 1. OPENROUTER FLOW
+    // OPENROUTER-ONLY FLOW
     const effectiveOpenRouterKey = openRouterApiKey?.trim() || process.env.OPENROUTER_API_KEY?.trim() || "";
-    const effectiveProvider = provider === "openrouter" || (effectiveOpenRouterKey && provider !== "gemini") ? "openrouter" : "gemini";
 
-    if (effectiveProvider === "openrouter") {
-      if (!effectiveOpenRouterKey) {
-        res.status(401).json({ 
-          error: "OpenRouter API Key is not set. Please click 'Model Settings' in Coach Jarvis to enter and save your personal OpenRouter API key." 
-        });
-        return;
-      }
-
-      const targetModel = model || "anthropic/claude-3.5-sonnet";
-      console.log(`[AI Coach] Generating response via OpenRouter with model ${targetModel}...`);
-
-      try {
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${effectiveOpenRouterKey}`,
-            "HTTP-Referer": "https://ai.studio/build",
-            "X-Title": "BattrickIQ AI Coach",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: targetModel,
-            messages: [
-              { role: "system", content: systemInstruction },
-              { role: "user", content: `[TEAM CONTEXT]:\n${context || "No context provided yet."}\n\n[USER INQUIRY]:\n${message}` }
-            ],
-            temperature: 0.7,
-            max_tokens: 2048
-          })
-        });
-
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          console.error("OpenRouter API error response:", errData);
-          const errorMsg = errData?.error?.message || `OpenRouter returned HTTP status ${response.status}`;
-          res.status(response.status).json({ error: errorMsg });
-          return;
-        }
-
-        const data = await response.json();
-        const replyText = data.choices?.[0]?.message?.content || "No response generated from OpenRouter.";
-
-        res.json({
-          success: true,
-          reply: replyText,
-          provider: "openrouter",
-          model: targetModel
-        });
-        return;
-
-      } catch (orErr: any) {
-        console.error("OpenRouter network error:", orErr);
-        res.status(500).json({ error: orErr.message || "Failed to communicate with OpenRouter API." });
-        return;
-      }
+    if (!effectiveOpenRouterKey) {
+      res.status(401).json({
+        error: "OpenRouter API Key is not set. Please click 'Model Settings' in Coach Jarvis to enter and save your personal OpenRouter API key."
+      });
+      return;
     }
 
-    // 2. GEMINI FLOW (Fallback / Alternative)
+    const targetModel = model || "anthropic/claude-3.5-sonnet";
+    console.log(`[AI Coach] Generating response via OpenRouter with model ${targetModel}...`);
+
     try {
-      const ai = getAiClient(customApiKey);
-      console.log(`[AI Coach] Generating response via Google Gemini (gemini-3.8-flash)...`);
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: `[TEAM CONTEXT]:\n${context || "No context provided yet."}\n\n[USER INQUIRY]:\n${message}`,
-        config: {
-          systemInstruction: systemInstruction,
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${effectiveOpenRouterKey}`,
+          "HTTP-Referer": "https://ai.studio/build",
+          "X-Title": "BattrickIQ AI Coach",
+          "Content-Type": "application/json"
         },
+        body: JSON.stringify({
+          model: targetModel,
+          messages: [
+            { role: "system", content: systemInstruction },
+            { role: "user", content: `[TEAM CONTEXT]:\n${context || "No context provided yet."}\n\n[USER INQUIRY]:\n${message}` }
+          ],
+          temperature: 0.7,
+          max_tokens: 2048
+        })
       });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        console.error("OpenRouter API error response:", errData);
+        const errorMsg = errData?.error?.message || `OpenRouter returned HTTP status ${response.status}`;
+        res.status(response.status).json({ error: errorMsg });
+        return;
+      }
+
+      const data = await response.json();
+      const replyText = data.choices?.[0]?.message?.content || "No response generated from OpenRouter.";
 
       res.json({
         success: true,
-        reply: response.text,
-        provider: "gemini",
-        model: "gemini-3.8-flash"
+        reply: replyText,
+        provider: "openrouter",
+        model: targetModel
       });
 
-    } catch (error: any) {
-      console.error("Gemini API error:", error);
-      const isAuthErr = error?.status === 401 || error?.message?.includes("UNAUTHENTICATED") || error?.message?.includes("invalid authentication credentials") || error?.message?.includes("ACCESS_TOKEN_TYPE_UNSUPPORTED");
-      const errorDetail = isAuthErr 
-        ? "Gemini API key is invalid or not yet configured. Please check your GEMINI_API_KEY in the Settings > Secrets panel or switch to OpenRouter." 
-        : (error.message || "An error occurred while generating AI advice.");
-      res.status(500).json({ error: errorDetail });
+    } catch (orErr: any) {
+      console.error("OpenRouter network error:", orErr);
+      res.status(500).json({ error: orErr.message || "Failed to communicate with OpenRouter API." });
     }
   });
 

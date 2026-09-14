@@ -3080,7 +3080,7 @@ export const KNOWN_OPPONENT_CLUBS: KnownOpponentClub[] = [
   { teamId: '108', teamName: 'Bushrangers', league: 'First Class League', isBot: false },
   { teamId: '32194', teamName: 'Sandshoe Crushers', league: 'First Class League', isBot: false },
   { teamId: '32161', teamName: 'Bulolo Seahawks', league: 'One Day League', isBot: true },
-  { teamId: '32383', teamName: 'Royal West Herts GC', league: 'Twenty20 League', isBot: false },
+  { teamId: '12733', teamName: 'Royal West Herts GC', league: 'Twenty20 League', isBot: false },
   { teamId: '32384', teamName: 'Atlanta Braves', league: 'Twenty20 League', isBot: false },
   { teamId: '7501', teamName: 'Cyclone Strikers', league: 'BT20 League', isBot: false },
   { teamId: '7502', teamName: 'Gold Coast Titans', league: 'BT20 League', isBot: false },
