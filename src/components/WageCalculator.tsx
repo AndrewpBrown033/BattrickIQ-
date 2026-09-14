@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { BattrickPlayer, ClubFinances, BattrickGame, StadiumConfig, DiaryEntry } from '../types';
+import { BattrickPlayer, ClubFinances, BattrickGame, StadiumConfig, DiaryEntry, ParsedBattrickMatch } from '../types';
 import { buildFinancialProjections } from '../parser';
+import { MATCH_STORAGE_KEY } from '../utils/matchArchive';
 import { 
   DollarSign, Shield, TrendingUp, Info, Calendar, Landmark, 
   ArrowUpRight, ArrowDownRight, Scale, Coins, BarChart3, LineChart as LineIcon,
-  AlertTriangle, CheckCircle, Award, Users, ChevronDown, ChevronUp, Settings2
+  AlertTriangle, CheckCircle, Award, Users, ChevronDown, ChevronUp, Settings2,
+  Bot, Loader2, Sparkles
 } from 'lucide-react';
 import { 
   ResponsiveContainer, LineChart, Line, BarChart, Bar, 
@@ -249,17 +251,110 @@ export default function WageCalculator() {
   const [seatsPrice, setSeatsPrice] = useState<number>(35);
   const [boxesPrice, setBoxesPrice] = useState<number>(120);
 
-  // Estimated attendance occupancy rates per game type
-  const [fcAttendanceRate, setFcAttendanceRate] = useState<number>(60); // First Class (default 60%)
-  const [odAttendanceRate, setOdAttendanceRate] = useState<number>(85); // One Day (default 85%)
-  const [t20AttendanceRate, setT20AttendanceRate] = useState<number>(95); // Twenty20 (default 95%)
-  const [cupAttendanceRate, setCupAttendanceRate] = useState<number>(80); // Cup Matches (default 80%)
-  const [friendlyAttendanceRate, setFriendlyAttendanceRate] = useState<number>(25); // Friendly Matches (default 25%)
+  // Estimated attendance, in actual seats filled (headcount), per game type — NOT a percentage.
+  // Defaults are seeded against the default 10,000-capacity ground below and get rescaled
+  // once a real stadium syncs or once Jarvis analyzes real home-game history.
+  const [fcAttendanceSeats, setFcAttendanceSeats] = useState<number>(6000); // First Class (default 60% of 10,000)
+  const [odAttendanceSeats, setOdAttendanceSeats] = useState<number>(8500); // One Day (default 85% of 10,000)
+  const [t20AttendanceSeats, setT20AttendanceSeats] = useState<number>(9500); // Twenty20 (default 95% of 10,000)
+  const [cupAttendanceSeats, setCupAttendanceSeats] = useState<number>(8000); // Cup Matches (default 80% of 10,000)
+  const [friendlyAttendanceSeats, setFriendlyAttendanceSeats] = useState<number>(2500); // Friendlies (default 25% of 10,000)
 
-  // Calibration info: when we've derived attendance rates from the club's actual last-known
+  // Calibration info: when we've derived attendance seat estimates from the club's actual last-known
   // gate receipts (rather than generic guesses), we surface it here so the UI can be transparent
   // about where the numbers came from.
   const [attendanceCalibration, setAttendanceCalibration] = useState<{ impliedPct: number; sourceReceipts: number } | null>(null);
+
+  // Jarvis Attendance Analyst: looks back over every synced HOME game's actual reported crowd
+  // figures and averages them per match type, so the seat counts above can be grounded in real
+  // history instead of a guess.
+  const [jarvisAttendanceLoading, setJarvisAttendanceLoading] = useState<boolean>(false);
+  const [jarvisAttendanceResult, setJarvisAttendanceResult] = useState<{
+    homeGamesAnalyzed: number;
+    sampleCounts: { fc: number; od: number; t20: number; cup: number; friendly: number };
+    error?: string;
+  } | null>(null);
+
+  // Jarvis reviews every synced match, keeps HOME fixtures only, buckets each one's actual
+  // reported crowd by match type, and sets each seat field to that type's real average —
+  // real attendance history, in seats, not a percentage guess.
+  const runJarvisAttendanceAnalysis = () => {
+    setJarvisAttendanceLoading(true);
+    try {
+      const currentTeamName = localStorage.getItem('bt_team_name');
+      const matchesStr = localStorage.getItem(MATCH_STORAGE_KEY);
+      if (!matchesStr) {
+        setJarvisAttendanceResult({
+          homeGamesAnalyzed: 0,
+          sampleCounts: { fc: 0, od: 0, t20: 0, cup: 0, friendly: 0 },
+          error: 'No synced match history yet — sync your Match Archive first so Jarvis has home games to analyze.'
+        });
+        return;
+      }
+
+      let allMatches: ParsedBattrickMatch[] = [];
+      try {
+        const parsed = JSON.parse(matchesStr);
+        if (Array.isArray(parsed)) allMatches = parsed;
+      } catch (e) {
+        console.error('Error parsing match archive for Jarvis attendance analysis:', e);
+      }
+
+      const homeMatches = currentTeamName
+        ? allMatches.filter(m => m.homeTeam === currentTeamName)
+        : allMatches;
+
+      const buckets: { fc: number[]; od: number[]; t20: number[]; cup: number[]; friendly: number[] } = {
+        fc: [], od: [], t20: [], cup: [], friendly: []
+      };
+
+      homeMatches.forEach(m => {
+        const crowdNum = m.crowd ? parseInt(String(m.crowd).replace(/,/g, ''), 10) : NaN;
+        if (!Number.isFinite(crowdNum) || crowdNum <= 0) return;
+
+        const t = (m.matchType || '').toLowerCase();
+        if (t.includes('first class') || t.includes('fc') || t === '3day') buckets.fc.push(crowdNum);
+        else if (t.includes('twenty20') || t.includes('t20')) buckets.t20.push(crowdNum);
+        else if (t.includes('cup')) buckets.cup.push(crowdNum);
+        else if (t.includes('friendly')) buckets.friendly.push(crowdNum);
+        else buckets.od.push(crowdNum);
+      });
+
+      const average = (arr: number[]) => arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
+      const capacity = stadium.capacity || 10000;
+      const clampToCapacity = (n: number) => Math.max(0, Math.min(capacity, n));
+
+      const fcAvg = average(buckets.fc);
+      const odAvg = average(buckets.od);
+      const t20Avg = average(buckets.t20);
+      const cupAvg = average(buckets.cup);
+      const friendlyAvg = average(buckets.friendly);
+
+      if (fcAvg !== null) setFcAttendanceSeats(clampToCapacity(fcAvg));
+      if (odAvg !== null) setOdAttendanceSeats(clampToCapacity(odAvg));
+      if (t20Avg !== null) setT20AttendanceSeats(clampToCapacity(t20Avg));
+      if (cupAvg !== null) setCupAttendanceSeats(clampToCapacity(cupAvg));
+      if (friendlyAvg !== null) setFriendlyAttendanceSeats(clampToCapacity(friendlyAvg));
+
+      setJarvisAttendanceResult({
+        homeGamesAnalyzed: homeMatches.length,
+        sampleCounts: {
+          fc: buckets.fc.length,
+          od: buckets.od.length,
+          t20: buckets.t20.length,
+          cup: buckets.cup.length,
+          friendly: buckets.friendly.length,
+        },
+        error: homeMatches.length === 0
+          ? (currentTeamName
+              ? `No synced home fixtures found for ${currentTeamName} yet.`
+              : 'No team name synced — sync your Roster/Team page so Jarvis can identify your home games.')
+          : undefined,
+      });
+    } finally {
+      setJarvisAttendanceLoading(false);
+    }
+  };
 
   // Calibrate attendance % assumptions from REAL data: the club's actual last reported gate
   // receipts (finances.gateReceipts, straight from the synced Club Finances ledger) combined with
@@ -285,11 +380,12 @@ export default function WageCalculator() {
         // (Twenty20 draws the biggest crowds, Friendlies the smallest), but rescale that whole
         // curve around this club's real, most-recently reported gate income instead of guessing.
         const RATIO = { fc: 0.706, od: 1.0, t20: 1.118, cup: 0.941, friendly: 0.294 };
-        setFcAttendanceRate(Math.min(100, Math.round(impliedPct * RATIO.fc)));
-        setOdAttendanceRate(Math.min(100, Math.round(impliedPct * RATIO.od)));
-        setT20AttendanceRate(Math.min(100, Math.round(impliedPct * RATIO.t20)));
-        setCupAttendanceRate(Math.min(100, Math.round(impliedPct * RATIO.cup)));
-        setFriendlyAttendanceRate(Math.min(100, Math.round(impliedPct * RATIO.friendly)));
+        const seatsAt = (ratio: number) => Math.max(0, Math.min(stadium.capacity, Math.round(stadium.capacity * impliedOccupancy * ratio)));
+        setFcAttendanceSeats(seatsAt(RATIO.fc));
+        setOdAttendanceSeats(seatsAt(RATIO.od));
+        setT20AttendanceSeats(seatsAt(RATIO.t20));
+        setCupAttendanceSeats(seatsAt(RATIO.cup));
+        setFriendlyAttendanceSeats(seatsAt(RATIO.friendly));
 
         setAttendanceCalibration({ impliedPct, sourceReceipts: finances.gateReceipts });
       }
@@ -489,21 +585,22 @@ export default function WageCalculator() {
     setSeatsPrice(35);
     setBoxesPrice(120);
 
-    // Reset attendance rates: prefer the real, gate-receipts-calibrated rates when we have them,
-    // falling back to generic sample assumptions only when no real financial data is synced.
+    // Reset attendance seat estimates: prefer the real, gate-receipts-calibrated figures when we
+    // have them, falling back to generic sample assumptions only when no real financial data is synced.
     if (attendanceCalibration) {
       const RATIO = { fc: 0.706, od: 1.0, t20: 1.118, cup: 0.941, friendly: 0.294 };
-      setFcAttendanceRate(Math.min(100, Math.round(attendanceCalibration.impliedPct * RATIO.fc)));
-      setOdAttendanceRate(Math.min(100, Math.round(attendanceCalibration.impliedPct * RATIO.od)));
-      setT20AttendanceRate(Math.min(100, Math.round(attendanceCalibration.impliedPct * RATIO.t20)));
-      setCupAttendanceRate(Math.min(100, Math.round(attendanceCalibration.impliedPct * RATIO.cup)));
-      setFriendlyAttendanceRate(Math.min(100, Math.round(attendanceCalibration.impliedPct * RATIO.friendly)));
+      const seatsAt = (ratio: number) => Math.max(0, Math.min(stadium.capacity, Math.round((stadium.capacity * attendanceCalibration.impliedPct / 100) * ratio)));
+      setFcAttendanceSeats(seatsAt(RATIO.fc));
+      setOdAttendanceSeats(seatsAt(RATIO.od));
+      setT20AttendanceSeats(seatsAt(RATIO.t20));
+      setCupAttendanceSeats(seatsAt(RATIO.cup));
+      setFriendlyAttendanceSeats(seatsAt(RATIO.friendly));
     } else {
-      setFcAttendanceRate(60);
-      setOdAttendanceRate(85);
-      setT20AttendanceRate(95);
-      setCupAttendanceRate(80);
-      setFriendlyAttendanceRate(25);
+      setFcAttendanceSeats(Math.round((stadium.capacity || 10000) * 0.60));
+      setOdAttendanceSeats(Math.round((stadium.capacity || 10000) * 0.85));
+      setT20AttendanceSeats(Math.round((stadium.capacity || 10000) * 0.95));
+      setCupAttendanceSeats(Math.round((stadium.capacity || 10000) * 0.80));
+      setFriendlyAttendanceSeats(Math.round((stadium.capacity || 10000) * 0.25));
     }
 
     // Reset venues to default synced schedule
@@ -545,14 +642,17 @@ export default function WageCalculator() {
   const projectionsByMatchId = new Map(financialProjections.map(p => [p.matchId, p]));
   const realDataWeekCount = financialProjections.filter(p => p.actualGateReceipts !== undefined).length;
 
-  // Helper to resolve attendance occupancy factor for a match type
+  // Helper to resolve attendance occupancy factor for a match type, derived from the
+  // actual expected seats-filled figure for that type against total ground capacity.
   const getAttendanceRate = (type: string) => {
     const t = type.toLowerCase();
-    if (t.includes('first class') || t.includes('fc') || t === '3day') return fcAttendanceRate / 100;
-    if (t.includes('twenty20') || t.includes('t20')) return t20AttendanceRate / 100;
-    if (t.includes('cup')) return cupAttendanceRate / 100;
-    if (t.includes('friendly')) return friendlyAttendanceRate / 100;
-    return odAttendanceRate / 100; // Standard One Day/OD default
+    const capacity = stadium.capacity || 1;
+    const rateFor = (seats: number) => Math.max(0, Math.min(1, seats / capacity));
+    if (t.includes('first class') || t.includes('fc') || t === '3day') return rateFor(fcAttendanceSeats);
+    if (t.includes('twenty20') || t.includes('t20')) return rateFor(t20AttendanceSeats);
+    if (t.includes('cup')) return rateFor(cupAttendanceSeats);
+    if (t.includes('friendly')) return rateFor(friendlyAttendanceSeats);
+    return rateFor(odAttendanceSeats); // Standard One Day/OD default
   };
 
   // Helper to calculate gate receipts based on game details and ticketing variables.
@@ -983,20 +1083,56 @@ export default function WageCalculator() {
               </div>
             </div>
 
-            {/* Attendance occupancy percentages Columns */}
+            {/* Attendance occupancy — real seat counts, not percentages */}
             <div className="md:col-span-6 flex flex-col gap-4 text-xs">
-              <h4 className="font-mono text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Estimated Attendance % by Game Type</h4>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <h4 className="font-mono text-[10px] font-bold text-slate-400 uppercase tracking-wider">Estimated Attendance by Game Type (Seats)</h4>
+                <button
+                  type="button"
+                  onClick={runJarvisAttendanceAnalysis}
+                  disabled={jarvisAttendanceLoading}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-[10px] font-bold rounded-lg shadow-sm transition-colors shrink-0"
+                  title="Have Jarvis average your actual home-game crowd history per match type"
+                >
+                  {jarvisAttendanceLoading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Bot className="w-3.5 h-3.5" />
+                  )}
+                  Ask Jarvis
+                </button>
+              </div>
+
+              {jarvisAttendanceResult && (
+                <div className={`rounded-xl p-3 flex items-start gap-2 text-[11px] leading-relaxed ${jarvisAttendanceResult.error ? 'bg-amber-50 border border-amber-100 text-amber-900' : 'bg-indigo-50 border border-indigo-100 text-indigo-950'}`}>
+                  <Sparkles className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    {jarvisAttendanceResult.error ? (
+                      <span>{jarvisAttendanceResult.error}</span>
+                    ) : (
+                      <>
+                        <span className="font-bold block mb-0.5">Jarvis analyzed {jarvisAttendanceResult.homeGamesAnalyzed} synced home game{jarvisAttendanceResult.homeGamesAnalyzed === 1 ? '' : 's'}.</span>
+                        <span>
+                          Seat counts below are now the real average crowd per match type
+                          (FC: {jarvisAttendanceResult.sampleCounts.fc}, OD: {jarvisAttendanceResult.sampleCounts.od}, T20: {jarvisAttendanceResult.sampleCounts.t20}, Cup: {jarvisAttendanceResult.sampleCounts.cup}, Friendly: {jarvisAttendanceResult.sampleCounts.friendly} game{jarvisAttendanceResult.sampleCounts.friendly === 1 ? '' : 's'} sampled).
+                          Types with no sampled home games keep their prior value.
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="flex justify-between font-semibold mb-1">
                     <span className="text-slate-600">First Class (FC)</span>
-                    <span className="font-mono text-indigo-600 font-bold">{fcAttendanceRate}%</span>
+                    <span className="font-mono text-indigo-600 font-bold">{fcAttendanceSeats.toLocaleString()} seats</span>
                   </div>
                   <input
-                    type="range" min="0" max="100" step="5"
-                    value={fcAttendanceRate}
-                    onChange={(e) => setFcAttendanceRate(parseInt(e.target.value))}
+                    type="range" min="0" max={stadium.capacity || 10000} step="50"
+                    value={fcAttendanceSeats}
+                    onChange={(e) => setFcAttendanceSeats(parseInt(e.target.value))}
                     className="w-full h-1 bg-slate-100 rounded accent-indigo-600 cursor-pointer"
                   />
                 </div>
@@ -1004,12 +1140,12 @@ export default function WageCalculator() {
                 <div>
                   <div className="flex justify-between font-semibold mb-1">
                     <span className="text-slate-600">One Day (OD)</span>
-                    <span className="font-mono text-indigo-600 font-bold">{odAttendanceRate}%</span>
+                    <span className="font-mono text-indigo-600 font-bold">{odAttendanceSeats.toLocaleString()} seats</span>
                   </div>
                   <input
-                    type="range" min="0" max="100" step="5"
-                    value={odAttendanceRate}
-                    onChange={(e) => setOdAttendanceRate(parseInt(e.target.value))}
+                    type="range" min="0" max={stadium.capacity || 10000} step="50"
+                    value={odAttendanceSeats}
+                    onChange={(e) => setOdAttendanceSeats(parseInt(e.target.value))}
                     className="w-full h-1 bg-slate-100 rounded accent-indigo-600 cursor-pointer"
                   />
                 </div>
@@ -1017,12 +1153,12 @@ export default function WageCalculator() {
                 <div>
                   <div className="flex justify-between font-semibold mb-1">
                     <span className="text-slate-600">Twenty20 (T20)</span>
-                    <span className="font-mono text-indigo-600 font-bold">{t20AttendanceRate}%</span>
+                    <span className="font-mono text-indigo-600 font-bold">{t20AttendanceSeats.toLocaleString()} seats</span>
                   </div>
                   <input
-                    type="range" min="0" max="100" step="5"
-                    value={t20AttendanceRate}
-                    onChange={(e) => setT20AttendanceRate(parseInt(e.target.value))}
+                    type="range" min="0" max={stadium.capacity || 10000} step="50"
+                    value={t20AttendanceSeats}
+                    onChange={(e) => setT20AttendanceSeats(parseInt(e.target.value))}
                     className="w-full h-1 bg-slate-100 rounded accent-indigo-600 cursor-pointer"
                   />
                 </div>
@@ -1030,12 +1166,12 @@ export default function WageCalculator() {
                 <div>
                   <div className="flex justify-between font-semibold mb-1">
                     <span className="text-slate-600">Cup Matches</span>
-                    <span className="font-mono text-indigo-600 font-bold">{cupAttendanceRate}%</span>
+                    <span className="font-mono text-indigo-600 font-bold">{cupAttendanceSeats.toLocaleString()} seats</span>
                   </div>
                   <input
-                    type="range" min="0" max="100" step="5"
-                    value={cupAttendanceRate}
-                    onChange={(e) => setCupAttendanceRate(parseInt(e.target.value))}
+                    type="range" min="0" max={stadium.capacity || 10000} step="50"
+                    value={cupAttendanceSeats}
+                    onChange={(e) => setCupAttendanceSeats(parseInt(e.target.value))}
                     className="w-full h-1 bg-slate-100 rounded accent-indigo-600 cursor-pointer"
                   />
                 </div>
@@ -1043,12 +1179,12 @@ export default function WageCalculator() {
                 <div>
                   <div className="flex justify-between font-semibold mb-1">
                     <span className="text-slate-600">Friendlies</span>
-                    <span className="font-mono text-indigo-600 font-bold">{friendlyAttendanceRate}%</span>
+                    <span className="font-mono text-indigo-600 font-bold">{friendlyAttendanceSeats.toLocaleString()} seats</span>
                   </div>
                   <input
-                    type="range" min="0" max="100" step="5"
-                    value={friendlyAttendanceRate}
-                    onChange={(e) => setFriendlyAttendanceRate(parseInt(e.target.value))}
+                    type="range" min="0" max={stadium.capacity || 10000} step="50"
+                    value={friendlyAttendanceSeats}
+                    onChange={(e) => setFriendlyAttendanceSeats(parseInt(e.target.value))}
                     className="w-full h-1 bg-slate-100 rounded accent-indigo-600 cursor-pointer"
                   />
                 </div>
