@@ -432,6 +432,24 @@ ${opponentSummary || 'No opponent players available'}
 - Key Opponent Bowlers: ${scoutDossier.keyThreats.bowlers.map(b => b.name).join(', ') || 'N/A'}
 `;
 
+    // Coach Jarvis is OpenRouter-only — use the same saved key and model that Model Settings
+    // (in the main AI Coach tab) writes to localStorage, so this screen's Jarvis chat actually
+    // authenticates instead of always hitting the server's missing-key error.
+    const activeOpenRouterKey = localStorage.getItem('bt_openrouter_api_key') || '';
+    const activeModel = localStorage.getItem('bt_llm_model') || 'anthropic/claude-3.5-sonnet';
+
+    if (!activeOpenRouterKey) {
+      setIsJarvisThinking(false);
+      const keyMissingMsg: ChatMessage = {
+        id: `err_${Date.now()}`,
+        role: 'assistant',
+        content: `⚠️ **OpenRouter API Key Required**: Please configure your OpenRouter API key in **Model Settings** (on the main AI Coach tab) to enable Coach Jarvis. You can obtain a free API key at [openrouter.ai/keys](https://openrouter.ai/keys).`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setMessages(prev => [...prev, keyMissingMsg]);
+      return;
+    }
+
     try {
       const response = await fetch('/api/coach-chat', {
         method: 'POST',
@@ -439,16 +457,17 @@ ${opponentSummary || 'No opponent players available'}
         body: JSON.stringify({
           message: query,
           context: fullContext,
-          provider: 'gemini'
+          model: activeModel,
+          openRouterApiKey: activeOpenRouterKey
         })
       });
 
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `HTTP Error ${response.status}`);
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || `HTTP Error ${response.status}`);
       }
 
-      const data = await response.json();
       const reply = data.reply || 'No tactical response was generated.';
 
       const assistantMsg: ChatMessage = {
@@ -465,7 +484,7 @@ ${opponentSummary || 'No opponent players available'}
       const errorMsg: ChatMessage = {
         id: `err_${Date.now()}`,
         role: 'assistant',
-        content: `⚠️ **Unable to connect to Coach Jarvis server endpoint.**\n\n*Error details:* ${err.message}\n\n*Quick Tip:* Please check your GEMINI_API_KEY in Settings or try asking again.`,
+        content: `⚠️ **Unable to connect to Coach Jarvis server endpoint.**\n\n*Error details:* ${err.message}\n\n*Quick Tip:* Please check your OpenRouter API key in Model Settings (main AI Coach tab) or try asking again.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages(prev => [...prev, errorMsg]);
