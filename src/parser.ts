@@ -1935,9 +1935,11 @@ export function parseFixtures(content: string): BattrickGame[] {
         else if (dataClass === 'FC') type = 'First Class';
         else if (dataClass === 'BT20') type = 'Twenty20';
         else if (dataClass === 'OD') type = 'One Day';
+        else if (dataClass === 'Friendly' || dataClass === 'FR') type = 'Friendly';
         else if (item.textContent?.includes('First Class') || item.textContent?.includes('(FC)')) type = 'First Class';
         else if (item.textContent?.includes('BT20') || item.textContent?.includes('Twenty20')) type = 'Twenty20';
         else if (item.textContent?.includes('Cup')) type = 'Cup';
+        else if (item.textContent?.includes('Friendly')) type = 'Friendly';
 
         // Extract Date & Time from preceding span.altcol or inner text
         let date = 'Upcoming';
@@ -2090,7 +2092,7 @@ export function parseFixtures(content: string): BattrickGame[] {
           let cleanedTitle = titleText
             .replace(/(\d{2}\/\d{2}\/\d{4})/, '')
             .replace(/(\d{2}:\d{2})/, '')
-            .replace(/\(?(?:BT20|OD|FC|Cup|Twenty20|One Day|First Class)\)?/gi, '')
+            .replace(/\(?(?:BT20|OD|FC|Cup|Twenty20|One Day|First Class|Friendly)\)?/gi, '')
             .replace(/\b(?:Orders|Won|Lost|Tied|Drawn|Draw|Upcoming|Scorecard|Orders submitted)\b.*$/gi, '')
             .trim();
 
@@ -2206,6 +2208,7 @@ export function parseFixtures(content: string): BattrickGame[] {
             if (text.includes('BT20') || text.includes('Twenty20')) type = 'Twenty20';
             else if (text.includes('FC') || text.includes('First Class')) type = 'First Class';
             else if (text.includes('Cup')) type = 'Cup';
+            else if (text.includes('Friendly')) type = 'Friendly';
 
             let homeTeam = '';
             let awayTeam = '';
@@ -2216,7 +2219,7 @@ export function parseFixtures(content: string): BattrickGame[] {
               const cleaned = matchCell
                 .replace(/(\d{2}\/\d{2}\/\d{4})/, '')
                 .replace(/(\d{2}:\d{2})/, '')
-                .replace(/\(?(?:BT20|OD|FC|Cup|Twenty20|One Day|First Class)\)?/gi, '')
+                .replace(/\(?(?:BT20|OD|FC|Cup|Twenty20|One Day|First Class|Friendly)\)?/gi, '')
                 .replace(/\b(?:Orders|Won|Lost|Tied|Drawn|Draw|Upcoming)\b.*$/gi, '')
                 .trim();
               const parts = cleaned.split(/\s+(?:v|vs)\s+/i);
@@ -2292,6 +2295,7 @@ export function parseFixtures(content: string): BattrickGame[] {
         if (line.includes('(BT20)') || line.includes('BT20') || line.toLowerCase().includes('twenty20')) type = 'Twenty20';
         else if (line.includes('(FC)') || line.includes('FC') || line.toLowerCase().includes('first class')) type = 'First Class';
         else if (line.includes('(Cup)') || line.includes('Cup') || line.toLowerCase().includes('cup')) type = 'Cup';
+        else if (line.includes('(Friendly)') || line.toLowerCase().includes('friendly')) type = 'Friendly';
         else if (line.includes('(OD)') || line.includes('OD') || line.toLowerCase().includes('one day')) type = 'One Day';
 
         let result = 'Upcoming';
@@ -2305,7 +2309,7 @@ export function parseFixtures(content: string): BattrickGame[] {
         let cleaned = line
           .replace(date, '')
           .replace(time, '')
-          .replace(/\(?(?:BT20|OD|FC|Cup|Twenty20|One Day|First Class)\)?/gi, '')
+          .replace(/\(?(?:BT20|OD|FC|Cup|Twenty20|One Day|First Class|Friendly)\)?/gi, '')
           .replace(/\b(?:Orders|Won|Lost|Tied|Drawn|Draw|Upcoming|Scorecard|Match Report|Orders submitted)\b.*$/gi, '')
           .replace(/\s+/g, ' ')
           .trim();
@@ -4258,6 +4262,7 @@ export function parseBattrickFullMatch(rawContent: string, matchIdOverride?: str
   if (rawContent.includes('First Class') || rawContent.includes('FC') || rawContent.includes('(FC)')) parsedType = 'First Class';
   else if (rawContent.includes('Twenty20') || rawContent.includes('BT20') || rawContent.includes('(BT20)')) parsedType = 'Twenty20';
   else if (rawContent.includes('Cup')) parsedType = 'Cup';
+  else if (rawContent.includes('Friendly')) parsedType = 'Friendly';
 
   const groundMatch = rawContent.match(/(?:Ground|Venue|Stadium)[:\s]+([A-Za-z0-9\s.'&-]+?)(?:\n|<|,|Pitch:)/i);
   const parsedVenue = groundMatch ? groundMatch[1].trim() : 'Home Ground Arena';
