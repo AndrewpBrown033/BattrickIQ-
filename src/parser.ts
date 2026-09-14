@@ -126,14 +126,17 @@ function getPlayerLinksInElement(el: Element): Element[] {
 }
 
 // Helper to filter out noise phrases from team name candidates
-function isGenericTeamNoise(s: string): boolean {
+export function isGenericTeamNoise(s: string): boolean {
   const lower = s.toLowerCase().trim();
   const noise = [
     'first class', 'twenty20', 'one day', 'home', 'away', 'won', 'lost', 'upcoming',
     'cup', 'battrick', 'date', 'opponent', 'result', 'type', 'venue', 'match',
     'innings', 'view', 'orders', 'scorecard', 'summary', 'details', 'team',
     'team one', 'team two', 'unknown opponent', 'my club', 'my battrick iq club',
-    'bt20', 'fc', 'od', 'friendly', 'match center', 'match centre'
+    'bt20', 'fc', 'od', 'friendly', 'match center', 'match centre',
+    'fixtures', 'fixture', 'squad', 'finances', 'finance', 'diary', 'office',
+    'pavilion', 'nets', 'ground', 'stadium', 'club diary', 'admin', 'login',
+    'members', 'staff', 'training', 'schedule', 'results', 'standings'
   ];
   return noise.includes(lower) || lower.length < 3 || /^\d+$/.test(lower);
 }
@@ -154,6 +157,27 @@ function cleanTeamNameCandidate(s: string): string {
  */
 export function extractTeamNameFromContent(content: string, parsedGames?: BattrickGame[]): string | null {
   if (!content) return null;
+
+  // Frequency-based detection: on a fixtures list, the user's own club appears in nearly every
+  // row, which is a far more reliable signal than any single heading or the page <title>. We
+  // compute this once up front so it can be consulted before the looser title-tag fallback below.
+  const detectByFrequency = (): { team: string; count: number } | null => {
+    if (!parsedGames || parsedGames.length === 0) return null;
+    const counts: Record<string, number> = {};
+    parsedGames.forEach(g => {
+      if (g.homeTeam && !isGenericTeamNoise(g.homeTeam)) counts[g.homeTeam] = (counts[g.homeTeam] || 0) + 1;
+      if (g.awayTeam && !isGenericTeamNoise(g.awayTeam)) counts[g.awayTeam] = (counts[g.awayTeam] || 0) + 1;
+    });
+    let bestTeam = '';
+    let maxCount = 0;
+    for (const [team, cnt] of Object.entries(counts)) {
+      if (cnt > maxCount) {
+        maxCount = cnt;
+        bestTeam = team;
+      }
+    }
+    return bestTeam ? { team: bestTeam, count: maxCount } : null;
+  };
 
   // 1. Direct DOM inspection if HTML
   try {
@@ -189,14 +213,14 @@ export function extractTeamNameFromContent(content: string, parsedGames?: Battri
       }
     }
 
-    // Check <title> tag
+    // Check <title> tag — strict patterns first (these require an explicit team-name segment,
+    // so they're safe even on a generic page title).
     const titleText = doc.querySelector('title')?.textContent || '';
-    const titlePatterns = [
+    const strictTitlePatterns = [
       /battrick\s*-\s*([A-Za-z0-9\s.'&-]+)\s*-\s*(?:fixtures|squad|office|matches)/i,
-      /(?:fixtures|squad)\s*(?:for|-)\s*([A-Za-z0-9\s.'&-]+)/i,
-      /battrick\s*-\s*([A-Za-z0-9\s.'&-]+)/i
+      /(?:fixtures|squad)\s*(?:for|-)\s*([A-Za-z0-9\s.'&-]+)/i
     ];
-    for (const p of titlePatterns) {
+    for (const p of strictTitlePatterns) {
       const match = titleText.match(p);
       if (match && match[1]) {
         const cleaned = cleanTeamNameCandidate(match[1]);
@@ -205,9 +229,25 @@ export function extractTeamNameFromContent(content: string, parsedGames?: Battri
         }
       }
     }
+
+    // Confident frequency match (the club appears in 2+ parsed fixture rows) beats the loose,
+    // single-segment title fallback below — that fallback can't tell a club name apart from a
+    // plain nav label like "Fixtures" or "Squad" sharing the title with "Battrick".
+    const confidentFreq = detectByFrequency();
+    if (confidentFreq && confidentFreq.count >= 2) return confidentFreq.team;
+
+    // Loose <title> fallback: "Battrick - X" with no further qualifier.
+    const looseTitleMatch = titleText.match(/battrick\s*-\s*([A-Za-z0-9\s.'&-]+)/i);
+    if (looseTitleMatch && looseTitleMatch[1]) {
+      const cleaned = cleanTeamNameCandidate(looseTitleMatch[1]);
+      if (!isGenericTeamNoise(cleaned) && cleaned.length >= 3 && !cleaned.toLowerCase().includes('cricket')) {
+        return cleaned;
+      }
+    }
   } catch (e) {}
 
-  // 2. Frequency in parsed games (a club's fixtures list has that club in every game)
+  // 2. Frequency in parsed games (a club's fixtures list has that club in every game) — covers
+  // the case where DOM parsing above didn't run or didn't find anything.
   if (parsedGames && parsedGames.length > 0) {
     const counts: Record<string, number> = {};
     parsedGames.forEach(g => {

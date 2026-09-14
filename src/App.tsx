@@ -16,6 +16,7 @@ import OpponentScout from './components/OpponentScout';
 import BattrickAuthBar from './components/BattrickAuthBar';
 import { LeagueStandings } from './components/LeagueStandings';
 import { onCustomAuthStateChanged, customSignOut, getCustomUser, CustomUser } from './lib/customAuth';
+import { isGenericTeamNoise } from './parser';
 import { Award, Calculator, Users, FolderOpen, Heart, RefreshCw, Landmark, Bot, BookOpen, Trophy, Clock, ShieldAlert, LogOut, Eye, Activity, History, LayoutGrid, Wallet, MoreHorizontal, X, ChevronUp, Swords, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -162,6 +163,14 @@ export default function App() {
   useEffect(() => {
     const loadTeamName = () => {
       const name = localStorage.getItem('bt_team_name');
+      // Self-heal: an older parsing bug could store a page-nav label (e.g. "Fixtures", "Squad")
+      // as the team name instead of the actual club. Clear it so a fresh sync can re-detect it
+      // correctly, rather than letting the app keep treating a nav label as your club.
+      if (name && isGenericTeamNoise(name)) {
+        localStorage.removeItem('bt_team_name');
+        setTeamName('My Battrick IQ Club');
+        return;
+      }
       if (name) setTeamName(name);
     };
     loadTeamName();

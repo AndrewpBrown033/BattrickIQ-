@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BattrickPlayer, ClubFinances, BattrickGame, StadiumConfig, DiaryEntry, ParsedBattrickMatch } from '../types';
 import { buildFinancialProjections } from '../parser';
-import { MATCH_STORAGE_KEY } from '../utils/matchArchive';
+import { getStoredMatchesList, syncMatchesFromFirestore } from '../utils/matchArchive';
 import { 
   DollarSign, Shield, TrendingUp, Info, Calendar, Landmark, 
   ArrowUpRight, ArrowDownRight, Scale, Coins, BarChart3, LineChart as LineIcon,
@@ -275,29 +275,31 @@ export default function WageCalculator() {
     error?: string;
   } | null>(null);
 
-  // Jarvis reviews every synced match, keeps HOME fixtures only, buckets each one's actual
-  // reported crowd by match type, and sets each seat field to that type's real average —
-  // real attendance history, in seats, not a percentage guess.
-  const runJarvisAttendanceAnalysis = () => {
+  // Jarvis reviews every synced match (pulling the latest from Firestore first so this works
+  // even if this browser/device's local cache is behind), keeps HOME fixtures only, buckets each
+  // one's actual reported crowd by match type, and sets each seat field to that type's real
+  // average — real attendance history, in seats, not a percentage guess.
+  const runJarvisAttendanceAnalysis = async () => {
     setJarvisAttendanceLoading(true);
     try {
+      // Best-effort cloud pull: if the user is logged in and has matches saved to Firestore that
+      // haven't made it into this browser's local cache yet, bring them down first.
+      try {
+        await syncMatchesFromFirestore();
+      } catch (e) {
+        console.warn('Jarvis: could not pull latest matches from Firestore, continuing with local cache:', e);
+      }
+
       const currentTeamName = localStorage.getItem('bt_team_name');
-      const matchesStr = localStorage.getItem(MATCH_STORAGE_KEY);
-      if (!matchesStr) {
+      const allMatches: ParsedBattrickMatch[] = getStoredMatchesList();
+
+      if (allMatches.length === 0) {
         setJarvisAttendanceResult({
           homeGamesAnalyzed: 0,
           sampleCounts: { fc: 0, od: 0, t20: 0, cup: 0, friendly: 0 },
           error: 'No synced match history yet — sync your Match Archive first so Jarvis has home games to analyze.'
         });
         return;
-      }
-
-      let allMatches: ParsedBattrickMatch[] = [];
-      try {
-        const parsed = JSON.parse(matchesStr);
-        if (Array.isArray(parsed)) allMatches = parsed;
-      } catch (e) {
-        console.error('Error parsing match archive for Jarvis attendance analysis:', e);
       }
 
       const homeMatches = currentTeamName
