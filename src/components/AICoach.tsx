@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { RefreshCw, Send, Sparkles, HelpCircle, User, Bot, AlertCircle, Plus, History, Settings, Cpu, ShieldCheck, Check } from 'lucide-react';
+import { RefreshCw, Send, Sparkles, HelpCircle, User, Bot, AlertCircle, Plus, History, Settings, Cpu, ShieldCheck, Check, Eye, EyeOff } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { getCustomUser } from '../lib/customAuth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -57,6 +57,7 @@ export default function AICoach() {
   });
   const [isModelModalOpen, setIsModelModalOpen] = useState<boolean>(false);
   const [keySavedMessage, setKeySavedMessage] = useState<boolean>(false);
+  const [showKey, setShowKey] = useState<boolean>(false);
 
   const currentUser = getCustomUser();
 
@@ -719,24 +720,39 @@ export default function AICoach() {
                 </a>.
               </p>
               <div className="flex gap-2">
-                <input
-                  type="password"
-                  value={openRouterKey}
-                  onChange={(e) => {
-                    const val = e.target.value.trim();
-                    setOpenRouterKey(val);
-                    if (val) {
-                      localStorage.setItem('bt_openrouter_api_key', val);
-                    } else {
-                      localStorage.removeItem('bt_openrouter_api_key');
-                    }
-                    setKeySavedMessage(true);
-                    setTimeout(() => setKeySavedMessage(false), 2000);
-                  }}
-                  placeholder="sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxx"
-                  className="flex-1 text-xs font-mono p-2.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+                <div className="flex-1 relative">
+                  <input
+                    type={showKey ? 'text' : 'password'}
+                    value={openRouterKey}
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      setOpenRouterKey(val);
+                      if (val) {
+                        localStorage.setItem('bt_openrouter_api_key', val);
+                      } else {
+                        localStorage.removeItem('bt_openrouter_api_key');
+                      }
+                      setKeySavedMessage(true);
+                      setTimeout(() => setKeySavedMessage(false), 2000);
+                    }}
+                    placeholder="sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxx"
+                    className="w-full text-xs font-mono p-2.5 pr-9 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKey(!showKey)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    title={showKey ? 'Hide key' : 'Show key'}
+                  >
+                    {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
+              {openRouterKey && (
+                <p className="text-[10px] font-mono text-slate-400">
+                  Currently saved: {showKey ? openRouterKey : `${openRouterKey.slice(0, 7)}${'•'.repeat(Math.max(0, openRouterKey.length - 11))}${openRouterKey.slice(-4)}`}
+                </p>
+              )}
               {keySavedMessage && (
                 <span className="text-[11px] text-emerald-600 font-mono font-bold block">
                   ✓ OpenRouter key preference updated!
