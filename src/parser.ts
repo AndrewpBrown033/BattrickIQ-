@@ -2472,6 +2472,17 @@ function categorizeDiaryEntry(description: string): DiaryEntry['category'] {
   return 'other';
 }
 
+// Extracts a Battrick match ID from free text such as "Played a First Class match
+// (32194558) and received £45,183 in gate receipts." The diary page's match reference
+// isn't always a hyperlink — sometimes it's just the bare ID in parentheses after the
+// word "match" — so this covers that format in addition to an explicit matchID= URL.
+function extractMatchIdFromDiaryText(text: string): string | undefined {
+  const urlMatch = text.match(/matchID=(\d+)/i);
+  if (urlMatch) return urlMatch[1];
+  const inlineMatch = text.match(/\bmatch(?:es)?\b[^\d(]{0,15}?\(?#?\s*(\d{6,9})\s*\)?/i);
+  return inlineMatch ? inlineMatch[1] : undefined;
+}
+
 /**
  * Parses the manager's diary / cash-book page (diary.asp) — a running,
  * week-by-week ledger of income and outgoings, plus membership counts,
@@ -2543,6 +2554,13 @@ export function parseDiary(content: string): DiaryEntry[] {
           matchUrl = `https://www.battrick.org/nl/${href.replace(/^\//, '')}`;
         }
       }
+      if (!matchId) {
+        const textMatchId = extractMatchIdFromDiaryText(rowText);
+        if (textMatchId) {
+          matchId = textMatchId;
+          matchUrl = `https://www.battrick.org/nl/matchinfo.asp?matchID=${textMatchId}`;
+        }
+      }
 
       // Membership count/delta on this row, e.g. "Members: 1,432 (+12)"
       let members: number | undefined;
@@ -2603,7 +2621,7 @@ export function parseDiary(content: string): DiaryEntry[] {
     };
 
     if (weekMatch) currentWeek = parseInt(weekMatch[1], 10);
-    const matchIdMatch = line.match(/matchID=(\d+)/i);
+    const matchIdMatch = extractMatchIdFromDiaryText(line);
 
     const description = line
       .replace(/week\s*\d+/i, '')
@@ -2617,8 +2635,8 @@ export function parseDiary(content: string): DiaryEntry[] {
       description,
       amount: parseSignedAmount(currencyMatches[0]),
       balance: currencyMatches.length > 1 ? parseSignedAmount(currencyMatches[currencyMatches.length - 1]) : undefined,
-      matchId: matchIdMatch ? matchIdMatch[1] : undefined,
-      matchUrl: matchIdMatch ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${matchIdMatch[1]}` : undefined,
+      matchId: matchIdMatch,
+      matchUrl: matchIdMatch ? `https://www.battrick.org/nl/matchinfo.asp?matchID=${matchIdMatch}` : undefined,
       category: categorizeDiaryEntry(description)
     });
   });
