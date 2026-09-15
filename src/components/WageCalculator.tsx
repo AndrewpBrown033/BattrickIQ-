@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { BattrickPlayer, ClubFinances, BattrickGame, StadiumConfig, DiaryEntry, ParsedBattrickMatch } from '../types';
 import { buildFinancialProjections } from '../parser';
 import { getStoredMatchesList, syncMatchesFromFirestore } from '../utils/matchArchive';
@@ -28,6 +28,15 @@ export default function WageCalculator() {
   const [importedPlayers, setImportedPlayers] = useState<BattrickPlayer[]>([]);
   const [finances, setFinances] = useState<ClubFinances | null>(null);
   const [fixtures, setFixtures] = useState<BattrickGame[]>([]);
+
+  // fixtures holds BOTH already-played and upcoming matches concatenated (previous matches
+  // listed first, matching the real page's order) - a forward-looking ledger must only ever
+  // seed weeks from upcoming ones. Falls back to the full list if 'section' wasn't tagged
+  // (older synced data, before that field existed).
+  const upcomingFixtures = useMemo(
+    () => (fixtures.some(f => f.section) ? fixtures.filter(f => f.section === 'upcoming') : fixtures),
+    [fixtures]
+  );
   const [diary, setDiary] = useState<DiaryEntry[]>([]);
 
   // Simulation staff overrides for the Optimizer panel
@@ -272,13 +281,18 @@ export default function WageCalculator() {
   const [jarvisAttendanceResult, setJarvisAttendanceResult] = useState<{
     homeGamesAnalyzed: number;
     sampleCounts: { fc: number; od: number; t20: number; cup: number; friendly: number };
+    estimatedCounts: { fc: number; od: number; t20: number; cup: number; friendly: number };
     error?: string;
   } | null>(null);
 
   // Jarvis reviews every synced match (pulling the latest from Firestore first so this works
   // even if this browser/device's local cache is behind), keeps HOME fixtures only, buckets each
   // one's actual reported crowd by match type, and sets each seat field to that type's real
-  // average — real attendance history, in seats, not a percentage guess.
+  // average. Exact crowd counts only come from individually-synced match detail pages
+  // (bt_played_matches_store), which most people never sync one-by-one - so as a fallback, any
+  // match type with no exact crowd data gets an estimate instead, back-solved from the real gate
+  // receipts already linked via the Club Diary + Fixtures (buildFinancialProjections) using the
+  // same ticket-price model the rest of this page uses.
   const runJarvisAttendanceAnalysis = async () => {
     setJarvisAttendanceLoading(true);
     try {
@@ -292,65 +306,85 @@ export default function WageCalculator() {
 
       const currentTeamName = localStorage.getItem('bt_team_name');
       const allMatches: ParsedBattrickMatch[] = getStoredMatchesList();
-
-      if (allMatches.length === 0) {
-        setJarvisAttendanceResult({
-          homeGamesAnalyzed: 0,
-          sampleCounts: { fc: 0, od: 0, t20: 0, cup: 0, friendly: 0 },
-          error: 'No synced match history yet — sync your Match Archive first so Jarvis has home games to analyze.'
-        });
-        return;
-      }
-
       const homeMatches = currentTeamName
         ? allMatches.filter(m => m.homeTeam === currentTeamName)
         : allMatches;
 
-      const buckets: { fc: number[]; od: number[]; t20: number[]; cup: number[]; friendly: number[] } = {
-        fc: [], od: [], t20: [], cup: [], friendly: []
+      type BucketKey = 'fc' | 'od' | 't20' | 'cup' | 'friendly';
+      const bucketOf = (type: string): BucketKey => {
+        const t = type.toLowerCase();
+        if (t.includes('first class') || t.includes('fc') || t === '3day') return 'fc';
+        if (t.includes('twenty20') || t.includes('t20')) return 't20';
+        if (t.includes('cup')) return 'cup';
+        if (t.includes('friendly')) return 'friendly';
+        return 'od';
       };
 
+      // Pass 1: exact reported crowd counts, from individually-synced match pages.
+      const exactBuckets: Record<BucketKey, number[]> = { fc: [], od: [], t20: [], cup: [], friendly: [] };
       homeMatches.forEach(m => {
         const crowdNum = m.crowd ? parseInt(String(m.crowd).replace(/,/g, ''), 10) : NaN;
         if (!Number.isFinite(crowdNum) || crowdNum <= 0) return;
-
-        const t = (m.matchType || '').toLowerCase();
-        if (t.includes('first class') || t.includes('fc') || t === '3day') buckets.fc.push(crowdNum);
-        else if (t.includes('twenty20') || t.includes('t20')) buckets.t20.push(crowdNum);
-        else if (t.includes('cup')) buckets.cup.push(crowdNum);
-        else if (t.includes('friendly')) buckets.friendly.push(crowdNum);
-        else buckets.od.push(crowdNum);
+        exactBuckets[bucketOf(m.matchType || '')].push(crowdNum);
       });
 
-      const average = (arr: number[]) => arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
+      // Pass 2: estimated headcount from real gate receipts, for any bucket exact data didn't
+      // cover. Uses the same blended-price-per-seat model calculateGateReceipts() uses, inverted.
+      const estimatedBuckets: Record<BucketKey, number[]> = { fc: [], od: [], t20: [], cup: [], friendly: [] };
       const capacity = stadium.capacity || 10000;
+      const blendedPricePerSeat = capacity > 0
+        ? ((stadium.terracing * terracingPrice) + (stadium.grass * grassPrice) + (stadium.seats * seatsPrice) + (stadium.boxes * boxesPrice)) / capacity
+        : 0;
+
+      if (blendedPricePerSeat > 0) {
+        const playedFixtures = fixtures.some(f => f.section) ? fixtures.filter(f => f.section === 'previous') : fixtures;
+        playedFixtures.forEach(f => {
+          if (f.venue !== 'Home' || !f.matchId) return;
+          const bucket = bucketOf(f.type || '');
+          if (exactBuckets[bucket].length > 0) return; // exact data already covers this type
+          const proj = projectionsByMatchId.get(f.matchId);
+          const actual = proj?.actualGateReceipts;
+          if (actual === undefined || actual <= 0) return;
+          // Friendly and Cup gate receipts are split 50/50 in Battrick (see calculateGateReceipts),
+          // so the raw revenue that would have set the crowd size is double the reported receipts.
+          const lowerType = (f.type || '').toLowerCase();
+          const impliedRawRevenue = (lowerType.includes('friendly') || lowerType.includes('cup')) ? actual * 2 : actual;
+          const estimatedSeats = Math.round(impliedRawRevenue / blendedPricePerSeat);
+          if (estimatedSeats > 0) estimatedBuckets[bucket].push(Math.min(capacity, estimatedSeats));
+        });
+      }
+
+      const average = (arr: number[]) => arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
       const clampToCapacity = (n: number) => Math.max(0, Math.min(capacity, n));
 
-      const fcAvg = average(buckets.fc);
-      const odAvg = average(buckets.od);
-      const t20Avg = average(buckets.t20);
-      const cupAvg = average(buckets.cup);
-      const friendlyAvg = average(buckets.friendly);
+      const resolved: Record<BucketKey, number | null> = {
+        fc: average(exactBuckets.fc) ?? average(estimatedBuckets.fc),
+        od: average(exactBuckets.od) ?? average(estimatedBuckets.od),
+        t20: average(exactBuckets.t20) ?? average(estimatedBuckets.t20),
+        cup: average(exactBuckets.cup) ?? average(estimatedBuckets.cup),
+        friendly: average(exactBuckets.friendly) ?? average(estimatedBuckets.friendly),
+      };
 
-      if (fcAvg !== null) setFcAttendanceSeats(clampToCapacity(fcAvg));
-      if (odAvg !== null) setOdAttendanceSeats(clampToCapacity(odAvg));
-      if (t20Avg !== null) setT20AttendanceSeats(clampToCapacity(t20Avg));
-      if (cupAvg !== null) setCupAttendanceSeats(clampToCapacity(cupAvg));
-      if (friendlyAvg !== null) setFriendlyAttendanceSeats(clampToCapacity(friendlyAvg));
+      if (resolved.fc !== null) setFcAttendanceSeats(clampToCapacity(resolved.fc));
+      if (resolved.od !== null) setOdAttendanceSeats(clampToCapacity(resolved.od));
+      if (resolved.t20 !== null) setT20AttendanceSeats(clampToCapacity(resolved.t20));
+      if (resolved.cup !== null) setCupAttendanceSeats(clampToCapacity(resolved.cup));
+      if (resolved.friendly !== null) setFriendlyAttendanceSeats(clampToCapacity(resolved.friendly));
+
+      const totalSamples = Object.values(exactBuckets).reduce((a, b) => a + b.length, 0) + Object.values(estimatedBuckets).reduce((a, b) => a + b.length, 0);
 
       setJarvisAttendanceResult({
-        homeGamesAnalyzed: homeMatches.length,
+        homeGamesAnalyzed: totalSamples,
         sampleCounts: {
-          fc: buckets.fc.length,
-          od: buckets.od.length,
-          t20: buckets.t20.length,
-          cup: buckets.cup.length,
-          friendly: buckets.friendly.length,
+          fc: exactBuckets.fc.length, od: exactBuckets.od.length, t20: exactBuckets.t20.length,
+          cup: exactBuckets.cup.length, friendly: exactBuckets.friendly.length,
         },
-        error: homeMatches.length === 0
-          ? (currentTeamName
-              ? `No synced home fixtures found for ${currentTeamName} yet.`
-              : 'No team name synced — sync your Roster/Team page so Jarvis can identify your home games.')
+        estimatedCounts: {
+          fc: estimatedBuckets.fc.length, od: estimatedBuckets.od.length, t20: estimatedBuckets.t20.length,
+          cup: estimatedBuckets.cup.length, friendly: estimatedBuckets.friendly.length,
+        },
+        error: totalSamples === 0
+          ? 'No home game data found yet — sync your Club Diary and Fixtures (Roster Sync tab) so Jarvis can estimate from real gate receipts, or sync individual match pages for exact crowd counts.'
           : undefined,
       });
     } finally {
@@ -539,12 +573,15 @@ export default function WageCalculator() {
     const initialTypes: Record<number, string> = {};
     const initialOpponents: Record<number, string> = {};
 
+    // fixtures holds both already-played and upcoming matches (previous matches listed
+    // first, matching the real page order) - only upcoming ones belong in a forward-looking
+    // ledger. Fall back to the whole list if 'section' wasn't tagged (older synced data).
     for (let w = 1; w <= 16; w++) {
       const fixtureIdx = w - 1;
-      if (fixtures[fixtureIdx]) {
-        initialVenues[w] = fixtures[fixtureIdx].venue;
-        initialTypes[w] = fixtures[fixtureIdx].type || 'One Day';
-        initialOpponents[w] = fixtures[fixtureIdx].opponent || 'Opponent Club';
+      if (upcomingFixtures[fixtureIdx]) {
+        initialVenues[w] = upcomingFixtures[fixtureIdx].venue;
+        initialTypes[w] = upcomingFixtures[fixtureIdx].type || 'One Day';
+        initialOpponents[w] = upcomingFixtures[fixtureIdx].opponent || 'Opponent Club';
       } else {
         initialVenues[w] = w % 2 === 1 ? 'Home' : 'Away';
         initialTypes[w] = w % 3 === 1 ? 'One Day' : w % 3 === 2 ? 'First Class' : 'Twenty20';
@@ -612,10 +649,10 @@ export default function WageCalculator() {
 
     for (let w = 1; w <= 16; w++) {
       const fixtureIdx = w - 1;
-      if (fixtures[fixtureIdx]) {
-        initialVenues[w] = fixtures[fixtureIdx].venue;
-        initialTypes[w] = fixtures[fixtureIdx].type || 'One Day';
-        initialOpponents[w] = fixtures[fixtureIdx].opponent || 'Opponent Club';
+      if (upcomingFixtures[fixtureIdx]) {
+        initialVenues[w] = upcomingFixtures[fixtureIdx].venue;
+        initialTypes[w] = upcomingFixtures[fixtureIdx].type || 'One Day';
+        initialOpponents[w] = upcomingFixtures[fixtureIdx].opponent || 'Opponent Club';
       } else {
         initialVenues[w] = w % 2 === 1 ? 'Home' : 'Away';
         initialTypes[w] = w % 3 === 1 ? 'One Day' : w % 3 === 2 ? 'First Class' : 'Twenty20';
@@ -666,7 +703,7 @@ export default function WageCalculator() {
     if (!isHome) return 0;
 
     if (weekNum !== undefined) {
-      const originalFixture = fixtures[weekNum - 1];
+      const originalFixture = upcomingFixtures[weekNum - 1];
       const isUnmodified = !!originalFixture && customOpponents[weekNum] === (originalFixture.opponent || 'Opponent Club');
       if (isUnmodified && originalFixture.matchId) {
         const proj = projectionsByMatchId.get(originalFixture.matchId);
@@ -1161,9 +1198,17 @@ export default function WageCalculator() {
                       <>
                         <span className="font-bold block mb-0.5">Jarvis analyzed {jarvisAttendanceResult.homeGamesAnalyzed} synced home game{jarvisAttendanceResult.homeGamesAnalyzed === 1 ? '' : 's'}.</span>
                         <span>
-                          Seat counts below are now the real average crowd per match type
-                          (FC: {jarvisAttendanceResult.sampleCounts.fc}, OD: {jarvisAttendanceResult.sampleCounts.od}, T20: {jarvisAttendanceResult.sampleCounts.t20}, Cup: {jarvisAttendanceResult.sampleCounts.cup}, Friendly: {jarvisAttendanceResult.sampleCounts.friendly} game{jarvisAttendanceResult.sampleCounts.friendly === 1 ? '' : 's'} sampled).
-                          Types with no sampled home games keep their prior value.
+                          {(['fc', 'od', 't20', 'cup', 'friendly'] as const)
+                            .map(k => {
+                              const exact = jarvisAttendanceResult.sampleCounts[k];
+                              const est = jarvisAttendanceResult.estimatedCounts[k];
+                              const label = k.toUpperCase();
+                              if (exact > 0) return `${label}: ${exact} exact`;
+                              if (est > 0) return `${label}: ${est} estimated from gate receipts`;
+                              return `${label}: no data`;
+                            })
+                            .join(' · ')}
+                          . Types with no data keep their prior value.
                         </span>
                       </>
                     )}
