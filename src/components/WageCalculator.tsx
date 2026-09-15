@@ -14,7 +14,7 @@ import {
 } from 'recharts';
 
 export default function WageCalculator() {
-  const [subTab, setSubTab] = useState<'forecast' | 'health'>('health');
+  const [subTab, setSubTab] = useState<'forecast' | 'health'>('forecast');
 
   useEffect(() => {
     const requested = localStorage.getItem('bt_wage_subtab');
