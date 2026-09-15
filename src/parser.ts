@@ -1457,12 +1457,41 @@ function parseFinancesAndClub(content: string, type: 'finances' | 'club'): Parti
       }
     }
 
-    // 1b. Direct extraction of cash balance from known IDs (extremely precise)
+    // 1b. Direct extraction of cash balance from known IDs (extremely precise) - can
+    // legitimately be negative (a club can be overdrawn), so we don't reject on sign.
     const currentBalEl = doc.querySelector('#current-bal') || doc.getElementById('current-bal') || doc.querySelector('#closing-bal') || doc.getElementById('closing-bal');
-    if (currentBalEl && currentBalEl.textContent) {
+    if (currentBalEl && currentBalEl.textContent && currentBalEl.textContent.trim()) {
       const cleanCash = parseFormattedNumber(currentBalEl.textContent);
-      if (cleanCash > 0) {
+      if (Number.isFinite(cleanCash)) {
         finances.cash = cleanCash;
+      }
+    }
+
+    // 1b-ii. Season-to-date Account Summary block (Opening/Closing Balance, Payments In/Out,
+    // Profit/Loss). The page reuses id="exp" for both Payments Out and Profit/Loss, so we
+    // read each row by its fieldcol label text rather than by id.
+    if (type === 'finances') {
+      const summaryList = doc.querySelector('ul.accountsummary');
+      if (summaryList) {
+        const seasonLi = Array.from(summaryList.querySelectorAll('li')).find(li => /showing transactions from/i.test(li.textContent || ''));
+        if (seasonLi) {
+          const seasonMatch = (seasonLi.textContent || '').match(/showing transactions from\s*(.+)/i);
+          if (seasonMatch) finances.seasonLabel = seasonMatch[1].trim();
+        }
+        summaryList.querySelectorAll('li').forEach(li => {
+          const label = li.querySelector('.fieldcol')?.textContent?.trim() || '';
+          const valueEl = Array.from(li.querySelectorAll('span')).find(s => !s.classList.contains('fieldcol'));
+          const valueText = valueEl?.textContent?.trim() || '';
+          if (!label || !valueText) return;
+          const val = parseFormattedNumber(valueText);
+          if (!Number.isFinite(val)) return;
+          const l = label.toLowerCase();
+          if (l.includes('opening balance')) finances.seasonOpeningBalance = val;
+          else if (l.includes('closing balance')) finances.seasonClosingBalance = val;
+          else if (l.includes('payments in')) finances.seasonPaymentsIn = val;
+          else if (l.includes('payments out')) finances.seasonPaymentsOut = val;
+          else if (l.includes('profit') || l.includes('loss')) finances.seasonProfitLoss = val;
+        });
       }
     }
 
@@ -1487,15 +1516,15 @@ function parseFinancesAndClub(content: string, type: 'finances' | 'club'): Parti
           }
           if (amount > 0) {
             if (desc.includes('gate receipts')) {
-              finances.gateReceipts = amount;
+              if (finances.gateReceipts === undefined) finances.gateReceipts = amount;
             } else if (desc.includes('sponsorship')) {
-              finances.sponsorsIncome = amount;
+              if (finances.sponsorsIncome === undefined) finances.sponsorsIncome = amount;
             } else if (desc.includes('interest received')) {
-              finances.interestReceived = amount;
+              if (finances.interestReceived === undefined) finances.interestReceived = amount;
             } else if (desc.includes('player salaries')) {
-              finances.playerWages = amount;
+              if (finances.playerWages === undefined) finances.playerWages = amount;
             } else if (desc.includes('backroom staff salaries')) {
-              finances.staffWages = amount;
+              if (finances.staffWages === undefined) finances.staffWages = amount;
             }
           }
         }
@@ -1515,17 +1544,17 @@ function parseFinancesAndClub(content: string, type: 'finances' | 'club'): Parti
       if (/balance|club\s+cash|cash/i.test(text)) {
         if (!/carried\s+forward|brought\s+forward|opening/i.test(text)) {
           if (!/\d{1,2}\s+[a-zA-Z]{3}\s+\d{4}/.test(text)) {
-            const m = fullText.match(/(?:current\s+balance|closing\s+balance|balance|cash|club\s+cash)[:\s]*[$£€]?\s*([\d,]{4,12})/i);
+            const m = fullText.match(/(?:current\s+balance|closing\s+balance|balance|cash|club\s+cash)[:\s]*[$£€]?\s*(-?[\d,]{1,12})/i);
             if (m) {
               const parsedVal = parseFormattedNumber(m[1]);
-              if (parsedVal > 1000 && finances.cash === undefined) {
+              if (Math.abs(parsedVal) > 100 && finances.cash === undefined) {
                 finances.cash = parsedVal;
               }
             } else {
-              const currencyMatch = fullText.match(/[$£€]\s*([\d,]{4,12})/);
+              const currencyMatch = fullText.match(/[$£€]\s*(-?[\d,]{1,12})/);
               if (currencyMatch) {
                 const parsedVal = parseFormattedNumber(currencyMatch[1]);
-                if (parsedVal > 1000 && finances.cash === undefined) {
+                if (Math.abs(parsedVal) > 100 && finances.cash === undefined) {
                   finances.cash = parsedVal;
                 }
               }
@@ -1625,11 +1654,11 @@ function parseFinancesAndClub(content: string, type: 'finances' | 'club'): Parti
     fallbackText = doc.body?.textContent?.replace(/\s+/g, ' ') || normalized;
   } catch (e) {}
 
-  const cashMatch = fallbackText.match(/Current\s+Balance:\s*[$£€]?\s*([\d,]+)/i) || 
-                    fallbackText.match(/Closing\s+Balance:\s*[$£€]?\s*([\d,]+)/i) ||
-                    fallbackText.match(/Balance:\s*[$£€]?\s*([\d,]+)/i) || 
-                    fallbackText.match(/Club\s+Cash:\s*[$£€]?\s*([\d,]+)/i) || 
-                    fallbackText.match(/Cash:\s*[$£€]?\s*([\d,]+)/i);
+  const cashMatch = fallbackText.match(/Current\s+Balance:\s*[$£€]?\s*(-?[\d,]+)/i) || 
+                    fallbackText.match(/Closing\s+Balance:\s*[$£€]?\s*(-?[\d,]+)/i) ||
+                    fallbackText.match(/(?<!Opening )(?<!Brought )Balance:\s*[$£€]?\s*(-?[\d,]+)/i) || 
+                    fallbackText.match(/Club\s+Cash:\s*[$£€]?\s*(-?[\d,]+)/i) || 
+                    fallbackText.match(/Cash:\s*[$£€]?\s*(-?[\d,]+)/i);
   if (cashMatch && finances.cash === undefined) {
     finances.cash = parseFormattedNumber(cashMatch[1]);
   }

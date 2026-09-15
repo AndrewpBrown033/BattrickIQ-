@@ -977,6 +977,52 @@ export default function WageCalculator() {
             )}
           </div>
 
+      {/* Season Financial Summary - the club's actual season-to-date ledger, straight from
+          the Account Summary at the top of finances.asp (not a projection). */}
+      {finances?.seasonClosingBalance !== undefined && (
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-display font-bold text-sm text-slate-800 flex items-center gap-2">
+              <Landmark className="w-5 h-5 text-indigo-600" />
+              Season Financial Summary{finances.seasonLabel ? ` — ${finances.seasonLabel}` : ''}
+            </h3>
+            <span className="text-[10px] font-mono text-slate-400 uppercase">From your synced Finances ledger</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
+            <div className="bg-slate-50 rounded-lg p-3">
+              <span className="text-[10px] text-slate-400 font-bold uppercase block font-mono">Opening Balance</span>
+              <span className="font-mono text-sm font-bold text-slate-700">£{(finances.seasonOpeningBalance ?? 0).toLocaleString()}</span>
+            </div>
+            <div className="bg-emerald-50 rounded-lg p-3">
+              <span className="text-[10px] text-emerald-500 font-bold uppercase block font-mono">Payments In</span>
+              <span className="font-mono text-sm font-bold text-emerald-700">+£{(finances.seasonPaymentsIn ?? 0).toLocaleString()}</span>
+            </div>
+            <div className="bg-rose-50 rounded-lg p-3">
+              <span className="text-[10px] text-rose-500 font-bold uppercase block font-mono">Payments Out</span>
+              <span className="font-mono text-sm font-bold text-rose-700">-£{(finances.seasonPaymentsOut ?? 0).toLocaleString()}</span>
+            </div>
+            <div className={`rounded-lg p-3 ${(finances.seasonProfitLoss ?? 0) >= 0 ? 'bg-emerald-50' : 'bg-rose-50'}`}>
+              <span className={`text-[10px] font-bold uppercase block font-mono ${(finances.seasonProfitLoss ?? 0) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>Profit / Loss</span>
+              <span className={`font-mono text-sm font-bold ${(finances.seasonProfitLoss ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                {(finances.seasonProfitLoss ?? 0) >= 0 ? '+' : ''}£{(finances.seasonProfitLoss ?? 0).toLocaleString()}
+              </span>
+            </div>
+            <div className={`rounded-lg p-3 ${(finances.seasonClosingBalance ?? 0) >= 0 ? 'bg-indigo-50' : 'bg-rose-50'}`}>
+              <span className={`text-[10px] font-bold uppercase block font-mono ${(finances.seasonClosingBalance ?? 0) >= 0 ? 'text-indigo-500' : 'text-rose-500'}`}>Current Balance</span>
+              <span className={`font-mono text-sm font-bold ${(finances.seasonClosingBalance ?? 0) >= 0 ? 'text-indigo-700' : 'text-rose-700'}`}>
+                £{(finances.seasonClosingBalance ?? 0).toLocaleString()}
+              </span>
+            </div>
+          </div>
+          {(finances.seasonClosingBalance ?? 0) < 0 && (
+            <div className="mt-3 flex items-start gap-2 text-xs text-rose-700 bg-rose-50 border border-rose-100 rounded-lg p-2.5">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>Your club is currently overdrawn. The 16-week forecast below projects when this recovers based on upcoming fixtures, wages, and maintenance.</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Key Summary Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center justify-between">

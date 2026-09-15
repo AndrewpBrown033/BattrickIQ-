@@ -251,6 +251,14 @@ export interface ClubFinances {
   keepingCoaches?: number;
   staminaCoaches?: number;
   psychologists?: number;
+  // Season-to-date account summary, from the top of finances.asp - the club's actual
+  // running total for the season, as opposed to the single most recent week's figures above.
+  seasonOpeningBalance?: number;
+  seasonClosingBalance?: number;
+  seasonPaymentsIn?: number;
+  seasonPaymentsOut?: number;
+  seasonProfitLoss?: number;
+  seasonLabel?: string;
 }
 
 /**
