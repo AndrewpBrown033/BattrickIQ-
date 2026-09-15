@@ -5,7 +5,7 @@ import { getStoredMatches, fetchAndStoreSingleMatch } from '../utils/matchArchiv
 import MatchArchiveViewer from './MatchArchiveViewer';
 import GameDetailView from './GameDetailView';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
-import { getKnownTeamIdByName } from '../parser';
+import { getKnownTeamIdByName, buildFinancialProjections } from '../parser';
 import { 
   Calendar, Search, MapPin, Trophy, Shield, Clock, Swords, 
   ArrowUpRight, FileText, BarChart3, MessageSquare, Edit3, Filter,
@@ -26,11 +26,10 @@ export default function FixturesDashboard({ setActiveTab, onSelectScoutTeam }: F
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [clubName, setClubName] = useState<string>('My Club');
   const [activeSubTab, setActiveSubTab] = useState<'draw' | 'archive' | 'predictor'>('draw');
-  // Synced club ledger (diary.asp) & the per-fixture projections built from it -
-  // this is what actually tells us the money made per game and the real
-  // running weekly total, as opposed to the single-snapshot finance figures.
+  // Synced club ledger (diary.asp) - this is what actually tells us the money
+  // made per game and the real running weekly total, as opposed to the
+  // single-snapshot finance figures.
   const [diary, setDiary] = useState<DiaryEntry[]>([]);
-  const [projections, setProjections] = useState<FinancialProjection[]>([]);
   const [selectedGameForDetail, setSelectedGameForDetail] = useState<BattrickGame | null>(null);
   
   // Track stored matches map for instant badge indicator
@@ -62,16 +61,6 @@ export default function FixturesDashboard({ setActiveTab, onSelectScoutTeam }: F
         if (Array.isArray(parsedDiary)) setDiary(parsedDiary);
       } catch (e) {
         console.error('Failed to parse diary', e);
-      }
-    }
-
-    const savedProjections = localStorage.getItem('bt_financial_projections');
-    if (savedProjections) {
-      try {
-        const parsedProjections = JSON.parse(savedProjections);
-        if (Array.isArray(parsedProjections)) setProjections(parsedProjections);
-      } catch (e) {
-        console.error('Failed to parse financial projections', e);
       }
     }
   };
@@ -171,8 +160,21 @@ export default function FixturesDashboard({ setActiveTab, onSelectScoutTeam }: F
     return { total, upcoming, won, lost, tied };
   }, [fixtures]);
 
-  // Per-fixture financial projection, keyed by matchId - actual gate receipts
-  // for games with a synced diary entry, projected for games without one yet.
+  // Per-fixture financial projections - actual gate receipts for games with a synced
+  // diary entry, historically-averaged projections for games without one yet. Computed
+  // live from the same diary + fixtures data (and the same buildFinancialProjections()
+  // function) that the Wage Calculator's Financial Forecast tab uses, so the two views
+  // never drift out of alignment with each other.
+  const projections = useMemo(() => {
+    if (diary.length === 0 || fixtures.length === 0) return [];
+    try {
+      return buildFinancialProjections(diary, fixtures);
+    } catch (e) {
+      console.error('Failed to build financial projections:', e);
+      return [];
+    }
+  }, [diary, fixtures]);
+
   const projectionsByMatchId = useMemo(() => {
     const map = new Map<string, FinancialProjection>();
     projections.forEach(p => { if (p.matchId) map.set(p.matchId, p); });

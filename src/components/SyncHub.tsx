@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { BattrickPlayer, ClubFinances, BattrickGame, PavilionInfo, DiaryEntry } from '../types';
-import { parseBattrickPage, isNameMatch, buildFinancialProjections } from '../parser';
+import { parseBattrickPage, isNameMatch } from '../parser';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
 import { mergePlayerAndTrackHistory, generateRealisticHistory } from '../utils/history';
 import { 
@@ -194,20 +194,11 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
   useEffect(() => { diaryRef.current = diary; }, [diary]);
   useEffect(() => { pavilionRef.current = pavilion; }, [pavilion]);
 
-  // Whenever either the diary ledger or the fixtures list changes, rebuild
-  // the per-fixture financial projections (actuals for games with a
-  // matching diary entry, historical-average projections for the rest) and
-  // persist them so other parts of the app can read 'bt_financial_projections'.
-  useEffect(() => {
-    if (diary.length === 0 && fixtures.length === 0) return;
-    try {
-      const projections = buildFinancialProjections(diary, fixtures);
-      localStorage.setItem('bt_financial_projections', JSON.stringify(projections));
-      window.dispatchEvent(new Event('storage'));
-    } catch (e) {
-      console.error('Failed to build financial projections:', e);
-    }
-  }, [diary, fixtures]);
+  // Note: per-fixture financial projections used to be rebuilt here and cached to
+  // 'bt_financial_projections' for other screens to read. Both the Wage Calculator's
+  // Financial Forecast tab and the Fixtures Dashboard's Season Ledger now compute
+  // buildFinancialProjections(diary, fixtures) live instead, so they can never drift
+  // out of sync with each other or with a stale cached snapshot.
 
   // Only 2 sync methods: Direct Sync & Cut/Paste
   const [importTab, setImportTab] = useState<'direct' | 'paste'>('direct');
