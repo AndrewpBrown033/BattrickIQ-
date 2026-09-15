@@ -1178,12 +1178,27 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
 
   // Ask AI Coach to analyze this match with OpenRouter
   const handleConsultCoachJarvis = () => {
-    const matchSummary = `Please provide a thorough Opponent Scouting Analysis for Battrick Match ID ${activeParsedMatch.matchId} (${activeParsedMatch.homeTeam} vs ${activeParsedMatch.awayTeam}).
-Conditions: ${activeParsedMatch.matchType} on a ${activeParsedMatch.pitch} pitch with ${activeParsedMatch.weather} weather.
-Home Ratings: Top Order ${activeParsedMatch.homeRatings?.topOrder} (${activeParsedMatch.homeRatings?.topOrderScore}), Middle Order ${activeParsedMatch.homeRatings?.middleOrder}, Lower Order ${activeParsedMatch.homeRatings?.lowerOrder}, Seam ${activeParsedMatch.homeRatings?.seamBowling}, Spin ${activeParsedMatch.homeRatings?.spinBowling}, Batstat ${activeParsedMatch.homeRatings?.batstat?.toLocaleString()}.
-Away Ratings: Top Order ${activeParsedMatch.awayRatings?.topOrder} (${activeParsedMatch.awayRatings?.topOrderScore}), Middle Order ${activeParsedMatch.awayRatings?.middleOrder}, Lower Order ${activeParsedMatch.awayRatings?.lowerOrder}, Seam ${activeParsedMatch.awayRatings?.seamBowling}, Spin ${activeParsedMatch.awayRatings?.spinBowling}, Batstat ${activeParsedMatch.awayRatings?.batstat?.toLocaleString()}.
+    // Build the prompt from the live scouting dossier (kept in sync with the currently selected
+    // Opponent Team, pitch, weather, and format via its own useMemo) rather than activeParsedMatch,
+    // which only updates when a matching fixture with a resolvable matchId is found — otherwise it
+    // silently stays on whatever match (including the initial demo match) it last held.
+    const topThreats = dossier.keyThreats.batters.slice(0, 3).map(p => p.name).join(', ') || 'Not yet scouted';
+    const bowlThreats = dossier.keyThreats.bowlers.slice(0, 3).map(p => p.name).join(', ') || 'Not yet scouted';
+    const vulnLines = dossier.vulnerabilities.length > 0
+      ? dossier.vulnerabilities.map(v => `- [${v.severity.toUpperCase()}] ${v.title}: ${v.description}`).join('\n')
+      : '- No specific vulnerabilities flagged yet from the current squad data.';
 
-Explain how Battrick grouped and graded their lineup, analyze the Batstat breakdown, quantify their tail collapse probability, and give tactical bowling orders to exploit their 5th bowler.`;
+    const matchSummary = `Please provide a thorough Opponent Scouting Analysis for our upcoming match vs ${dossier.clubName}${opponentTeamId ? ` (Team ID ${opponentTeamId})` : ''}.
+Conditions: ${matchFormat} on a ${pitch} pitch, ${venue} fixture, ${weather} weather.
+Squad Sector Ratings (out of 20): Top Order ${dossier.topOrderRating}, Middle Order ${dossier.middleOrderRating}, Tail Vulnerability ${dossier.tailVulnerabilityRating}, Pace Attack ${dossier.paceAttackRating}, Spin Attack ${dossier.spinAttackRating}, Overall Squad Power ${dossier.overallSquadPower}.
+Estimated Win Probability (for us): ${dossier.winProbability}%.
+Key Opponent Batting Threats: ${topThreats}.
+Key Opponent Bowling Threats: ${bowlThreats}.
+
+Scouted Vulnerabilities:
+${vulnLines}
+
+Explain how Battrick grouped and graded their lineup, analyze the tail collapse probability, and give tactical bowling orders to exploit their 5th bowler.`;
 
     localStorage.setItem('bt_coach_initial_query', matchSummary);
     setActiveTab('coach');
