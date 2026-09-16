@@ -775,7 +775,7 @@ export default function WageCalculator() {
     // Revenue parameters (Sponsors and interest update dynamically based on staff and reserves)
     const sponsors = simSponsorsIncome;
     const gate = calculateGateReceipts(isHome, matchType, weekNum);
-    const interest = Math.floor(Math.min(10000000, runningCash) * (0.0005 + 0.0005 * simFA));
+    const interest = Math.floor(Math.max(0, Math.min(10000000, runningCash)) * (0.0005 + 0.0005 * simFA));
     const totalRev = sponsors + gate + interest;
 
     // Expense parameters
@@ -818,7 +818,7 @@ export default function WageCalculator() {
     
     const sponsors = currentSponsorsIncome;
     const gate = calculateGateReceipts(isHome, matchType, weekNum);
-    const interest = Math.floor(Math.min(10000000, runningCashCurrent) * (0.0005 + 0.0005 * currentFA));
+    const interest = Math.floor(Math.max(0, Math.min(10000000, runningCashCurrent)) * (0.0005 + 0.0005 * currentFA));
     const totalRev = sponsors + gate + interest;
 
     const players = playerWagesVal;
