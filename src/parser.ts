@@ -386,7 +386,8 @@ export function extractUserTeamFromMatch(
  */
 export function syncMatchToFixtures(
   parsedMatch: ParsedBattrickMatch,
-  userTeamInfo?: { userTeam: string; opponentTeam: string; userIsHome: boolean }
+  userTeamInfo?: { userTeam: string; opponentTeam: string; userIsHome: boolean },
+  rawContent?: string
 ): BattrickGame[] {
   let fixtures: BattrickGame[] = [];
   try {
@@ -408,6 +409,19 @@ export function syncMatchToFixtures(
     }
   }
 
+  // matchinfo.asp's "More Details" box is the one place Battrick lists both
+  // clubs' real numeric Team IDs together for this match - fixtures.asp (the
+  // Draw) never exposes them. When the raw page HTML is available (i.e. the
+  // user pasted a full matchinfo.asp page, not just a parsed scorecard),
+  // extract and merge them in so Opponent Scout etc. get a real Team ID
+  // without needing a live Battrick login session.
+  const { homeTeamId, awayTeamId } = rawContent
+    ? extractTeamIdsFromMatchInfoHtml(rawContent, parsedMatch.homeTeam, parsedMatch.awayTeam)
+    : {};
+  const opponentTeamId = userTeamInfo
+    ? (userTeamInfo.userIsHome ? awayTeamId : homeTeamId)
+    : awayTeamId;
+
   const newGame: BattrickGame = {
     matchId: parsedMatch.matchId,
     matchUrl: parsedMatch.matchUrl,
@@ -418,7 +432,12 @@ export function syncMatchToFixtures(
     awayTeam: parsedMatch.awayTeam,
     type: parsedMatch.matchType || 'One Day',
     venue: venue,
-    result: result
+    result: result,
+    // Conditionally spread so a failed extraction (undefined) never clobbers
+    // an id some earlier sync already resolved for this same fixture.
+    ...(homeTeamId ? { homeTeamId } : {}),
+    ...(awayTeamId ? { awayTeamId } : {}),
+    ...(opponentTeamId ? { opponentTeamId } : {})
   };
 
   const existingIdx = fixtures.findIndex(f => f.matchId === parsedMatch.matchId);
@@ -762,7 +781,7 @@ export function parseBattrickPage(content: string, forcedType?: string): {
         window.dispatchEvent(new Event('bt_team_name_updated'));
       } catch (e) {}
     }
-    const updatedFixtures = syncMatchToFixtures(match, userTeamInfo || undefined);
+    const updatedFixtures = syncMatchToFixtures(match, userTeamInfo || undefined, content);
     return { type, match, fixtures: updatedFixtures, teamName };
   }
   if (type === 'diary') {
@@ -5293,6 +5312,60 @@ export function extractOpponentTeamIdFromHtml(content: string): string | null {
   const h2 = content.match(/<h2[^>]*subheadernew[^>]*>[^<]*\((\d+)\)\s*</i);
   if (h2) return h2[1];
   return null;
+}
+
+// fixtures.asp (the Draw) only ever gives a team NAME and a matchID - never
+// a numeric Team ID - for either side of a fixture. The one place Battrick
+// does expose both clubs' real Team IDs together is the "More Details" box
+// on matchinfo.asp for that match:
+//   <div class="menu-box "><h3>More Details</h3><ul>
+//     <li><a href="office.asp?teamID=16905">Robmu</a></li>
+//     <li><a href="office.asp?teamID=5250">HairyBeanBags</a></li>
+//   </ul></div>
+// This is the dedicated lookup for that box, used to backfill
+// homeTeamId/awayTeamId onto a fixture after the Draw has already been
+// synced. Deliberately does NOT run through isolateBattrickMainColumn - the
+// "More Details" box lives in the page's side column, which that helper
+// strips out.
+export function extractTeamIdsFromMatchInfoHtml(
+  content: string,
+  homeTeamName?: string,
+  awayTeamName?: string
+): { homeTeamId?: string; awayTeamId?: string } {
+  if (!content) return {};
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(content, 'text/html');
+
+    const moreDetailsHeading = Array.from(doc.querySelectorAll('h3')).find(h => /more details/i.test(h.textContent || ''));
+    const box = moreDetailsHeading?.closest('.menu-box') || moreDetailsHeading?.parentElement || null;
+    const links = Array.from((box || doc).querySelectorAll('a[href*="office.asp?teamID="]'));
+
+    const entries = links
+      .map(a => {
+        const idMatch = (a.getAttribute('href') || '').match(/teamID=(\d+)/i);
+        return { id: idMatch ? idMatch[1] : '', name: (a.textContent || '').trim() };
+      })
+      .filter(e => e.id);
+
+    if (entries.length === 0) return {};
+
+    const norm = (s: string) => s.replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
+    let homeTeamId = homeTeamName ? entries.find(e => safeLooseMatch(norm(e.name), norm(homeTeamName)))?.id : undefined;
+    let awayTeamId = awayTeamName ? entries.find(e => safeLooseMatch(norm(e.name), norm(awayTeamName)))?.id : undefined;
+
+    // Battrick lists this box in the same Home-then-Away order as the match
+    // title itself ("Home v Away"), so if there are exactly the two entries
+    // we expect and name-matching didn't resolve both, fall back to position.
+    if (entries.length === 2) {
+      if (!homeTeamId) homeTeamId = entries[0].id;
+      if (!awayTeamId) awayTeamId = entries[1].id;
+    }
+
+    return { homeTeamId, awayTeamId };
+  } catch {
+    return {};
+  }
 }
 
 // Attempt to read the actual club name off a synced squad.asp page, so a

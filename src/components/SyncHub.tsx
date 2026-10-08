@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { BattrickPlayer, ClubFinances, BattrickGame, PavilionInfo, DiaryEntry } from '../types';
-import { parseBattrickPage, isNameMatch } from '../parser';
+import { parseBattrickPage, isNameMatch, extractTeamIdsFromMatchInfoHtml } from '../parser';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
 import { mergePlayerAndTrackHistory, generateRealisticHistory } from '../utils/history';
 import { 
@@ -539,6 +539,77 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
     window.dispatchEvent(new Event('bt_cloud_backup_request'));
   };
 
+  // fixtures.asp (the Draw) only ever gives a team NAME and a matchID for
+  // either side of a fixture - it never exposes the numeric Team ID that
+  // Opponent Scout and other features need. The one place Battrick lists
+  // both clubs' real Team IDs together is the "More Details" box on
+  // matchinfo.asp for that specific match, so after a Draw sync we quietly
+  // backfill it: fetch matchinfo.asp for each fixture still missing a Team
+  // ID (one request at a time, paced server-side) and merge the resolved
+  // ids back into the fixture, persisting as each one resolves so a
+  // mid-run interruption doesn't lose earlier progress.
+  const MAX_FIXTURE_TEAMID_LOOKUPS_PER_RUN = 25;
+  const enrichFixtureTeamIds = async (fixturesToCheck: BattrickGame[]) => {
+    const targets = fixturesToCheck
+      .filter(f => f.matchId && (!f.homeTeamId || !f.awayTeamId))
+      .slice(0, MAX_FIXTURE_TEAMID_LOOKUPS_PER_RUN);
+    if (targets.length === 0) return;
+
+    const username = directUsername;
+    const password = directPassword;
+    let sessionToken = localStorage.getItem('bt_sync_session') || '';
+    let resolvedCount = 0;
+
+    for (const target of targets) {
+      try {
+        const response = await fetch('/api/sync-battrick-step', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pageName: 'matchinfo',
+            matchId: target.matchId,
+            username,
+            password,
+            sessionToken
+          })
+        });
+        const data = await response.json();
+        if (data.sessionToken) {
+          sessionToken = data.sessionToken;
+          localStorage.setItem('bt_sync_session', data.sessionToken);
+        }
+        if (!response.ok || !data.success || !data.html) continue;
+
+        const { homeTeamId, awayTeamId } = extractTeamIdsFromMatchInfoHtml(data.html, target.homeTeam, target.awayTeam);
+        if (!homeTeamId && !awayTeamId) continue;
+
+        const current = fixturesRef.current;
+        const updated = current.map(f => {
+          if (f.matchId !== target.matchId) return f;
+          const nextHomeId = homeTeamId || f.homeTeamId;
+          const nextAwayId = awayTeamId || f.awayTeamId;
+          return {
+            ...f,
+            homeTeamId: nextHomeId,
+            awayTeamId: nextAwayId,
+            opponentTeamId: f.venue === 'Away' ? nextHomeId : nextAwayId
+          };
+        });
+        fixturesRef.current = updated;
+        setFixtures(updated);
+        localStorage.setItem('bt_fixtures', JSON.stringify(updated));
+        window.dispatchEvent(new Event('storage'));
+        resolvedCount++;
+      } catch (err) {
+        console.warn(`[Fixture Team ID Enrichment] Failed for match ${target.matchId}:`, err);
+      }
+    }
+
+    if (resolvedCount > 0) {
+      addSyncLog('fixtures', `Resolved opponent Team IDs for ${resolvedCount} of ${targets.length} fixture(s) from matchinfo.asp`, 'success');
+    }
+  };
+
   function handleImport(content: string, detectedType?: string, opts?: { silent?: boolean; progress?: { current: number; total: number } }) {
     if (!content.trim()) return;
     const silent = !!opts?.silent;
@@ -732,7 +803,14 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
       const teamMsg = result.teamName ? ` for ${result.teamName}` : '';
       setImportMessage({ text: `Successfully parsed and synced ${result.fixtures.length} club fixtures${teamMsg}!`, success: true });
       addSyncLog('fixtures', `Synchronized ${result.fixtures.length} club fixtures${teamMsg}`, 'success');
-      
+
+      // The Draw page itself never carries numeric Team IDs - backfill them
+      // in the background from matchinfo.asp (requires a live session; a
+      // manually-pasted fixtures page with no credentials just skips this).
+      if (directUsername && directPassword) {
+        enrichFixtureTeamIds(result.fixtures);
+      }
+
       if (!silent) setSuccessModal({
         isOpen: true,
         type: 'fixtures',

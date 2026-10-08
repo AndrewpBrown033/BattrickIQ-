@@ -22,7 +22,7 @@ export default function FixturesDashboard({ setActiveTab, onSelectScoutTeam }: F
   const { username: battrickUser, password: battrickPass, requireAuth, openPrompt } = useBattrickAuth();
   const [fixtures, setFixtures] = useState<BattrickGame[]>([]);
   const [filterType, setFilterType] = useState<string>('All');
-  const [sectionFilter, setSectionFilter] = useState<'all' | 'upcoming' | 'previous'>('all');
+  const [sectionFilter, setSectionFilter] = useState<'all' | 'upcoming' | 'previous'>('upcoming');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [clubName, setClubName] = useState<string>('My Club');
   const [activeSubTab, setActiveSubTab] = useState<'draw' | 'archive' | 'predictor'>('draw');
