@@ -3249,6 +3249,20 @@ export function getKnownTeamNameById(teamId: string | number): string | null {
   return match ? match.teamName : null;
 }
 
+// Safe loose-match helper: a plain `.includes('')` is ALWAYS true in JS, so any
+// unguarded substring check against a blank/unparsed name (a common artifact of
+// imperfectly-parsed Friendly/bot fixtures) would match EVERY lookup and return
+// that record's teamId - frequently the user's OWN team id, since the user is
+// the home team on most of their own fixtures. This is the root cause of
+// "scouting any opponent returns my own squad". Both sides must be non-empty,
+// and short fraglemnts (<3 chars) never loose-match, only exact-match.
+const safeLooseMatch = (a: string, b: string): boolean => {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.length < 3 || b.length < 3) return false;
+  return a.includes(b) || b.includes(a);
+};
+
 export function getKnownTeamIdByName(teamName: string): string | null {
   if (!teamName) return null;
   const clean = teamName.replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
@@ -3260,7 +3274,7 @@ export function getKnownTeamIdByName(teamName: string): string | null {
       // Check user's own team name
       const myTeamName = (localStorage.getItem('bt_team_name') || '').replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
       const myTeamId = localStorage.getItem('bt_team_id');
-      if (myTeamId && myTeamName && (myTeamName === clean || myTeamName.includes(clean) || clean.includes(myTeamName))) {
+      if (myTeamId && myTeamName && safeLooseMatch(myTeamName, clean)) {
         return String(myTeamId).trim();
       }
 
@@ -3272,7 +3286,7 @@ export function getKnownTeamIdByName(teamName: string): string | null {
           const match = parsed.teams.find((t: any) => {
             if (!t?.teamName || !t?.teamId) return false;
             const tClean = t.teamName.replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
-            return tClean === clean || tClean.includes(clean) || clean.includes(tClean);
+            return safeLooseMatch(tClean, clean);
           });
           if (match?.teamId) return String(match.teamId).trim();
         }
@@ -3288,7 +3302,7 @@ export function getKnownTeamIdByName(teamName: string): string | null {
               const match = l.teams.find((t: any) => {
                 if (!t?.teamName || !t?.teamId) return false;
                 const tClean = t.teamName.replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
-                return tClean === clean || tClean.includes(clean) || clean.includes(tClean);
+                return safeLooseMatch(tClean, clean);
               });
               if (match?.teamId) return String(match.teamId).trim();
             }
@@ -3305,13 +3319,13 @@ export function getKnownTeamIdByName(teamName: string): string | null {
             const hClean = (f.homeTeam || '').replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
             const aClean = (f.awayTeam || '').replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
             const oClean = (f.opponent || '').replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
-            if ((hClean === clean || hClean.includes(clean) || clean.includes(hClean)) && f.homeTeamId) {
+            if (safeLooseMatch(hClean, clean) && f.homeTeamId) {
               return String(f.homeTeamId).trim();
             }
-            if ((aClean === clean || aClean.includes(clean) || clean.includes(aClean)) && f.awayTeamId) {
+            if (safeLooseMatch(aClean, clean) && f.awayTeamId) {
               return String(f.awayTeamId).trim();
             }
-            if ((oClean === clean || oClean.includes(clean) || clean.includes(oClean)) && f.opponentTeamId) {
+            if (safeLooseMatch(oClean, clean) && f.opponentTeamId) {
               return String(f.opponentTeamId).trim();
             }
           }
@@ -3326,10 +3340,10 @@ export function getKnownTeamIdByName(teamName: string): string | null {
           for (const m of Object.values(parsedMatches) as any[]) {
             const hClean = (m.homeTeam || '').replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
             const aClean = (m.awayTeam || '').replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
-            if ((hClean === clean || hClean.includes(clean) || clean.includes(hClean)) && m.homeTeamId) {
+            if (safeLooseMatch(hClean, clean) && m.homeTeamId) {
               return String(m.homeTeamId).trim();
             }
-            if ((aClean === clean || aClean.includes(clean) || clean.includes(aClean)) && m.awayTeamId) {
+            if (safeLooseMatch(aClean, clean) && m.awayTeamId) {
               return String(m.awayTeamId).trim();
             }
           }
@@ -3341,7 +3355,7 @@ export function getKnownTeamIdByName(teamName: string): string | null {
   // 2. Check static known opponent registry
   const match = KNOWN_OPPONENT_CLUBS.find(c => {
     const cClean = c.teamName.replace(/\s*\(.*?\)/g, '').trim().toLowerCase();
-    return cClean === clean || clean.includes(cClean) || cClean.includes(clean);
+    return safeLooseMatch(cClean, clean);
   });
   return match ? match.teamId : null;
 }

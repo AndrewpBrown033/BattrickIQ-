@@ -293,7 +293,26 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
     }
     return [];
   });
-  
+  // Reliable "this is MY team" signal, independent of any name-matching logic:
+  // across every synced fixture, the user's own side is whichever teamId is
+  // constant (homeTeamId on Home-venue games, awayTeamId on Away-venue games),
+  // since the opponent's id is what actually varies match to match. Used as a
+  // hard final guard so a bad name/id lookup elsewhere can never result in
+  // silently fetching and displaying the user's own squad as "the opponent".
+  const myOwnTeamIdFromFixtures = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const f of fixtures) {
+      const ownId = f.venue === 'Away' ? f.awayTeamId : f.homeTeamId;
+      if (ownId) counts[ownId] = (counts[ownId] || 0) + 1;
+    }
+    let best: string | null = null;
+    let bestCount = 0;
+    for (const [id, count] of Object.entries(counts)) {
+      if (count > bestCount) { best = id; bestCount = count; }
+    }
+    return best;
+  }, [fixtures]);
+
   // Sorting States for Tables
   const [isEditingCustomName, setIsEditingCustomName] = useState<boolean>(false);
   const [lineupSortField, setLineupSortField] = useState<string>('order');
@@ -574,6 +593,24 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
       setActiveParsedMatch(getExampleMatchDataById(matchedFixture.matchId, myTeamName, mySquad));
     }
 
+    // Hard guard: effectiveTeamId must never be the user's OWN club id. A bad
+    // name/id resolution above (or a stale pre-fix cache entry) could otherwise
+    // silently present the user's own squad as "the opponent". See the matching
+    // guard in handleSyncOpponentSquadLive for the full explanation.
+    if (myOwnTeamIdFromFixtures && effectiveTeamId === myOwnTeamIdFromFixtures) {
+      try {
+        localStorage.removeItem(`bt_scout_squad_${effectiveTeamId}`);
+        localStorage.removeItem(`bt_scout_squad_${effectiveName.toLowerCase()}`);
+      } catch {}
+      setOpponentPlayers([]);
+      setIsAuthenticRoster(false);
+      setSquadSyncError(
+        `Team #${effectiveTeamId} resolved to YOUR OWN club, not an opponent - cleared it. ` +
+        `Please enter the correct opposing Team ID.`
+      );
+      return;
+    }
+
     // Check if an authentic squad was previously saved for this team
     const { roster, isAuthentic } = getStoredOpponentSquad(effectiveTeamId, effectiveName);
     if (isAuthentic && roster.length > 0) {
@@ -628,7 +665,7 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
     try {
       // Purge legacy/stale scout cache version if outdated so fresh real players are pulled
       const scoutCacheVersion = localStorage.getItem('bt_scout_cache_v');
-      if (scoutCacheVersion !== 'v4_pagetitle_teamid') {
+      if (scoutCacheVersion !== 'v5_own_team_guard') {
         localStorage.removeItem('bt_scout_squad_last');
         for (let i = localStorage.length - 1; i >= 0; i--) {
           const k = localStorage.key(i);
@@ -636,7 +673,7 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
             localStorage.removeItem(k);
           }
         }
-        localStorage.setItem('bt_scout_cache_v', 'v4_pagetitle_teamid');
+        localStorage.setItem('bt_scout_cache_v', 'v5_own_team_guard');
       }
 
       const savedSquadStr = localStorage.getItem('bt_squad');
@@ -1018,6 +1055,17 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
     const targetTeamId = (explicitTeamId || opponentTeamId).trim();
     if (!targetTeamId) {
       setSquadSyncError('Opponent Team ID is required for live sync. Please enter the Team ID (e.g. 14112) in the input field above.');
+      return;
+    }
+    // Hard guard: never fetch/display the user's own squad as "the opponent".
+    // myOwnTeamIdFromFixtures is derived purely from which teamId is constant
+    // across the user's own synced fixtures (venue-aware), so it catches this
+    // regardless of how targetTeamId was (mis)resolved upstream.
+    if (myOwnTeamIdFromFixtures && targetTeamId === myOwnTeamIdFromFixtures) {
+      setSquadSyncError(
+        `Team #${targetTeamId} is YOUR OWN club (matches your team id across synced fixtures), not an opponent. ` +
+        `Refusing to load it as a scouted roster - please double-check the Team ID you entered.`
+      );
       return;
     }
     if (!requireAuth('fetch a live opponent squad')) {
