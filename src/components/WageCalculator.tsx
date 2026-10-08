@@ -262,12 +262,38 @@ export default function WageCalculator() {
 
   // Estimated attendance, in actual seats filled (headcount), per game type — NOT a percentage.
   // Defaults are seeded against the default 10,000-capacity ground below and get rescaled
-  // once a real stadium syncs or once Jarvis analyzes real home-game history.
-  const [fcAttendanceSeats, setFcAttendanceSeats] = useState<number>(6000); // First Class (default 60% of 10,000)
-  const [odAttendanceSeats, setOdAttendanceSeats] = useState<number>(8500); // One Day (default 85% of 10,000)
-  const [t20AttendanceSeats, setT20AttendanceSeats] = useState<number>(9500); // Twenty20 (default 95% of 10,000)
-  const [cupAttendanceSeats, setCupAttendanceSeats] = useState<number>(8000); // Cup Matches (default 80% of 10,000)
-  const [friendlyAttendanceSeats, setFriendlyAttendanceSeats] = useState<number>(2500); // Friendlies (default 25% of 10,000)
+  // once a real stadium syncs or once Jarvis analyzes real home-game history. Persisted to
+  // localStorage so a real Jarvis analysis survives a page reload instead of resetting to
+  // these defaults every time the component remounts.
+  const loadPersistedSeats = (): Partial<Record<'fc' | 'od' | 't20' | 'cup' | 'friendly', number>> => {
+    try {
+      const raw = localStorage.getItem('bt_attendance_seats');
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  };
+  const persistedSeats = loadPersistedSeats();
+  const [fcAttendanceSeats, setFcAttendanceSeats] = useState<number>(persistedSeats.fc ?? 6000); // First Class (default 60% of 10,000)
+  const [odAttendanceSeats, setOdAttendanceSeats] = useState<number>(persistedSeats.od ?? 8500); // One Day (default 85% of 10,000)
+  const [t20AttendanceSeats, setT20AttendanceSeats] = useState<number>(persistedSeats.t20 ?? 9500); // Twenty20 (default 95% of 10,000)
+  const [cupAttendanceSeats, setCupAttendanceSeats] = useState<number>(persistedSeats.cup ?? 8000); // Cup Matches (default 80% of 10,000)
+  const [friendlyAttendanceSeats, setFriendlyAttendanceSeats] = useState<number>(persistedSeats.friendly ?? 2500); // Friendlies (default 25% of 10,000)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bt_attendance_seats', JSON.stringify({
+        fc: fcAttendanceSeats, od: odAttendanceSeats, t20: t20AttendanceSeats,
+        cup: cupAttendanceSeats, friendly: friendlyAttendanceSeats
+      }));
+    } catch {}
+  }, [fcAttendanceSeats, odAttendanceSeats, t20AttendanceSeats, cupAttendanceSeats, friendlyAttendanceSeats]);
+
+  // Once Jarvis has analyzed real home-game history (exact crowd counts or gate-receipt-derived
+  // estimates), its per-match-type figures are more accurate than the single generic One-Day-only
+  // back-solve the calibration effect below does - so that effect must never overwrite them again.
+  // Persisted (not just in-memory) so this protection survives a reload too.
+  const [jarvisHasRun, setJarvisHasRun] = useState<boolean>(() => {
+    try { return localStorage.getItem('bt_jarvis_attendance_locked') === 'true'; } catch { return false; }
+  });
 
   // Calibration info: when we've derived attendance seat estimates from the club's actual last-known
   // gate receipts (rather than generic guesses), we surface it here so the UI can be transparent
@@ -373,6 +399,14 @@ export default function WageCalculator() {
 
       const totalSamples = Object.values(exactBuckets).reduce((a, b) => a + b.length, 0) + Object.values(estimatedBuckets).reduce((a, b) => a + b.length, 0);
 
+      // Lock out the generic finances-based calibration effect now that at least one match
+      // type has a real, Jarvis-derived figure - a later finances/stadium resync must never
+      // silently overwrite it with the cruder single-ratio-curve guess again.
+      if (totalSamples > 0) {
+        setJarvisHasRun(true);
+        try { localStorage.setItem('bt_jarvis_attendance_locked', 'true'); } catch {}
+      }
+
       setJarvisAttendanceResult({
         homeGamesAnalyzed: totalSamples,
         sampleCounts: {
@@ -398,6 +432,9 @@ export default function WageCalculator() {
   // the generic 60/85/95/80/25% sample guesses with a figure derived from what the club actually
   // earned at the gate, the moment real finance data is synced.
   useEffect(() => {
+    // Jarvis's real per-match-type analysis always wins once it's run - this generic,
+    // One-Day-only back-solve must not clobber it on a later finances/stadium resync.
+    if (jarvisHasRun) return;
     if (finances && typeof finances.gateReceipts === 'number' && finances.gateReceipts > 0 && stadium.capacity > 0) {
       const maxPossibleRevenueAtFullHouse =
         (stadium.terracing * terracingPrice) +
@@ -431,7 +468,7 @@ export default function WageCalculator() {
     // Deliberately excludes ticket price state: recalibrating only on a fresh finance/stadium sync
     // (not on every ticket-price keystroke) avoids fighting the user's own manual overrides.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [finances, stadium.capacity, stadium.terracing, stadium.grass, stadium.seats, stadium.boxes]);
+  }, [finances, stadium.capacity, stadium.terracing, stadium.grass, stadium.seats, stadium.boxes, jarvisHasRun]);
 
   // Venue toggle mapping for the projection weeks
   const [customVenues, setCustomVenues] = useState<Record<number, 'Home' | 'Away'>>({});
@@ -624,9 +661,13 @@ export default function WageCalculator() {
     setSeatsPrice(35);
     setBoxesPrice(120);
 
-    // Reset attendance seat estimates: prefer the real, gate-receipts-calibrated figures when we
-    // have them, falling back to generic sample assumptions only when no real financial data is synced.
-    if (attendanceCalibration) {
+    // Reset attendance seat estimates: prefer Jarvis's real per-match-type analysis when it's
+    // been run (leave those figures untouched - this reset is for the pricing/cash sliders, not
+    // for throwing away real attendance history), then the gate-receipts-calibrated figures,
+    // falling back to generic sample assumptions only when no real financial data is synced.
+    if (jarvisHasRun) {
+      // Leave fc/od/t20/cup/friendlyAttendanceSeats as-is - they already hold Jarvis's real figures.
+    } else if (attendanceCalibration) {
       const RATIO = { fc: 0.706, od: 1.0, t20: 1.118, cup: 0.941, friendly: 0.294 };
       const seatsAt = (ratio: number) => Math.max(0, Math.min(stadium.capacity, Math.round((stadium.capacity * attendanceCalibration.impliedPct / 100) * ratio)));
       setFcAttendanceSeats(seatsAt(RATIO.fc));
@@ -732,6 +773,24 @@ export default function WageCalculator() {
     return Math.round(rawRevenue);
   };
 
+  // Reports whether a given home week's gate figure came from real, matchId-correlated Club
+  // Diary data (buildFinancialProjections) or from the Jarvis/ticket-price-based estimate -
+  // mirrors calculateGateReceipts()'s own priority order exactly, so the table can show the
+  // user which rows are grounded in actual history vs an estimate, instead of leaving every
+  // row looking equally authoritative.
+  const getGateReceiptsSource = (isHome: boolean, weekNum?: number): 'real' | 'estimated' | 'none' => {
+    if (!isHome) return 'none';
+    if (weekNum !== undefined) {
+      const originalFixture = upcomingFixtures[weekNum - 1];
+      const isUnmodified = !!originalFixture && customOpponents[weekNum] === (originalFixture.opponent || 'Opponent Club');
+      if (isUnmodified && originalFixture.matchId) {
+        const proj = projectionsByMatchId.get(originalFixture.matchId);
+        if (proj && proj.projectedGateReceipts > 0) return 'real';
+      }
+    }
+    return 'estimated';
+  };
+
   // Helper to calculate projected total attendance headcount
   const calculateTotalAttendance = (matchType: string) => {
     const rate = getAttendanceRate(matchType);
@@ -775,6 +834,7 @@ export default function WageCalculator() {
     // Revenue parameters (Sponsors and interest update dynamically based on staff and reserves)
     const sponsors = simSponsorsIncome;
     const gate = calculateGateReceipts(isHome, matchType, weekNum);
+    const gateSource = getGateReceiptsSource(isHome, weekNum);
     const interest = Math.floor(Math.max(0, Math.min(10000000, runningCash)) * (0.0005 + 0.0005 * simFA));
     const totalRev = sponsors + gate + interest;
 
@@ -796,6 +856,7 @@ export default function WageCalculator() {
       type: matchType,
       fixture: `${matchType} vs ${opponent}`,
       sponsors,
+      gateSource,
       gate,
       interest,
       revenue: totalRev,
@@ -842,6 +903,19 @@ export default function WageCalculator() {
   const homeGamesCount = ledgerData.filter((r) => r.isHome).length;
   const awayGamesCount = ledgerData.filter((r) => !r.isHome).length;
   const avgWeeklyCashflow = totalSeasonNet / 16;
+  // Real average home-game gate receipts, derived from the same real/
+  // estimated-hierarchy ledger shown everywhere else on this page (diary data
+  // when available, Jarvis-derived attendance otherwise) - this is the one
+  // source of truth for "average gate receipts", replacing the disconnected
+  // hardcoded £48,000 fallback and the single-week "last reported" figure
+  // that used to be mislabeled as an average in the Weekly Ledger card.
+  const avgHomeGate = homeGamesCount > 0
+    ? ledgerData.filter(r => r.isHome).reduce((sum, r) => sum + r.gate, 0) / homeGamesCount
+    : 0;
+  // "This week" = the very next projected week in the ledger (week 1), so the
+  // Weekly Ledger card always reflects the correct venue (home vs away) and
+  // never silently shows gate income on an away week.
+  const thisWeek = ledgerData[0];
 
   // --- COMPUTE AI RECOMMENDATIONS AND METRICS ---
   const getFinancialRecommendations = () => {
@@ -865,8 +939,8 @@ export default function WageCalculator() {
       });
     }
 
-    // 2. Roster Over-scaling Check
-    const avgHomeGate = ledgerData.filter(r => r.isHome).reduce((sum, r) => sum + r.gate, 0) / (homeGamesCount || 1);
+    // 2. Roster Over-scaling Check (avgHomeGate is computed once above, from
+    // the same real/estimated ledger data used everywhere else on this page)
     if (playerWagesVal > sponsorsVal + (avgHomeGate / 2)) {
       recs.push({
         id: 'wage-deficit',
@@ -1647,8 +1721,22 @@ export default function WageCalculator() {
                         <span className="text-slate-200">£{Math.round(week.sponsors).toLocaleString()}</span>
                       </div>
                       {isHome && (
-                        <div className="flex justify-between">
-                          <span>Gate Receipts:</span>
+                        <div className="flex justify-between items-center">
+                          <span className="flex items-center gap-1">
+                            Gate Receipts:
+                            <span
+                              className={`text-[7.5px] px-1 py-0.5 rounded font-bold uppercase tracking-wide ${
+                                week.gateSource === 'real'
+                                  ? 'bg-emerald-950/80 text-emerald-400'
+                                  : 'bg-amber-950/60 text-amber-400'
+                              }`}
+                              title={week.gateSource === 'real'
+                                ? 'From your actual synced Club Diary gate receipts for this fixture'
+                                : 'Estimated from ticket prices and Jarvis-analyzed attendance - no real Club Diary figure for this fixture yet'}
+                            >
+                              {week.gateSource === 'real' ? 'Real' : 'Est.'}
+                            </span>
+                          </span>
                           <span className="text-slate-200">£{Math.round(week.gate).toLocaleString()}</span>
                         </div>
                       )}
@@ -1848,19 +1936,27 @@ export default function WageCalculator() {
                   <div className="flex justify-between text-[11px] text-slate-600">
                     <span>Sponsors Income:</span>
                     <span className="font-mono text-slate-800 font-medium">
-                      £{(finances?.sponsorsIncome ?? sponsorsVal).toLocaleString()}/wk
+                      £{(thisWeek?.sponsors ?? sponsorsVal).toLocaleString()}/wk
                     </span>
                   </div>
                   <div className="flex justify-between text-[11px] text-slate-600">
-                    <span>Average Gate Receipts:</span>
+                    <span>
+                      Gate Receipts {thisWeek ? (thisWeek.isHome ? '(Home This Week)' : '(Away This Week)') : ''}:
+                    </span>
                     <span className="font-mono text-slate-800 font-medium">
-                      £{(finances?.gateReceipts ?? 48000).toLocaleString()}/wk
+                      £{(thisWeek?.gate ?? 0).toLocaleString()}/wk
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[11px] text-slate-500">
+                    <span className="pl-2">↳ Avg per Home Game:</span>
+                    <span className="font-mono text-slate-500">
+                      £{Math.round(avgHomeGate).toLocaleString()}
                     </span>
                   </div>
                   <div className="flex justify-between text-[11px] text-slate-600">
                     <span>Bank Interest Yield:</span>
                     <span className="font-mono text-slate-800 font-medium">
-                      £{(finances?.interestReceived ?? interestVal).toLocaleString()}/wk
+                      £{(thisWeek?.interest ?? interestVal).toLocaleString()}/wk
                     </span>
                   </div>
                   <div className="border-t border-slate-200/60 my-1"></div>
@@ -1877,19 +1973,15 @@ export default function WageCalculator() {
                     </span>
                   </div>
                   <div className="flex justify-between text-xs font-bold pt-2.5 border-t border-slate-200">
-                    <span>Net Weekly Flow</span>
-                    <span className={`font-mono ${
-                      ((finances?.sponsorsIncome ?? sponsorsVal) + (finances?.gateReceipts ?? 48000) + (finances?.interestReceived ?? interestVal)) -
-                      ((finances?.playerWages ?? playerWagesVal) + (finances?.staffWages ?? staffWagesVal)) >= 0 ? 'text-emerald-700' : 'text-rose-700'
-                    }`}>
-                      £{(((finances?.sponsorsIncome ?? sponsorsVal) + (finances?.gateReceipts ?? 48000) + (finances?.interestReceived ?? interestVal)) -
-                        ((finances?.playerWages ?? playerWagesVal) + (finances?.staffWages ?? staffWagesVal))).toLocaleString()}
+                    <span>Net Weekly Flow (This Week)</span>
+                    <span className={`font-mono ${(thisWeek?.net ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      £{(thisWeek?.net ?? 0).toLocaleString()}
                     </span>
                   </div>
                 </div>
 
                 <div className="text-[11px] text-slate-500 leading-relaxed bg-indigo-50/50 p-3 rounded-lg border border-indigo-100/40">
-                  💡 <strong>Tip:</strong> Home matches happen every other week. In away weeks, your ticket gate receipts drop to zero, so your weekly balance fluctuates. Optimize advisors and staff wages to build a cushion!
+                  💡 <strong>Tip:</strong> Home matches happen every other week. In away weeks, your ticket gate receipts drop to zero (as shown above), so your weekly balance fluctuates. Optimize advisors and staff wages to build a cushion!
                 </div>
               </div>
 
@@ -1901,7 +1993,10 @@ export default function WageCalculator() {
                 </h3>
 
                 {(() => {
-                  const income = (finances?.sponsorsIncome ?? sponsorsVal) + (finances?.gateReceipts ?? 48000) + (finances?.interestReceived ?? interestVal);
+                  // Uses the real average home-game gate (not a single week, which would be £0
+                  // on an away week and make this ratio swing wildly every other week) as the
+                  // representative recurring income baseline.
+                  const income = (finances?.sponsorsIncome ?? sponsorsVal) + avgHomeGate + (finances?.interestReceived ?? interestVal);
                   const wages = finances?.playerWages ?? playerWagesVal;
                   const ratio = income > 0 ? (wages / income) * 100 : 0;
                   return (
@@ -2287,8 +2382,10 @@ export default function WageCalculator() {
                     const totalCurrentCount = currentPR + currentFA + currentBat + currentBowl + currentField + currentKeep + currentStam + currentPsych;
                     const diffWages = (totalSimulatedCount - totalCurrentCount) * 1250;
 
-                    // Calculate simulated vs current interest received (capped at 10M cash)
-                    const cashForInterest = Math.min(10000000, finances.cash || 0);
+                    // Calculate simulated vs current interest received (capped at 10M cash,
+                    // floored at 0 - an overdrawn club earns £0 interest, never negative
+                    // interest, matching the same fix already applied to the main ledger)
+                    const cashForInterest = Math.max(0, Math.min(10000000, finances.cash || 0));
                     const simInterestRate = 0.0005 + (0.0005 * simFA);
                     const simInterestEarned = Math.floor(cashForInterest * simInterestRate);
 
