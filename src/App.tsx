@@ -19,6 +19,11 @@ import { onCustomAuthStateChanged, customSignOut, getCustomUser, CustomUser } fr
 import { isGenericTeamNoise } from './parser';
 import { Award, Calculator, Users, FolderOpen, Heart, RefreshCw, Landmark, Bot, BookOpen, Trophy, Clock, ShieldAlert, LogOut, Eye, Activity, History, LayoutGrid, Wallet, MoreHorizontal, X, ChevronUp, Swords, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import packageJson from '../package.json';
+
+// Single source of truth for the displayed app version - bump package.json's
+// "version" field and this updates everywhere it's shown (footer, etc.).
+export const APP_VERSION: string = packageJson.version;
 
 type TabType = 'summary' | 'sync' | 'squad' | 'lineup' | 'scout' | 'league' | 'wage' | 'stadium' | 'coach' | 'coach-history' | 'rules' | 'admin' | 'player-details' | 'fixtures';
 
@@ -715,7 +720,7 @@ export default function App() {
       <footer className="border-t border-slate-200/85 bg-white py-6 mt-12 text-center text-xs text-slate-500 font-mono">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
-            © 2026 BattrickIQ. Built for professional Battrick cricket managers.
+            © 2026 BattrickIQ <span className="text-slate-400">v{APP_VERSION}</span> · Built for professional Battrick cricket managers.
           </div>
           <div className="flex items-center gap-1.5 justify-center">
             <span>Crafted with passion</span>
