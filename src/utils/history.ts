@@ -299,7 +299,12 @@ export function mergePlayerAndTrackHistory(
   return {
     ...newPlayer,
     nets: existingPlayer.nets,
-    history: existingHistory
+    history: existingHistory,
+    // Respect a manual role tag the user set on this player — never let a
+    // resync from parsed Battrick data silently overwrite it.
+    ...(existingPlayer.roleManuallySet
+      ? { role: existingPlayer.role, roleManuallySet: true }
+      : {}),
   };
 }
 

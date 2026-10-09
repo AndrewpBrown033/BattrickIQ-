@@ -74,6 +74,7 @@ export interface BattrickPlayer {
   btRating: number;
   bowlingType: string;
   role: 'Batter' | 'Bowler' | 'Keeper' | 'All-rounder' | 'Prospect';
+  roleManuallySet?: boolean;
   battingHand?: string;
   battingStyle?: string;
   bowlingHand?: string;
@@ -342,6 +343,7 @@ export interface OpponentPlayer {
   wage: number;
   btRating: number;
   role: 'Batter' | 'Bowler' | 'Keeper' | 'All-rounder' | 'Prospect';
+  roleManuallySet?: boolean;
   bowlingType: string;
   batting: number;
   bowling: number;

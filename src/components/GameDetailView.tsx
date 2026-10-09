@@ -14,12 +14,13 @@ import {
   predictTeamLineupAndSkills, 
   getStoredMatchesList 
 } from '../utils/matchArchive';
-import { 
-  parseOpponentSquad, 
-  generateOpponentScoutDossier, 
-  generateRealisticOpponentRoster 
+import {
+  parseOpponentSquad,
+  generateOpponentScoutDossier,
+  generateRealisticOpponentRoster
 } from '../parser';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
+import { saveOpponentSquadToFirestore, syncOpponentSquadsFromFirestore } from '../utils/opponentSquadSync';
 import { 
   ArrowLeft, 
   Bot, 
@@ -123,6 +124,12 @@ export default function GameDetailView({ fixture, onBack, setActiveTab }: GameDe
 
     // 3. Load or Predict Opponent Players
     loadOpponentData();
+
+    // 4. Pull any scouted opponent squads mirrored to the cloud, then
+    // re-check the cache in case this team's roster just arrived.
+    syncOpponentSquadsFromFirestore().then((count) => {
+      if (count > 0) loadOpponentData();
+    });
   }, [fixture.matchId, fixture.opponent]);
 
   // Scroll to bottom of Jarvis chat when new messages arrive
@@ -205,6 +212,49 @@ Ask me anything about your lineup against their bowlers, top order targets, 5th 
     }
   }, [opponentName, pitch, weather, opponentPlayers.length]);
 
+  // Keep any manually-tagged opponent roles when a resync replaces the roster
+  // with freshly parsed/predicted data (matched by id, falling back to name).
+  const preserveManualOpponentRoles = (existing: OpponentPlayer[], incoming: OpponentPlayer[]): OpponentPlayer[] => {
+    if (!existing || existing.length === 0) return incoming;
+    const manualById = new Map<string, OpponentPlayer>();
+    const manualByName = new Map<string, OpponentPlayer>();
+    existing.forEach(p => {
+      if (p.roleManuallySet) {
+        if (p.id) manualById.set(p.id, p);
+        if (p.name) manualByName.set(p.name, p);
+      }
+    });
+    return incoming.map(p => {
+      const match = (p.id && manualById.get(p.id)) || (p.name ? manualByName.get(p.name) : undefined);
+      if (match) {
+        return { ...p, role: match.role, roleManuallySet: true };
+      }
+      return p;
+    });
+  };
+
+  // Manually tag an opponent player's role (Batter/Bowler/Keeper/All-rounder),
+  // persisting the override to the scout cache so it survives reloads and
+  // isn't silently clobbered by a future live resync.
+  const handleUpdateOpponentRole = (playerId: string, newRole: OpponentPlayer['role']) => {
+    setOpponentPlayers(prev => {
+      const updated = prev.map(p => p.id === playerId ? { ...p, role: newRole, roleManuallySet: true } : p);
+      const targetId = fixture.opponentTeamId || (fixture.venue === 'Home' ? fixture.awayTeamId : fixture.homeTeamId);
+      try {
+        localStorage.setItem('bt_scout_target_team', JSON.stringify({
+          teamName: opponentName,
+          teamId: targetId,
+          opponentPlayers: updated
+        }));
+        window.dispatchEvent(new Event('storage'));
+      } catch (e) {
+        console.warn('Failed to persist opponent role tag:', e);
+      }
+      saveOpponentSquadToFirestore(opponentName, updated, targetId);
+      return updated;
+    });
+  };
+
   // Live Opponent Sync via Battrick Direct API
   const handleFetchOpponentSquadLive = async () => {
     if (!fixture.opponentTeamId && !fixture.homeTeamId && !fixture.awayTeamId) {
@@ -264,15 +314,18 @@ Ask me anything about your lineup against their bowlers, top order targets, 5th 
         estimatedSkillLabel: getSkillLabel('batting', p.skills?.batting || 5)
       }));
 
-      setOpponentPlayers(converted);
+      setOpponentPlayers(prev => {
+        const merged = preserveManualOpponentRoles(prev, converted);
+        // Save to scout target
+        localStorage.setItem('bt_scout_target_team', JSON.stringify({
+          teamName: opponentName,
+          teamId: targetId,
+          opponentPlayers: merged
+        }));
+        saveOpponentSquadToFirestore(opponentName, merged, targetId);
+        return merged;
+      });
       setSyncStatusMsg(`✅ Successfully synced ${converted.length} real opponent players from Battrick!`);
-
-      // Save to scout target
-      localStorage.setItem('bt_scout_target_team', JSON.stringify({
-        teamName: opponentName,
-        teamId: targetId,
-        opponentPlayers: converted
-      }));
 
     } catch (err: any) {
       console.error('Opponent sync error:', err);
@@ -309,7 +362,12 @@ Ask me anything about your lineup against their bowlers, top order targets, 5th 
         estimatedSkillLabel: getSkillLabel('batting', p.skills?.batting || 5)
       }));
 
-      setOpponentPlayers(converted);
+      setOpponentPlayers(prev => {
+        const merged = preserveManualOpponentRoles(prev, converted);
+        const targetId = fixture.opponentTeamId || (fixture.venue === 'Home' ? fixture.awayTeamId : fixture.homeTeamId);
+        saveOpponentSquadToFirestore(opponentName, merged, targetId);
+        return merged;
+      });
       setManualHtml('');
       setShowManualPaste(false);
       setSyncStatusMsg(`✅ Parsed ${converted.length} players from pasted HTML!`);
@@ -1306,9 +1364,26 @@ ${opponentSummary || 'No opponent players available'}
                     <td className="py-3 px-4 font-bold text-slate-400">{idx + 1}</td>
                     <td className="py-3 px-4 font-bold text-slate-900">{op.name}</td>
                     <td className="py-3 px-4 text-slate-600">
-                      <span className="px-2 py-0.5 rounded bg-slate-100 font-semibold">
-                        {op.role || 'Player'} {op.bowlingType ? `(${op.bowlingType})` : ''}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={op.role || 'Batter'}
+                          onChange={(e) => handleUpdateOpponentRole(op.id, e.target.value as OpponentPlayer['role'])}
+                          title={op.roleManuallySet ? 'Manually tagged role (won\'t be overwritten by resync)' : 'Auto-classified role — pick one to lock it in'}
+                          className={`appearance-none cursor-pointer px-2 py-0.5 rounded font-semibold border ${
+                            op.roleManuallySet
+                              ? 'bg-violet-50 border-violet-200 text-violet-700'
+                              : 'bg-slate-100 border-transparent'
+                          }`}
+                        >
+                          <option value="Batter">Batter</option>
+                          <option value="Bowler">Bowler</option>
+                          <option value="Keeper">Keeper</option>
+                          <option value="All-rounder">All-rounder</option>
+                          <option value="Prospect">Prospect</option>
+                        </select>
+                        {op.bowlingType ? <span>({op.bowlingType})</span> : null}
+                        {op.roleManuallySet && <span className="text-violet-600 font-bold" title="Manually tagged">✓</span>}
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-slate-600">
                       {op.age ? `${op.age}yo` : ''} • {op.btRating ? op.btRating.toLocaleString() : 'N/A'}

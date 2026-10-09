@@ -36,6 +36,7 @@ import {
   getBattrickDecisionTableRow
 } from '../parser';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
+import { saveOpponentSquadToFirestore, syncOpponentSquadsFromFirestore } from '../utils/opponentSquadSync';
 import { 
   ShieldAlert, 
   Target, 
@@ -293,6 +294,21 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
     }
     return [];
   });
+
+  // Pull any scouted opponent squads mirrored to the cloud (e.g. scouted or
+  // role-tagged from another device) on mount, then re-check the cache for
+  // the currently selected opponent in case its roster just arrived.
+  useEffect(() => {
+    syncOpponentSquadsFromFirestore().then((count) => {
+      if (count === 0) return;
+      const { roster, isAuthentic } = getStoredOpponentSquad(opponentTeamId, opponentName);
+      if (isAuthentic && roster.length > 0) {
+        setOpponentPlayers(roster);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Reliable "this is MY team" signal, independent of any name-matching logic:
   // across every synced fixture, the user's own side is whichever teamId is
   // constant (homeTeamId on Home-venue games, awayTeamId on Away-venue games),
@@ -797,6 +813,48 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
     return generateOpponentScoutDossier(opponentPlayers, opponentName, pitch, weather, matchFormat, myAvgBtr);
   }, [opponentPlayers, opponentName, pitch, weather, matchFormat, myAvgBtr]);
 
+  // Manually tag an opponent player's role (Batter/Bowler/Keeper/All-rounder),
+  // persisting the override to the scout caches so it survives reloads and a
+  // future live/paste resync (see preserveManualOpponentRoles below) won't
+  // silently clobber it.
+  const handleUpdateOpponentRole = (playerId: string, newRole: OpponentPlayer['role']) => {
+    setOpponentPlayers(prev => {
+      const updated = prev.map(p => p.id === playerId ? { ...p, role: newRole, roleManuallySet: true } : p);
+      try {
+        const trimmedId = opponentTeamId?.trim();
+        if (trimmedId) localStorage.setItem(`bt_scout_squad_${trimmedId}`, JSON.stringify(updated));
+        if (opponentName?.trim()) localStorage.setItem(`bt_scout_squad_${opponentName.trim().toLowerCase()}`, JSON.stringify(updated));
+        localStorage.setItem('bt_scout_squad_last', JSON.stringify(updated));
+        window.dispatchEvent(new Event('storage'));
+      } catch (e) {
+        console.warn('Failed to persist opponent role tag:', e);
+      }
+      saveOpponentSquadToFirestore(opponentName, updated, opponentTeamId);
+      return updated;
+    });
+  };
+
+  // Keep any manually-tagged opponent roles when a resync/paste replaces the
+  // roster with freshly parsed data (matched by id, falling back to name).
+  const preserveManualOpponentRoles = (existing: OpponentPlayer[], incoming: OpponentPlayer[]): OpponentPlayer[] => {
+    if (!existing || existing.length === 0) return incoming;
+    const manualById = new Map<string, OpponentPlayer>();
+    const manualByName = new Map<string, OpponentPlayer>();
+    existing.forEach(p => {
+      if (p.roleManuallySet) {
+        if (p.id) manualById.set(p.id, p);
+        if (p.name) manualByName.set(p.name, p);
+      }
+    });
+    return incoming.map(p => {
+      const match = (p.id && manualById.get(p.id)) || (p.name ? manualByName.get(p.name) : undefined);
+      if (match) {
+        return { ...p, role: match.role, roleManuallySet: true };
+      }
+      return p;
+    });
+  };
+
   // Handle parsing pasted opponent squad text
   const handleParseOpponent = () => {
     if (!pastedText.trim()) return;
@@ -818,17 +876,21 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
     }
     if (parsed.length > 0) {
       const mapped = mapParsedToOpponentPlayers(parsed);
-      setOpponentPlayers(mapped);
+      setOpponentPlayers(prev => {
+        const merged = preserveManualOpponentRoles(prev, mapped);
+        try {
+          if (opponentTeamId) {
+            localStorage.setItem(`bt_scout_squad_${opponentTeamId}`, JSON.stringify(merged));
+          }
+          localStorage.setItem(`bt_scout_squad_${effectiveName.toLowerCase()}`, JSON.stringify(merged));
+          localStorage.setItem('bt_scout_squad_last', JSON.stringify(merged));
+        } catch {}
+        saveOpponentSquadToFirestore(effectiveName, merged, opponentTeamId);
+        return merged;
+      });
       setIsAuthenticRoster(true);
       setIsInputOpen(false);
       setPastedText('');
-      try {
-        if (opponentTeamId) {
-          localStorage.setItem(`bt_scout_squad_${opponentTeamId}`, JSON.stringify(mapped));
-        }
-        localStorage.setItem(`bt_scout_squad_${effectiveName.toLowerCase()}`, JSON.stringify(mapped));
-        localStorage.setItem('bt_scout_squad_last', JSON.stringify(mapped));
-      } catch {}
       setSquadSyncStatus(`✓ Successfully parsed & loaded ${mapped.length} authentic players for ${effectiveName}!`);
       setTimeout(() => setSquadSyncStatus(null), 5000);
     } else {
@@ -1197,14 +1259,17 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Oppo
       // Map parsed BattrickPlayer[] to OpponentPlayer[]
       const mappedPlayers = mapParsedToOpponentPlayers(parsedPlayers);
 
-      setOpponentPlayers(mappedPlayers);
+      setOpponentPlayers(prev => {
+        const merged = preserveManualOpponentRoles(prev, mappedPlayers);
+        try {
+          localStorage.setItem(`bt_scout_squad_${targetTeamId}`, JSON.stringify(merged));
+          localStorage.setItem(`bt_scout_squad_${effectiveOpponentName.toLowerCase()}`, JSON.stringify(merged));
+          localStorage.setItem('bt_scout_squad_last', JSON.stringify(merged));
+        } catch {}
+        saveOpponentSquadToFirestore(effectiveOpponentName, merged, targetTeamId);
+        return merged;
+      });
       setIsAuthenticRoster(true);
-
-      try {
-        localStorage.setItem(`bt_scout_squad_${targetTeamId}`, JSON.stringify(mappedPlayers));
-        localStorage.setItem(`bt_scout_squad_${effectiveOpponentName.toLowerCase()}`, JSON.stringify(mappedPlayers));
-        localStorage.setItem('bt_scout_squad_last', JSON.stringify(mappedPlayers));
-      } catch {}
 
       setSquadSyncStatus(`✓ Successfully fetched & loaded ${mappedPlayers.length} authentic players for ${effectiveOpponentName} (ID: ${targetTeamId}) live from Battrick!`);
     } catch (err: any) {
@@ -3083,7 +3148,9 @@ TACTICAL ORDERS:
                       const isBowler = bowlAvg < 30 && bowlAvg > 0;
                       const isBatter = batAvg >= 40;
                       let computedGrouping: string = p.primaryRoleClassifier || p.role;
-                      if (isBowler && isBatter) {
+                      if ((p as any).roleManuallySet) {
+                        computedGrouping = p.role;
+                      } else if (isBowler && isBatter) {
                         computedGrouping = 'All-rounder';
                       } else if (isBowler) {
                         computedGrouping = 'Bowler';
@@ -3164,9 +3231,23 @@ TACTICAL ORDERS:
                         </td>
                         <td className="py-3 px-3">
                           <div className="flex flex-col gap-1 items-start">
-                            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${groupBadgeStyle}`}>
-                              {computedGrouping} {hasHiddenSkills ? '⭐' : ''}
-                            </span>
+                            <select
+                              value={p.role || 'Batter'}
+                              onChange={(e) => handleUpdateOpponentRole(p.id, e.target.value as OpponentPlayer['role'])}
+                              title={(p as any).roleManuallySet ? 'Manually tagged role (won\'t be overwritten by resync)' : 'Auto-classified from averages — pick one to lock it in'}
+                              className={`appearance-none cursor-pointer text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                                (p as any).roleManuallySet ? 'bg-violet-50 text-violet-700 border-violet-200' : groupBadgeStyle
+                              }`}
+                            >
+                              <option value="Batter">Batter</option>
+                              <option value="Bowler">Bowler</option>
+                              <option value="Keeper">Keeper</option>
+                              <option value="All-rounder">All-rounder</option>
+                              <option value="Prospect">Prospect</option>
+                            </select>
+                            {!(p as any).roleManuallySet && computedGrouping !== p.role && (
+                              <span className="text-[9px] text-slate-400 font-sans">auto: {computedGrouping}{hasHiddenSkills ? ' ⭐' : ''}</span>
+                            )}
                           </div>
                         </td>
                         <td className="py-3 px-3 font-mono text-xs font-semibold">{batAvg > 0 ? batAvg.toFixed(1) : '-'}</td>

@@ -264,6 +264,11 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
     updatePlayerAndSave(updatedPlayer);
   };
 
+  const handleUpdatePlayerRole = (newRole: BattrickPlayer['role']) => {
+    if (!player) return;
+    updatePlayerAndSave({ ...player, role: newRole, roleManuallySet: true });
+  };
+
   const pScore = getPlayerWeightedScore(player);
   const trade = getTradeAction(player);
   const changes = getWeeklyChanges(player);
@@ -428,6 +433,29 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
           <span className="px-2.5 py-1 bg-emerald-50 border border-emerald-100 text-emerald-700 text-[11px] font-bold rounded-lg font-mono shadow-sm">
             IQ Index: {pScore}
           </span>
+          <div className="relative inline-flex items-center">
+            <select
+              value={player.role}
+              onChange={(e) => handleUpdatePlayerRole(e.target.value as BattrickPlayer['role'])}
+              title={player.roleManuallySet ? 'Manually tagged role (won\'t be overwritten by auto-sync)' : 'Auto-classified role — pick one to lock it in'}
+              className={`appearance-none cursor-pointer px-2.5 py-1 pr-6 border text-[11px] font-bold rounded-lg font-mono shadow-sm ${
+                player.roleManuallySet
+                  ? 'bg-violet-50 border-violet-200 text-violet-700'
+                  : 'bg-slate-100 border-slate-200 text-slate-700'
+              }`}
+            >
+              <option value="Batter">Batter</option>
+              <option value="Bowler">Bowler</option>
+              <option value="Keeper">Keeper</option>
+              <option value="All-rounder">All-rounder</option>
+              <option value="Prospect">Prospect</option>
+            </select>
+            {player.roleManuallySet && (
+              <span className="absolute -top-1.5 -right-1.5 text-[8px] bg-violet-600 text-white rounded-full px-1 font-bold leading-tight">
+                ✓
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
