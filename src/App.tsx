@@ -157,7 +157,7 @@ export default function App() {
         {activeTab === 'lineup' && <LineupOptimizer />}
         {activeTab === 'scout' && <OpponentScout />}
         {activeTab === 'league' && <LeagueStandings />}
-        {activeTab === 'wage' && <WageCalculator setActiveTab={setActiveTab as any} />}
+        {activeTab === 'wage' && <WageCalculator />}
         {activeTab === 'stadium' && <StadiumPlanner />}
         {activeTab === 'coach' && <AICoach />}
         {activeTab === 'coach-history' && <AICoachHistory />}
