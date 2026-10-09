@@ -72,7 +72,7 @@ export function wageSubLabel(sub: WageSubTab): string {
   return WAGE_SUB_LABELS[sub] || sub;
 }
 
-/** Parse location.hash into a route. Examples: #/squad/training, #/player/abc123, #/wage/health */
+/** Parse location.hash into a route. */
 export function parseHash(hash: string = window.location.hash): RouteState {
   const raw = (hash || '').replace(/^#\/?/, '').trim();
   if (!raw) return { tab: 'summary' };
@@ -81,15 +81,10 @@ export function parseHash(hash: string = window.location.hash): RouteState {
   const head = parts[0]?.toLowerCase() || 'summary';
 
   if (head === 'player' || head === 'player-details') {
-    return {
-      tab: 'player-details',
-      playerId: parts[1] || null,
-    };
+    return { tab: 'player-details', playerId: parts[1] || null };
   }
 
-  if (!VALID_TABS.has(head)) {
-    return { tab: 'summary' };
-  }
+  if (!VALID_TABS.has(head)) return { tab: 'summary' };
 
   const tab = head as AppTab;
   const state: RouteState = { tab };
@@ -103,15 +98,12 @@ export function parseHash(hash: string = window.location.hash): RouteState {
 
   if (tab === 'wage' && parts[1]) {
     const sub = parts[1].toLowerCase();
-    if (sub === 'forecast' || sub === 'health') {
-      state.wageSub = sub;
-    }
+    if (sub === 'forecast' || sub === 'health') state.wageSub = sub;
   }
 
   return state;
 }
 
-/** Build a hash path from route pieces. */
 export function buildHash(route: RouteState): string {
   if (route.tab === 'player-details') {
     return route.playerId ? `#/player/${route.playerId}` : '#/squad';
@@ -126,10 +118,6 @@ export function buildHash(route: RouteState): string {
   return `#/${route.tab}`;
 }
 
-/**
- * Navigate to a route. Uses pushState by default so the browser Back button works.
- * Pass replace: true for initial hydration (avoids an extra history entry).
- */
 export function navigateTo(route: RouteState, opts?: { replace?: boolean }) {
   const next = buildHash(route);
   const url = `${window.location.pathname}${window.location.search}${next}`;
@@ -152,9 +140,7 @@ export interface BreadcrumbItem {
 }
 
 export function buildBreadcrumbs(route: RouteState, playerName?: string | null): BreadcrumbItem[] {
-  const crumbs: BreadcrumbItem[] = [
-    { label: 'Home', href: '#/' },
-  ];
+  const crumbs: BreadcrumbItem[] = [{ label: 'Home', href: '#/' }];
 
   if (route.tab === 'summary') {
     crumbs.push({ label: 'Club Summary' });
