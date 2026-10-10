@@ -10,6 +10,7 @@ export type AppTab =
   | 'wage'
   | 'stadium'
   | 'coach'
+  | 'jarvis-settings'
   | 'coach-history'
   | 'rules'
   | 'admin'
@@ -28,7 +29,7 @@ export interface RouteState {
 
 const VALID_TABS = new Set<string>([
   'summary', 'sync', 'squad', 'lineup', 'scout', 'league', 'wage',
-  'stadium', 'coach', 'coach-history', 'rules', 'admin', 'player-details', 'fixtures',
+  'stadium', 'coach', 'jarvis-settings', 'coach-history', 'rules', 'admin', 'player-details', 'fixtures',
 ]);
 
 const TAB_LABELS: Record<string, string> = {
@@ -41,6 +42,7 @@ const TAB_LABELS: Record<string, string> = {
   wage: 'Financial Forecast',
   stadium: 'Stadium Plan',
   coach: 'Coach Jarvis',
+  'jarvis-settings': 'Jarvis Settings',
   'coach-history': 'Coach History',
   sync: 'Roster Sync',
   rules: 'Business Rules',
