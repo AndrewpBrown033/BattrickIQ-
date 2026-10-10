@@ -11,6 +11,7 @@ import OpponentScout from './components/OpponentScout';
 import { LeagueStandings } from './components/LeagueStandings';
 import StadiumPlanner from './components/StadiumPlanner';
 import AICoach from './components/AICoach';
+import JarvisSettings from './components/JarvisSettings';
 import AICoachHistory from './components/AICoachHistory';
 import BusinessRules from './components/BusinessRules';
 import AdminDashboard from './components/AdminDashboard';
@@ -37,6 +38,7 @@ const MORE_TABS: { id: TabType; label: string; desc: string; icon: React.ReactNo
   { id: 'wage', label: 'Finance', desc: 'Wages & cash forecast', icon: <Calculator className="w-4 h-4" />, iconBg: 'bg-teal-100 text-teal-700' },
   { id: 'stadium', label: 'Stadium', desc: 'Capacity & expansion', icon: <Landmark className="w-4 h-4" />, iconBg: 'bg-sky-100 text-sky-700' },
   { id: 'coach', label: 'Coach Jarvis', desc: 'AI match advice', icon: <Bot className="w-4 h-4" />, iconBg: 'bg-violet-100 text-violet-700' },
+  { id: 'jarvis-settings', label: 'Jarvis Settings', desc: 'OpenRouter key & model', icon: <Bot className="w-4 h-4" />, iconBg: 'bg-indigo-100 text-indigo-700' },
   { id: 'sync', label: 'Sync', desc: 'Import Battrick pages', icon: <RefreshCw className="w-4 h-4" />, iconBg: 'bg-slate-100 text-slate-700' },
   { id: 'rules', label: 'Rules', desc: 'Club setup & multipliers', icon: <BookOpen className="w-4 h-4" />, iconBg: 'bg-orange-100 text-orange-700' },
   { id: 'admin', label: 'Admin', desc: 'Usage & club switch', icon: <ShieldAlert className="w-4 h-4" />, iconBg: 'bg-red-100 text-red-700' },
@@ -52,6 +54,7 @@ const DESKTOP_TABS: { id: TabType; label: string }[] = [
   { id: 'wage', label: 'Finance' },
   { id: 'stadium', label: 'Stadium' },
   { id: 'coach', label: 'Coach' },
+  { id: 'jarvis-settings', label: 'Jarvis Settings' },
   { id: 'sync', label: 'Sync' },
   { id: 'rules', label: 'Rules' },
   { id: 'admin', label: 'Admin' },
@@ -198,6 +201,7 @@ export default function App() {
         {activeTab === 'wage' && <WageCalculator />}
         {activeTab === 'stadium' && <StadiumPlanner />}
         {activeTab === 'coach' && <AICoach />}
+        {activeTab === 'jarvis-settings' && <JarvisSettings />}
         {activeTab === 'coach-history' && <AICoachHistory />}
         {activeTab === 'sync' && <SyncHub />}
         {activeTab === 'rules' && <BusinessRules />}
