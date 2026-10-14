@@ -3,7 +3,7 @@
  * against squad gaps / financial position.
  *
  * Unaffordable listings are still returned with affordable=false so the UI
- * can show them as inactive "watch / stretch" targets.
+ * can show them as inactive watch / stretch targets.
  */
 
 export interface TransferListing {
@@ -40,11 +40,10 @@ export interface BuyRecommendation {
   listing: TransferListing;
   score: number;
   reasons: string[];
-  /** True when bid is within cash + reserve rules (or finance filter is off). */
   affordable: boolean;
   cost: number;
   fitsNeed?: string;
-  /** Active = worth bidding now; inactive = good fit but over budget / stretch. */
+  /** Active = in budget; inactive = good fit but over budget. */
   active: boolean;
 }
 
@@ -56,7 +55,7 @@ function parseMoney(raw: string): number | undefined {
 
 function parseSkillToken(text: string, labels: string[]): number | undefined {
   for (const label of labels) {
-    const re = new RegExp(`${label}\\s*[:=]?\\s*(\\d{1,2})`, 'i');
+    const re = new RegExp(label + '\\s*[:=]?\\s*(\\d{1,2})', 'i');
     const m = text.match(re);
     if (m) {
       const v = parseInt(m[1], 10);
@@ -73,21 +72,21 @@ function extractListingFromBlock(
   blockText: string
 ): TransferListing {
   const ageMatch =
-    blockText.match(/\\b(?:age|aged)\\s*[:=]?\\s*(\\d{1,2})\\b/i) || blockText.match(/\\((\\d{2})\\)/);
+    blockText.match(/\b(?:age|aged)\s*[:=]?\s*(\d{1,2})\b/i) || blockText.match(/\((\d{2})\)/);
   const age = ageMatch ? parseInt(ageMatch[1], 10) : undefined;
   const priceMatch =
-    blockText.match(/(?:asking\\s*price|reserve|min(?:imum)?\\s*bid|price)\\s*[:=]?\\s*[£$€]?\\s*([\\d,]+)/i) ||
-    blockText.match(/[£$€]\\s*([\\d,]{3,})/);
+    blockText.match(/(?:asking\s*price|reserve|min(?:imum)?\s*bid|price)\s*[:=]?\s*[£$€]?\s*([\d,]+)/i) ||
+    blockText.match(/[£$€]\s*([\d,]{3,})/);
   const askingPrice = priceMatch ? parseMoney(priceMatch[1]) : undefined;
-  const bidMatch = blockText.match(/(?:current\\s*bid|highest\\s*bid|bid)\\s*[:=]?\\s*[£$€]?\\s*([\\d,]+)/i);
+  const bidMatch = blockText.match(/(?:current\s*bid|highest\s*bid|bid)\s*[:=]?\s*[£$€]?\s*([\d,]+)/i);
   const currentBid = bidMatch ? parseMoney(bidMatch[1]) : undefined;
   const deadlineMatch =
-    blockText.match(/(?:deadline|ends?|closes?)\\s*[:=]?\\s*([0-3]?\\d\\/[0-1]?\\d\\/\\d{2,4}(?:\\s+\\d{1,2}:\\d{2})?)/i) ||
-    blockText.match(/\\b(\\d{1,2}\\/\\d{1,2}\\/\\d{2,4}\\s+\\d{1,2}:\\d{2})\\b/);
+    blockText.match(/(?:deadline|ends?|closes?)\s*[:=]?\s*([0-3]?\d\/[0-1]?\d\/\d{2,4}(?:\s+\d{1,2}:\d{2})?)/i) ||
+    blockText.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2})\b/);
   const deadline = deadlineMatch ? deadlineMatch[1] : undefined;
-  const btrMatch = blockText.match(/\\b(?:BTR|Battrick\\s*Rating|BT\\s*Rating)\\s*[:=]?\\s*([\\d,]+)/i);
+  const btrMatch = blockText.match(/\b(?:BTR|Battrick\s*Rating|BT\s*Rating)\s*[:=]?\s*([\d,]+)/i);
   const btRating = btrMatch ? parseMoney(btrMatch[1]) : undefined;
-  const wageMatch = blockText.match(/\\b(?:wage|salary)\\s*[:=]?\\s*[£$€]?\\s*([\\d,]+)/i);
+  const wageMatch = blockText.match(/\b(?:wage|salary)\s*[:=]?\s*[£$€]?\s*([\d,]+)/i);
   const wage = wageMatch ? parseMoney(wageMatch[1]) : undefined;
   const skills = {
     batting: parseSkillToken(blockText, ['batting', 'bat']),
@@ -106,7 +105,7 @@ function extractListingFromBlock(
 
   const playerUrl = href.startsWith('http')
     ? href
-    : `https://www.battrick.org/nl/${href.replace(/^\\//, '')}`;
+    : 'https://www.battrick.org/nl/' + href.replace(/^\//, '');
 
   return {
     playerId,
@@ -124,31 +123,30 @@ function extractListingFromBlock(
   };
 }
 
-/** Regex fallback when DOMParser finds few / no player links. */
 function parseTransferListRegex(html: string): TransferListing[] {
   const listings: TransferListing[] = [];
   const seen = new Set<string>();
   const re =
-    /<a[^>]+href=["']([^"']*(?:playerdetails\\.asp|playerid=|PlayerID=)[^"']*)["'][^>]*>([\\s\\S]*?)<\\/a>/gi;
+    /<a[^>]+href=["']([^"']*(?:playerdetails\.asp|playerid=|PlayerID=)[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
     const href = m[1];
     const idMatch =
-      href.match(/playerid=(\\d+)/i) ||
-      href.match(/PlayerID=(\\d+)/i) ||
-      href.match(/(?:playerid|id)[=_](\\d+)/i);
+      href.match(/playerid=(\d+)/i) ||
+      href.match(/PlayerID=(\d+)/i) ||
+      href.match(/(?:playerid|id)[=_](\d+)/i);
     if (!idMatch) continue;
     const playerId = idMatch[1];
     if (seen.has(playerId)) continue;
     seen.add(playerId);
-    const name = m[2].replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();
+    const name = m[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     if (!name || name.length < 2 || name.length > 60) continue;
     const start = Math.max(0, m.index - 400);
     const end = Math.min(html.length, m.index + m[0].length + 600);
     const blockText = html
       .slice(start, end)
       .replace(/<[^>]+>/g, ' ')
-      .replace(/\\s+/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
     listings.push(extractListingFromBlock(playerId, name, href, blockText));
   }
@@ -173,20 +171,20 @@ export function parseTransferList(html: string): TransferListing[] {
         if (link.closest('#menubar, #rightmenu, .menu, #topmenu, nav, #leftmenu')) continue;
         const href = link.getAttribute('href') || '';
         const idMatch =
-          href.match(/playerid=(\\d+)/i) ||
-          href.match(/PlayerID=(\\d+)/i) ||
-          href.match(/(?:playerid|id)[=_](\\d+)/i);
+          href.match(/playerid=(\d+)/i) ||
+          href.match(/PlayerID=(\d+)/i) ||
+          href.match(/(?:playerid|id)[=_](\d+)/i);
         if (!idMatch) continue;
         const playerId = idMatch[1];
         if (seen.has(playerId)) continue;
         seen.add(playerId);
-        const name = (link.textContent || '').replace(/\\s+/g, ' ').trim();
+        const name = (link.textContent || '').replace(/\s+/g, ' ').trim();
         if (!name || name.length < 2 || name.length > 60) continue;
         const block =
           link.closest('tr, li, .transfer, .player, .card, article, table, div') ||
           link.parentElement;
         const blockText = (block?.textContent || link.textContent || '')
-          .replace(/\\s+/g, ' ')
+          .replace(/\s+/g, ' ')
           .trim();
         listings.push(extractListingFromBlock(playerId, name, href, blockText));
       }
@@ -215,10 +213,6 @@ function primarySkill(listing: TransferListing): { key: string; value: number } 
   return { key: pairs[0][0], value: pairs[0][1] };
 }
 
-/**
- * Rank transfer listings vs squad gaps.
- * Never drops unaffordable players — they come back with affordable/active=false.
- */
 export function rankBuyRecommendations(
   listings: TransferListing[],
   needs: SquadGapNeed[],
@@ -236,9 +230,7 @@ export function rankBuyRecommendations(
   for (const listing of listings) {
     const cost = listing.currentBid || listing.askingPrice || 0;
     const affordable =
-      cost <= 0
-        ? cash >= minReserve * 0.5
-        : cash - cost >= minReserve * 0.25;
+      cost <= 0 ? cash >= minReserve * 0.5 : cash - cost >= minReserve * 0.25;
 
     const prim = primarySkill(listing);
     const reasons: string[] = [];
@@ -258,16 +250,16 @@ export function rankBuyRecommendations(
       if (skillVal > 0) {
         if (skillVal >= need.minSkill) {
           score += 28 + (skillVal - need.minSkill) * 10;
-          reasons.push(`${need.reason} (${need.need} ${skillVal})`);
+          reasons.push(need.reason + ' (' + need.need + ' ' + skillVal + ')');
           fitsNeed = need.need;
         } else if (skillVal >= need.minSkill - 2) {
           score += 12;
-          reasons.push(`Near fit for ${need.need} (has ${skillVal}, want ${need.minSkill}+)`);
+          reasons.push('Near fit for ' + need.need + ' (has ' + skillVal + ', want ' + need.minSkill + '+)');
           fitsNeed = fitsNeed || need.need;
         }
       } else if (need.maxAge && listing.age != null && listing.age <= need.maxAge) {
         score += 6;
-        reasons.push(`Age fits ${need.need} target (≤${need.maxAge})`);
+        reasons.push('Age fits ' + need.need + ' target (≤' + need.maxAge + ')');
         fitsNeed = fitsNeed || need.need;
       }
     }
@@ -275,17 +267,17 @@ export function rankBuyRecommendations(
     if (listing.btRating) {
       if (listing.btRating >= 12000) {
         score += 14;
-        reasons.push(`Strong BTR ${listing.btRating.toLocaleString()}`);
+        reasons.push('Strong BTR ' + listing.btRating.toLocaleString());
       } else if (listing.btRating >= 8000) {
         score += 8;
-        reasons.push(`Solid BTR ${listing.btRating.toLocaleString()}`);
+        reasons.push('Solid BTR ' + listing.btRating.toLocaleString());
       } else if (listing.btRating >= 5000) {
         score += 3;
       }
     }
     if (prim.value >= 10) {
       score += 10;
-      reasons.push(`Primary ${prim.key} ${prim.value}`);
+      reasons.push('Primary ' + prim.key + ' ' + prim.value);
     } else if (prim.value >= 7) {
       score += 5;
     }
@@ -308,14 +300,14 @@ export function rankBuyRecommendations(
     if (opts.factorFinance) {
       if (affordable && cost > 0) {
         score += 8;
-        reasons.push(`Within budget at £${cost.toLocaleString()}`);
+        reasons.push('Within budget at £' + cost.toLocaleString());
       } else if (affordable && cost === 0) {
         reasons.push('Price unknown — verify before bidding');
       } else if (!affordable) {
         score -= 4;
         reasons.push(
           cost > 0
-            ? `Out of budget — needs ~£${cost.toLocaleString()} (cash £${cash.toLocaleString()})`
+            ? 'Out of budget — needs ~£' + cost.toLocaleString() + ' (cash £' + cash.toLocaleString() + ')'
             : 'Budget unclear — stretch target'
         );
       }
@@ -343,10 +335,6 @@ export function rankBuyRecommendations(
   return recs;
 }
 
-/**
- * Derive squad gap needs from estimated XI sectors vs a target list.
- * Always returns at least one growth-oriented need so transfer scan has goals.
- */
 export function deriveGapNeeds(input: {
   topOrder: number;
   middleOrder: number;
