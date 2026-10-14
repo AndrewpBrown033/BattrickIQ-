@@ -208,7 +208,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
     const cash = finances?.cash ?? 0;
     const weekly = (finances?.playerWages || 0) + (finances?.staffWages || 0);
     const recs = rankBuyRecommendations(listings, needs, { cash, weeklyOutgoings: weekly, factorFinance });
-    setBuyRecs(recs.slice(0, 20));
+    setBuyRecs(recs.slice(0, 40));
   };
 
   useEffect(() => {
@@ -229,16 +229,53 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
     if (!requireAuth('scan the transfer list')) return;
     setTransferBusy(true);
     try {
+      let sessionToken: string | undefined;
+      try { sessionToken = localStorage.getItem('bt_sync_session') || undefined; } catch {}
+
+      if (!sessionToken) {
+        const loginRes = await fetch('/api/sync-battrick-step', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ step: 'login', username, password }),
+        });
+        const loginData = await loginRes.json().catch(() => ({}));
+        if (!loginRes.ok || !loginData.success) {
+          throw new Error(loginData.error || 'Battrick login failed — check credentials at the top of the page');
+        }
+        sessionToken = loginData.sessionToken;
+        if (sessionToken) {
+          try { localStorage.setItem('bt_sync_session', sessionToken); } catch {}
+        }
+      }
+
       const res = await fetch('/api/sync-battrick-step', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ step: 'page', page: 'transferlist', username, password }),
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          step: 'page',
+          page: 'transferlist',
+          pageUrl: 'https://www.battrick.org/nl/transferlist.asp',
+          username,
+          password,
+          sessionToken,
+        }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Transfer scan failed (HTTP ${res.status})`);
+      }
       const html = data.html || data.content || '';
+      if (!html || html.length < 200) {
+        throw new Error('Empty transfer page returned — try paste fallback or re-login to Battrick');
+      }
       const n = applyTransferHtml(html);
-      if (!n) setTransferError('Parsed 0 players — try paste fallback from battrick.org/nl/transferlist.asp');
+      if (!n) {
+        setTransferError(
+          'Page loaded but 0 players were parsed. Use “Paste transfer list HTML” below (View Source on transferlist.asp).'
+        );
+      } else {
+        setTransferError(null);
+      }
     } catch (e: any) {
       setTransferError(e?.message || 'Sync failed — use paste fallback');
     } finally {
@@ -447,12 +484,12 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                 <TrendingUp className="w-5 h-5 text-indigo-600" />
                 <div>
                   <h3 className="font-bold text-sm text-slate-900">Transfer market</h3>
-                  <p className="text-[11px] text-slate-500">Scan Battrick transfer list for buys that fill your gaps</p>
+                  <p className="text-[11px] text-slate-500">Recommendations from your list gaps + cash — over-budget stays visible as Inactive</p>
                 </div>
               </div>
               <label className="flex items-center gap-2 text-xs text-slate-600 font-medium">
                 <input type="checkbox" checked={factorFinance} onChange={(e) => setFactorFinance(e.target.checked)} className="rounded border-slate-300" />
-                Factor my cash position
+                Factor cash (over-budget still listed as Inactive)
               </label>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -480,31 +517,72 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
             {buyRecs.length === 0 ? (
               <p className="text-xs text-slate-400 border border-dashed rounded-xl py-8 text-center">
                 {transferListings.length
-                  ? `${transferListings.length} listings synced — none clearly beat your gap thresholds${factorFinance ? ' (with cash filter)' : ''}.`
-                  : 'Scan or paste the transfer list to see buy signals.'}
+                  ? `${transferListings.length} listings synced but none scored against your goals — try paste fallback if the page parse looked empty.`
+                  : 'Scan or paste the transfer list to see buy recommendations based on your gaps and cash.'}
               </p>
             ) : (
               <div className="space-y-2">
-                {buyRecs.map((r) => (
-                  <div key={r.listing.playerId} className="p-3 rounded-xl border border-slate-200 flex justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-sm font-bold text-slate-800">
-                        {r.listing.name}
-                        {r.listing.age != null && <span className="text-[10px] text-slate-400 font-mono ml-1">({r.listing.age}y)</span>}
+                <div className="flex flex-wrap gap-2 text-[10px] font-mono text-slate-500">
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    {buyRecs.filter((r) => r.active ?? r.affordable).length} active (in budget)
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                    {buyRecs.filter((r) => !(r.active ?? r.affordable)).length} inactive (stretch / over budget)
+                  </span>
+                  {finances?.cash != null && (
+                    <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-100">
+                      Cash £{Number(finances.cash).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                {buyRecs.map((r) => {
+                  const inactive = !(r.active ?? r.affordable);
+                  return (
+                    <div
+                      key={r.listing.playerId}
+                      className={`p-3 rounded-xl border flex justify-between gap-2 ${
+                        inactive
+                          ? 'border-slate-200 bg-slate-50/80 opacity-70'
+                          : 'border-emerald-200 bg-emerald-50/30'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`text-sm font-bold ${inactive ? 'text-slate-600' : 'text-slate-900'}`}>
+                            {r.listing.name}
+                          </span>
+                          {r.listing.age != null && (
+                            <span className="text-[10px] text-slate-400 font-mono">({r.listing.age}y)</span>
+                          )}
+                          <span
+                            className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full ${
+                              inactive ? 'bg-slate-200 text-slate-600' : 'bg-emerald-600 text-white'
+                            }`}
+                          >
+                            {inactive ? 'Inactive' : 'Active'}
+                          </span>
+                          {r.fitsNeed && (
+                            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
+                              {r.fitsNeed}
+                            </span>
+                          )}
+                        </div>
+                        <div className={`text-[11px] mt-0.5 ${inactive ? 'text-slate-400' : 'text-slate-600'}`}>
+                          {r.reasons.join(' · ')}
+                        </div>
                       </div>
-                      <div className="text-[11px] text-slate-500">{r.reasons.join(' · ')}</div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className={`text-[10px] font-bold ${r.affordable ? 'text-emerald-700' : 'text-rose-700'}`}>
-                        {r.cost ? `£${r.cost.toLocaleString()}` : 'Price?'}
+                      <div className="text-right shrink-0">
+                        <div className={`text-[11px] font-bold ${r.affordable ? 'text-emerald-700' : 'text-rose-600'}`}>
+                          {r.cost ? `£${r.cost.toLocaleString()}` : 'Price?'}
+                        </div>
+                        <div className="text-[10px] text-slate-400">fit {r.score}</div>
+                        {r.listing.playerUrl && (
+                          <a href={r.listing.playerUrl} target="_blank" rel="noreferrer" className="text-[10px] text-indigo-600 underline">View</a>
+                        )}
                       </div>
-                      <div className="text-[10px] text-slate-400">score {r.score}</div>
-                      {r.listing.playerUrl && (
-                        <a href={r.listing.playerUrl} target="_blank" rel="noreferrer" className="text-[10px] text-indigo-600 underline">View</a>
-                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
