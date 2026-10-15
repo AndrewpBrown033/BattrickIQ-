@@ -11,7 +11,6 @@ import {
   estimateTeamRatings,
   buildRatingGaps,
   levelToLabel,
-  type TransferListing,
   type BuyRecommendation,
   type TeamRatingKey,
 } from '../utils/transferList';
@@ -182,6 +181,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
   const runTransferScan = async () => {
     setTransferBusy(true);
     setTransferError(null);
+    setBuyRecs([]);
     try {
       let html = pasteHtml;
       if (!html) {
@@ -202,13 +202,43 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
         if (!data.success || !data.html) throw new Error(data.error || 'Could not load transfer list');
         html = data.html;
       }
+      const lower = html.toLowerCase();
+      if (
+        lower.includes('id="login"') ||
+        lower.includes('log in to battrick') ||
+        (lower.includes('name="password"') && lower.includes('name="username"') && !lower.includes('playerdetails'))
+      ) {
+        throw new Error('Battrick returned the login page. Re-authenticate in Sync / Auth bar, then scan again.');
+      }
       const listings = parseTransferList(html);
       try { localStorage.setItem('bt_transfer_listings', JSON.stringify(listings)); } catch {}
+      if (!listings.length) {
+        throw new Error(
+          'No players parsed from transfer list HTML (' + html.length + ' chars). Paste the page source below as fallback, or re-sync auth.'
+        );
+      }
       const needs = deriveNeedsFromRatingGaps(ratingGaps);
-      const recs = rankBuyRecommendations(listings, needs, {
+      let recs = rankBuyRecommendations(listings, needs, {
         cash: finances?.cash,
         factorFinance,
       });
+      if (recs.length < listings.length) {
+        const have = new Set(recs.map((r) => r.listing.playerId));
+        for (const listing of listings) {
+          if (have.has(listing.playerId)) continue;
+          const cost = listing.currentBid || listing.askingPrice || 0;
+          const affordable = !factorFinance || cost <= 0 || (finances?.cash || 0) - cost >= 25000;
+          recs.push({
+            listing,
+            score: 0,
+            reasons: ['On transfer list'],
+            affordable,
+            cost,
+            active: affordable,
+          });
+        }
+      }
+      recs = recs.sort((a, b) => b.score - a.score);
       setBuyRecs(recs);
     } catch (e: any) {
       setTransferError(e?.message || 'Scan failed');
@@ -405,13 +435,13 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
               Paste transfer list HTML (fallback)
               <textarea value={pasteHtml} onChange={(e) => setPasteHtml(e.target.value)}
                 className="mt-1 w-full h-20 border border-slate-200 rounded-lg p-2 font-mono text-[10px]"
-                placeholder="Optional if live scan fails" />
+                placeholder="Optional if live scan fails — paste view-source of transferlist.asp" />
             </label>
           </div>
 
           {buyRecs.length > 0 && (
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-2">
-              <h4 className="text-sm font-bold text-slate-900">Transfer recommendations</h4>
+              <h4 className="text-sm font-bold text-slate-900">Transfer list ({buyRecs.length})</h4>
               <div className="flex flex-wrap gap-2 text-[10px] font-mono text-slate-500">
                 <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
                   {buyRecs.filter((r) => r.active ?? r.affordable).length} active
@@ -420,7 +450,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                   {buyRecs.filter((r) => !(r.active ?? r.affordable)).length} inactive
                 </span>
               </div>
-              {buyRecs.slice(0, 25).map((r) => {
+              {buyRecs.slice(0, 40).map((r) => {
                 const inactive = !(r.active ?? r.affordable);
                 return (
                   <div key={r.listing.playerId}
