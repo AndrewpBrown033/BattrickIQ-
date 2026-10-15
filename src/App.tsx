@@ -7,7 +7,7 @@ import SquadManagerBar from './components/SquadManagerBar';
 import FixturesDashboard from './components/FixturesDashboard';
 import LineupOptimizer from './components/LineupOptimizer';
 import OpponentScout from './components/OpponentScout';
-import LeagueStandings from './components/LeagueStandings';
+import { LeagueStandings } from './components/LeagueStandings';
 import WageCalculator from './components/WageCalculator';
 import StadiumPlanner from './components/StadiumPlanner';
 import AICoach from './components/AICoach';
@@ -17,7 +17,10 @@ import SyncHub from './components/SyncHub';
 import BusinessRules from './components/BusinessRules';
 import AdminDashboard from './components/AdminDashboard';
 import PlayerDetails from './components/PlayerDetails';
-import { parseFromHash as parseHash, navigateTo, type AppTab } from './lib/navigation';
+import LoginPage from './components/LoginPage';
+import BattrickAuthBar from './components/BattrickAuthBar';
+import { onCustomAuthStateChanged, getCustomUser, CustomUser } from './lib/customAuth';
+import { parseHash, navigateTo, type AppTab } from './lib/navigation';
 
 type TabType = AppTab | string;
 
@@ -65,9 +68,14 @@ function isPrimaryTab(tab: string) {
 
 export default function App() {
   const initial = parseHash();
-  const [activeTab, setActiveTabState] = useState<TabType>(initial.tab as TabType);
+  const [user, setUser] = useState<CustomUser | null>(() => getCustomUser());
+  const [activeTab, setActiveTabState] = useState<TabType>((initial.tab as TabType) || 'summary');
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(initial.playerId || null);
   const [showMobileMore, setShowMobileMore] = useState(false);
+
+  useEffect(() => {
+    return onCustomAuthStateChanged((u) => setUser(u));
+  }, []);
 
   const setActiveTab = (tab: TabType | string, opts?: { playerId?: string | null }) => {
     const next = tab as TabType;
@@ -94,6 +102,8 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
+  if (!user) return <LoginPage />;
+
   const crumbs = [
     { tab: 'summary' as AppTab, label: 'Manager' },
     { tab: activeTab as AppTab, playerId: selectedPlayerId },
@@ -103,50 +113,52 @@ export default function App() {
 
   return (
     <div className="min-h-dvh bg-slate-50 flex flex-col pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] sm:pb-0">
-      {/* Top bar */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 px-3 sm:px-4 py-2.5">
-        <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="font-display font-extrabold text-slate-900 text-sm sm:text-base tracking-tight truncate">
-              BattrickIQ
+        <div className="max-w-6xl mx-auto flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="font-display font-extrabold text-slate-900 text-sm sm:text-base tracking-tight truncate">
+                BattrickIQ
+              </div>
+              <nav className="flex items-center gap-1 text-[10px] sm:text-[11px] text-slate-500 font-medium overflow-x-auto">
+                {crumbs.map((c, idx) => (
+                  <React.Fragment key={idx}>
+                    {idx > 0 && <span className="text-slate-300">/</span>}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (c.tab === 'player-details' && c.playerId) {
+                          setActiveTab('player-details', { playerId: c.playerId });
+                        } else {
+                          setActiveTab(c.tab);
+                        }
+                      }}
+                      className={`hover:text-indigo-600 truncate ${idx === crumbs.length - 1 ? 'text-slate-800 font-semibold' : ''}`}
+                    >
+                      {BREADCRUMB_LABELS[c.tab] || c.tab}
+                    </button>
+                  </React.Fragment>
+                ))}
+              </nav>
             </div>
-            <nav className="flex items-center gap-1 text-[10px] sm:text-[11px] text-slate-500 font-medium overflow-x-auto">
-              {crumbs.map((c, idx) => (
-                <React.Fragment key={idx}>
-                  {idx > 0 && <span className="text-slate-300">/</span>}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (c.tab === 'player-details' && c.playerId) {
-                        setActiveTab('player-details', { playerId: c.playerId });
-                      } else {
-                        setActiveTab(c.tab);
-                      }
-                    }}
-                    className={`hover:text-indigo-600 truncate ${idx === crumbs.length - 1 ? 'text-slate-800 font-semibold' : ''}`}
-                  >
-                    {BREADCRUMB_LABELS[c.tab] || c.tab}
-                  </button>
-                </React.Fragment>
+            <div className="hidden sm:flex items-center gap-1 flex-wrap justify-end">
+              {[...PRIMARY_TABS, ...MORE_TABS.slice(0, 4)].map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setActiveTab(t.id)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    activeTab === t.id || (t.id === 'squad' && activeTab === 'player-details')
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {t.label}
+                </button>
               ))}
-            </nav>
+            </div>
           </div>
-          <div className="hidden sm:flex items-center gap-1 flex-wrap justify-end">
-            {[...PRIMARY_TABS, ...MORE_TABS.slice(0, 4)].map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setActiveTab(t.id)}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
-                  activeTab === t.id || (t.id === 'squad' && activeTab === 'player-details')
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+          <BattrickAuthBar />
         </div>
       </header>
 
@@ -172,7 +184,7 @@ export default function App() {
         )}
         {activeTab === 'lineup' && <LineupOptimizer />}
         {activeTab === 'scout' && <OpponentScout />}
-        {activeTab === 'league' && <LeagueStandings />}
+        {activeTab === 'league' && <LeagueStandings setActiveTab={setActiveTab as any} />}
         {activeTab === 'wage' && <WageCalculator />}
         {activeTab === 'stadium' && <StadiumPlanner />}
         {activeTab === 'coach' && <AICoach />}
@@ -186,7 +198,6 @@ export default function App() {
         )}
       </main>
 
-      {/* Mobile bottom nav */}
       <nav
         className="sm:hidden fixed bottom-0 inset-x-0 z-50 bg-white border-t border-slate-200"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
@@ -224,7 +235,6 @@ export default function App() {
         </div>
       </nav>
 
-      {/* More sheet */}
       {showMobileMore && (
         <div className="sm:hidden fixed inset-0 z-40" onClick={() => setShowMobileMore(false)}>
           <div className="absolute inset-0 bg-black/40" />
