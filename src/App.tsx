@@ -13,6 +13,7 @@ import WageCalculator from './components/WageCalculator';
 import StadiumPlanner from './components/StadiumPlanner';
 import AICoach from './components/AICoach';
 import JarvisSettings from './components/JarvisSettings';
+import JarvisFooter from './components/JarvisFooter';
 import AICoachHistory from './components/AICoachHistory';
 import SyncHub from './components/SyncHub';
 import BusinessRules from './components/BusinessRules';
@@ -215,11 +216,13 @@ export default function App() {
         {activeTab === 'coach-history' && <AICoachHistory />}
         {activeTab === 'sync' && <SyncHub />}
         {activeTab === 'rules' && <BusinessRules />}
-        {activeTab === 'admin' && <AdminDashboard />}
+        {activeTab === 'admin' && <AdminDashboard currentUserUid={user?.uid || ''} />}
         {activeTab === 'player-details' && selectedPlayerId && (
           <PlayerDetails playerId={selectedPlayerId} onBack={() => setActiveTab('squad')} />
         )}
       </main>
+
+      <JarvisFooter onOpenFullSettings={() => setActiveTab('jarvis-settings')} />
 
       <nav
         className="sm:hidden fixed bottom-0 inset-x-0 z-50 bg-white border-t border-slate-200"

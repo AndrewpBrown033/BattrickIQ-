@@ -54,7 +54,7 @@ const VALID_TABS = new Set<string>([
 ]);
 
 export function parseHash(hash?: string): RouteState {
-  const raw = (hash ?? (typeof window !== 'undefined' ? window.location.hash : '') || '').replace(/^#\/?/, '');
+  const raw = ((hash ?? (typeof window !== 'undefined' ? window.location.hash : '')) || '').replace(/^#\/?/, '');
   const parts = raw.split('/').filter(Boolean);
 
   if (parts.length === 0) return { tab: 'summary' };
