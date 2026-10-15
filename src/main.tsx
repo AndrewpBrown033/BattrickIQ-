@@ -6,22 +6,30 @@ import './index.css';
 import './fixtureOpponentIdNormalize';
 
 // Intercept localStorage writes/removes to track local modifications and avoid race conditions with incoming Firestore snapshots
-const originalSetItem = localStorage.setItem.bind(localStorage);
-const originalRemoveItem = localStorage.removeItem.bind(localStorage);
-
-localStorage.setItem = (key: string, value: string) => {
-  if (!(window as any).isCloudUpdatingLocal) {
-    // Track that a local change happened for this key
-    originalSetItem('bt_last_local_write_' + key, Date.now().toString());
+const originalSetItem = localStorage.setItem;
+localStorage.setItem = function (key: string, value: string) {
+  if (
+    key.startsWith('bt_') && 
+    !key.startsWith('bt_last_local_write_') && 
+    !key.startsWith('bt_custom_user') && 
+    !(window as any).isCloudUpdatingLocal
+  ) {
+    originalSetItem.call(localStorage, 'bt_last_local_write_' + key, Date.now().toString());
   }
-  return originalSetItem(key, value);
+  originalSetItem.call(localStorage, key, value);
 };
 
-localStorage.removeItem = (key: string) => {
-  if (!(window as any).isCloudUpdatingLocal) {
-    originalSetItem('bt_last_local_write_' + key, Date.now().toString());
+const originalRemoveItem = localStorage.removeItem;
+localStorage.removeItem = function (key: string) {
+  if (
+    key.startsWith('bt_') && 
+    !key.startsWith('bt_last_local_write_') && 
+    !key.startsWith('bt_custom_user') && 
+    !(window as any).isCloudUpdatingLocal
+  ) {
+    originalSetItem.call(localStorage, 'bt_last_local_write_' + key, Date.now().toString());
   }
-  return originalRemoveItem(key);
+  originalRemoveItem.call(localStorage, key);
 };
 
 createRoot(document.getElementById('root')!).render(
