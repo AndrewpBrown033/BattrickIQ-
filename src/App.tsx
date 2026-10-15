@@ -79,7 +79,6 @@ export default function App() {
     return onCustomAuthStateChanged((u) => setUser(u));
   }, []);
 
-  // Pull Jarvis API key + model from Firestore into localStorage for this device
   useEffect(() => {
     if (!user) return;
     loadJarvisSettingsFromCloud().catch(() => {});
@@ -152,7 +151,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setActiveTab('jarvis-settings')}
-              className="sm:hidden p-2 rounded-lg text-slate-600 hover:bg-slate-100"
+              className="p-2 rounded-lg text-slate-600 hover:bg-slate-100 border border-slate-200"
               title="Jarvis Settings"
               aria-label="Jarvis Settings"
             >
