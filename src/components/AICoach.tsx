@@ -4,6 +4,7 @@ import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { getCustomUser } from '../lib/customAuth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import AICoachHistory from './AICoachHistory';
+import { buildManagerBriefing, JARVIS_SYSTEM_PROMPT } from '../utils/jarvisContext';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -15,7 +16,7 @@ export default function AICoach() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content: "Hello Manager! I am **Coach Jarvis**, your strategic advisor powered by OpenRouter LLMs. Configure your API key in **Jarvis Settings** (More menu), then ask me anything about your squad, finances, or tactics."
+      content: "Hello Manager — I'm **Coach Jarvis**. I see your cash, fixtures, and squad. Ask me who to train, sell, buy, or field so we win without going broke. Configure your OpenRouter key in **Jarvis Settings** if needed."
     }
   ]);
   const [input, setInput] = useState<string>('');
@@ -25,7 +26,6 @@ export default function AICoach() {
   const [loadingChat, setLoadingChat] = useState<boolean>(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Model/key live in Jarvis Settings — read from localStorage
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     return localStorage.getItem('bt_llm_model') || 'anthropic/claude-3.5-sonnet';
   });
@@ -59,7 +59,7 @@ export default function AICoach() {
         setMessages([
           {
             role: 'assistant',
-            content: "Hello Manager! I am **Coach Jarvis**. Configure your OpenRouter key in **Jarvis Settings**, then ask me anything about your squad or tactics."
+            content: "Hello Manager — I'm **Coach Jarvis**. Configure your OpenRouter key in **Jarvis Settings**, then ask about money, next games, or skill gaps."
           }
         ]);
         return;
@@ -127,56 +127,19 @@ export default function AICoach() {
     setMessages([
       {
         role: 'assistant',
-        content: "Hello Manager! I am **Coach Jarvis**. Configure your OpenRouter key in **Jarvis Settings**, then ask me anything about your squad or tactics."
+        content: "Hello Manager — I'm **Coach Jarvis**. Configure your OpenRouter key in **Jarvis Settings**, then ask about money, next games, or skill gaps."
       }
     ]);
   };
 
   useEffect(() => {
     const loadContext = () => {
-      const squadStr = localStorage.getItem('bt_squad');
-      const financesStr = localStorage.getItem('bt_finances');
-      const stadiumStr = localStorage.getItem('bt_stadium');
-      const pavilionStr = localStorage.getItem('bt_pavilion');
-      const teamName = localStorage.getItem('bt_team_name') || 'Unnamed Club';
-      const contextParts: string[] = [];
-      contextParts.push(`Team Name: ${teamName}`);
-
-      if (squadStr) {
-        try {
-          const squad = JSON.parse(squadStr);
-          contextParts.push(`Squad Size: ${squad.length} active players`);
-          const playersBrief = squad.map((p: any) =>
-            `- ${p.name}: ${p.age}yo, Role: ${p.role}, BTR: ${p.btRating}, Wage: £${p.wage}, BowlingType: ${p.bowlingType || 'None'}, Batting: ${p.skills?.batting}, Bowling: ${p.skills?.bowling}, Keeping: ${p.skills?.keeping}, Stamina: ${p.skills?.stamina}`
-          ).join('\n');
-          contextParts.push(`\n[Roster Detail]:\n${playersBrief}`);
-        } catch (e) { console.error(e); }
-      } else {
-        contextParts.push('Roster: No players parsed yet.');
+      try {
+        setTeamContext(buildManagerBriefing());
+      } catch (e) {
+        console.error('Jarvis context failed', e);
+        setTeamContext('Context unavailable — sync squad and finances.');
       }
-
-      if (financesStr) {
-        try {
-          const fin = JSON.parse(financesStr);
-          contextParts.push(`\n[Finances Detail]:\n- Cash in Bank: £${fin.cash?.toLocaleString?.() ?? fin.cash}\n- PR Officers: ${fin.prOfficers}\n- Financial Advisors: ${fin.finAdvisors}\n- Sponsors Income: £${fin.sponsorsIncome}/wk\n- Gate Receipts: £${fin.gateReceipts}/wk\n- Player Wages: £${fin.playerWages}/wk\n- Staff Wages: £${fin.staffWages}/wk\n- Members: ${fin.members}`);
-        } catch (e) { console.error(e); }
-      }
-
-      if (stadiumStr) {
-        try {
-          const std = JSON.parse(stadiumStr);
-          contextParts.push(`\n[Stadium]: Terracing ${std.terracing}, Grass ${std.grass}, Seats ${std.seats}, Boxes ${std.boxes}, Capacity ${std.capacity}`);
-        } catch (e) { console.error(e); }
-      }
-
-      if (pavilionStr) {
-        try {
-          const pav = JSON.parse(pavilionStr);
-          contextParts.push(`\n[Ground]: ${pav.groundName}, Pitch: ${pav.pitchType}, Weather: ${pav.weather}`);
-        } catch (e) { console.error(e); }
-      }
-
-      setTeamContext(contextParts.join('\n'));
     };
     loadContext();
     window.addEventListener('storage', loadContext);
@@ -267,7 +230,7 @@ export default function AICoach() {
             headers: {
               Authorization: `Bearer ${activeOpenRouterKey}`,
               'HTTP-Referer': window.location.origin,
-              'X-Title': 'Battrick Tactical Assistant',
+              'X-Title': 'BattrickIQ Manager Advisor',
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -275,11 +238,11 @@ export default function AICoach() {
               messages: [
                 {
                   role: 'system',
-                  content: "You are 'Coach Jarvis', the premier AI Strategic Coach for Battrick cricket management. You are an expert at match ratings, Batstats, batting orders, and net planning."
+                  content: JARVIS_SYSTEM_PROMPT
                 },
                 {
                   role: 'user',
-                  content: `[TEAM & MATCH CONTEXT]:\n${teamContext || 'No context yet.'}\n\n[USER INQUIRY]:\n${textToSend}`
+                  content: `[MANAGER BRIEFING]:\n${teamContext || 'No context yet.'}\n\n[USER INQUIRY]:\n${textToSend}`
                 }
               ]
             })
@@ -323,9 +286,10 @@ export default function AICoach() {
   };
 
   const templates = [
-    { label: 'Starting XI', text: 'Recommend the best tactical starting XI from my squad based on skills and form.' },
-    { label: 'Wage review', text: 'Review my wage bill and suggest where I can trim or invest.' },
-    { label: 'Next opponent', text: 'How should I approach my next match based on my squad and recent form?' },
+    { label: 'Starting XI', text: 'Given my cash, wages, and next fixtures, recommend the best starting XI and why it helps us win.' },
+    { label: 'Wage review', text: 'Review my wage bill and suggest who to sell or keep so we stay solvent and competitive.' },
+    { label: 'Next opponent', text: 'For my next match: what skills matter, who should play, and what is the money risk?' },
+    { label: 'Skill gaps', text: 'Where are my biggest skill or Team Rating gaps, and should I train or buy to close them?' },
   ];
 
   return (
@@ -433,7 +397,7 @@ export default function AICoach() {
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask Jarvis about lineup, wages, opponents..."
+                placeholder="Ask about money, next game, train/sell/buy..."
                 className="flex-1 text-sm px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 disabled={loading}
               />
