@@ -10,10 +10,11 @@ import {
   Calendar,
   GraduationCap,
 } from 'lucide-react';
-import type { BattrickPlayer, ClubFinances, BattrickGame } from '../types';
+import type { BattrickPlayer, ClubFinances, BattrickGame, PavilionInfo, StadiumConfig } from '../types';
 import { isGameInNext7Days, parseGameDateToTimestamp } from '../utils/history';
 import { navigateTo, type SquadSubTab } from '../lib/navigation';
 import NextMatchLineupCard from './NextMatchLineupCard';
+import ClubHeroHeader from './ClubHeroHeader';
 import { suggestStartingXI, saveLineupContext } from '../utils/suggestLineup';
 
 interface ManagerDeskProps {
@@ -66,6 +67,9 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
   const [finances, setFinances] = useState<ClubFinances | null>(null);
   const [fixtures, setFixtures] = useState<BattrickGame[]>([]);
   const [teamName, setTeamName] = useState('Your Club');
+  const [pavilion, setPavilion] = useState<PavilionInfo | null>(null);
+  const [stadium, setStadium] = useState<StadiumConfig | null>(null);
+  const [seasonWeek, setSeasonWeek] = useState('SEASON · WEEK');
 
   const reload = () => {
     setSquad(loadJson<BattrickPlayer[]>('bt_squad', []));
@@ -75,6 +79,10 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
       loadJson<BattrickGame[]>('bt_league_office_fixtures', []);
     setFixtures(Array.isArray(fx) ? fx : []);
     setTeamName(localStorage.getItem('bt_team_name') || 'Your Club');
+    setPavilion(loadJson<PavilionInfo | null>('bt_pavilion', null));
+    setStadium(loadJson<StadiumConfig | null>('bt_stadium', null));
+    const sw = localStorage.getItem('bt_season_week');
+    if (sw) setSeasonWeek(sw);
   };
 
   useEffect(() => {
@@ -275,21 +283,20 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
 
   return (
     <div className="flex flex-col gap-4" id="manager-desk">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
-        <div>
-          <p className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-indigo-600">
-            Manager desk · Club
-          </p>
-          <h2 className="text-2xl sm:text-3xl font-display font-extrabold text-slate-900 tracking-tight leading-tight">
-            {teamName && teamName !== 'Your Club' && teamName !== 'My Battrick IQ Club'
-              ? teamName
-              : 'Your Club'}
-          </h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Money, games, and winning — driven by squad and skill decisions.
-          </p>
-        </div>
-      </div>
+      <ClubHeroHeader
+        teamName={teamName}
+        groundName={stadium?.groundName || pavilion?.groundName || undefined}
+        pitchName={stadium?.pitch || pavilion?.pitchType || undefined}
+        weatherName={pavilion?.weather || undefined}
+        seasonWeek={seasonWeek}
+        isPendingSync={false}
+        onOpenSync={() => setActiveTab('sync')}
+        generalManager={pavilion?.generalManager || undefined}
+        country={pavilion?.country || undefined}
+        region={(pavilion as any)?.region || undefined}
+        nationalRank={(pavilion as any)?.teamRankingNational || undefined}
+        worldRank={(pavilion as any)?.teamRankingWorld || undefined}
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <button
