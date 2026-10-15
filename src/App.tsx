@@ -6,6 +6,7 @@ import SquadManagerBar from './components/SquadManagerBar';
 import FixturesDashboard from './components/FixturesDashboard';
 import LineupOptimizer from './components/LineupOptimizer';
 import LineupMatchBanner from './components/LineupMatchBanner';
+import FixtureTeamIdEnrich from './components/FixtureTeamIdEnrich';
 import OpponentScout from './components/OpponentScout';
 import { LeagueStandings } from './components/LeagueStandings';
 import WageCalculator from './components/WageCalculator';
@@ -97,7 +98,7 @@ export default function App() {
     };
     window.addEventListener('hashchange', onHash);
     if (!window.location.hash || window.location.hash === '#') {
-      navigateTo({ tab: activeTab as AppTab }, { replace: true });
+      navigateTo({ tab: activeTab as AppTab });
     }
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
@@ -185,7 +186,12 @@ export default function App() {
             <LineupOptimizer />
           </div>
         )}
-        {activeTab === 'scout' && <OpponentScout setActiveTab={setActiveTab as any} />}
+        {activeTab === 'scout' && (
+          <div>
+            <FixtureTeamIdEnrich />
+            <OpponentScout setActiveTab={setActiveTab as any} />
+          </div>
+        )}
         {activeTab === 'league' && <LeagueStandings setActiveTab={setActiveTab as any} />}
         {activeTab === 'wage' && <WageCalculator />}
         {activeTab === 'stadium' && <StadiumPlanner />}
