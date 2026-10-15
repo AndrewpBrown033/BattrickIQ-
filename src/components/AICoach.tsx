@@ -5,7 +5,7 @@ import { getCustomUser } from '../lib/customAuth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import AICoachHistory from './AICoachHistory';
 import { buildManagerBriefing, JARVIS_SYSTEM_PROMPT } from '../utils/jarvisContext';
-import { saveJarvisSettingsToCloud, loadJarvisSettingsFromCloud } from '../utils/jarvisSettingsStore';
+import { loadJarvisSettingsFromCloud } from '../utils/jarvisSettingsStore';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -200,7 +200,7 @@ export default function AICoach({ setActiveTab }: { setActiveTab?: (tab: string)
           ...prev,
           {
             role: 'assistant',
-            content: '⚠️ **OpenRouter API Key Required**: Paste your key in the box above on this screen (or open Full settings). Get a free key at [openrouter.ai/keys](https://openrouter.ai/keys).'
+            content: '⚠️ **OpenRouter API Key Required**: Add your key in **Jarvis settings** at the bottom of the page. Get a free key at [openrouter.ai/keys](https://openrouter.ai/keys).'
           }
         ]);
         return;
@@ -354,49 +354,11 @@ export default function AICoach({ setActiveTab }: { setActiveTab?: (tab: string)
         </div>
       ) : (
         <>
-          <div
-            className={`mx-3 mt-3 p-3 rounded-xl border space-y-2 ${
-              openRouterKey ? 'bg-slate-50 border-slate-200' : 'bg-amber-50 border-amber-200'
-            }`}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <p className={`text-xs font-bold ${openRouterKey ? 'text-slate-700' : 'text-amber-900'}`}>
-                {openRouterKey ? 'OpenRouter API key' : 'Paste your OpenRouter API key to use Jarvis'}
-              </p>
-              <button
-                type="button"
-                onClick={() => setActiveTab?.('jarvis-settings')}
-                className="text-[10px] font-bold text-indigo-700 underline"
-              >
-                Full settings
-              </button>
+          {!openRouterKey && (
+            <div className="mx-3 mt-3 px-3 py-2 rounded-xl border bg-amber-50 border-amber-200 text-[11px] text-amber-900">
+              No API key set — add it in <strong>Jarvis settings</strong> at the bottom of the page.
             </div>
-            <input
-              type="password"
-              value={openRouterKey}
-              onChange={(e) => {
-                const val = e.target.value.trim();
-                setOpenRouterKey(val);
-                saveJarvisSettingsToCloud({ openRouterApiKey: val }).catch(() => {
-                  try {
-                    if (val) localStorage.setItem('bt_openrouter_api_key', val);
-                    else localStorage.removeItem('bt_openrouter_api_key');
-                  } catch {
-                    // ignore
-                  }
-                });
-              }}
-              placeholder="sk-or-v1-…"
-              className="w-full text-xs font-mono px-2.5 py-2 rounded-lg border border-slate-200 bg-white"
-              autoComplete="off"
-              spellCheck={false}
-            />
-            {!openRouterKey && (
-              <p className="text-[10px] text-amber-800">
-                Get a free key at openrouter.ai/keys — saved to your account when you paste it.
-              </p>
-            )}
-          </div>
+          )}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50">
             {loadingChat ? (
               <div className="flex flex-col items-center justify-center py-20 gap-3">
