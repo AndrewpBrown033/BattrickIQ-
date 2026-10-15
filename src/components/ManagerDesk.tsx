@@ -277,13 +277,15 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
     <div className="flex flex-col gap-4" id="manager-desk">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
         <div>
-          <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-indigo-600">
-            Manager desk
+          <p className="text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-indigo-600">
+            Manager desk · Club
           </p>
-          <h2 className="text-xl sm:text-2xl font-display font-extrabold text-slate-900 tracking-tight">
-            {teamName}
+          <h2 className="text-2xl sm:text-3xl font-display font-extrabold text-slate-900 tracking-tight leading-tight">
+            {teamName && teamName !== 'Your Club' && teamName !== 'My Battrick IQ Club'
+              ? teamName
+              : 'Your Club'}
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-slate-500 mt-1">
             Money, games, and winning — driven by squad and skill decisions.
           </p>
         </div>
