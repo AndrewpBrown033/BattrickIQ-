@@ -13,6 +13,8 @@ import {
 import type { BattrickPlayer, ClubFinances, BattrickGame } from '../types';
 import { isGameInNext7Days, parseGameDateToTimestamp } from '../utils/history';
 import { navigateTo, type SquadSubTab } from '../lib/navigation';
+import NextMatchLineupCard from './NextMatchLineupCard';
+import { suggestStartingXI, saveLineupContext } from '../utils/suggestLineup';
 
 interface ManagerDeskProps {
   setActiveTab: (tab: string) => void;
@@ -365,6 +367,8 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
         </button>
       </div>
 
+      <NextMatchLineupCard setActiveTab={setActiveTab} />
+
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
         <div className="flex items-center gap-2 mb-3">
           <Target className="w-4 h-4 text-indigo-600" />
@@ -375,7 +379,13 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
             <button
               key={p.id}
               type="button"
-              onClick={() => goManagerAction(setActiveTab, p.tab, p.squadSub)}
+              onClick={() => {
+                if (p.tab === 'lineup' && games.next) {
+                  const sug = suggestStartingXI(squad, games.next);
+                  if (sug) saveLineupContext(sug);
+                }
+                goManagerAction(setActiveTab, p.tab, p.squadSub);
+              }}
               className={`w-full text-left rounded-xl border px-3 py-2.5 flex items-center justify-between gap-2 transition hover:shadow-sm ${toneClass(p.tone)}`}
             >
               <div className="min-w-0">
@@ -399,7 +409,13 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('lineup')}
+            onClick={() => {
+              if (games.next) {
+                const sug = suggestStartingXI(squad, games.next);
+                if (sug) saveLineupContext(sug);
+              }
+              setActiveTab('lineup');
+            }}
             className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg hover:bg-slate-100"
           >
             <Calendar className="w-3.5 h-3.5" /> Lineup
