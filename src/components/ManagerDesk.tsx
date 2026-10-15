@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { BattrickPlayer, ClubFinances, BattrickGame } from '../types';
 import { isGameInNext7Days, parseGameDateToTimestamp } from '../utils/history';
+import { navigateTo, type SquadSubTab } from '../lib/navigation';
 
 interface ManagerDeskProps {
   setActiveTab: (tab: string) => void;
@@ -22,8 +23,28 @@ type Priority = {
   title: string;
   detail: string;
   tab: string;
+  squadSub?: SquadSubTab;
   tone: 'critical' | 'warn' | 'good' | 'info';
 };
+
+function goManagerAction(
+  setActiveTab: (tab: string) => void,
+  tab: string,
+  squadSub?: SquadSubTab
+) {
+  if (tab === 'squad' && squadSub) {
+    try {
+      localStorage.setItem('bt_squad_subtab', squadSub);
+    } catch {}
+    navigateTo({ tab: 'squad', squadSub });
+  } else if (tab === 'squad') {
+    try {
+      localStorage.setItem('bt_squad_subtab', 'roster');
+    } catch {}
+    navigateTo({ tab: 'squad' });
+  }
+  setActiveTab(tab);
+}
 
 function loadJson<T>(key: string, fallback: T): T {
   try {
@@ -178,6 +199,14 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
         tab: 'wage',
         tone: 'critical',
       });
+      list.push({
+        id: 'sell',
+        title: 'Review players to sell',
+        detail: 'Trading tab flags high-wage / aging fringe so you can free cash for the XI.',
+        tab: 'squad',
+        squadSub: 'trading',
+        tone: 'warn',
+      });
     }
     if (squad.length === 0) {
       list.push({
@@ -201,6 +230,7 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
         title: 'Put players on nets',
         detail: 'Skills only rise with training — open Training and allocate nets.',
         tab: 'squad',
+        squadSub: 'training',
         tone: 'warn',
       });
     }
@@ -227,6 +257,7 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
         title: 'Check skill gaps',
         detail: 'Use Estimator Team Ratings to see what still blocks winning more games.',
         tab: 'squad',
+        squadSub: 'estimator',
         tone: 'good',
       });
     }
@@ -294,7 +325,7 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
             </span>
             <Swords className="w-4 h-4 text-slate-400" />
           </div>
-          <div className="text-2xl font-serif font-bold text-slate-900 tracking-tight">
+          <div className="text-2xl font-serif font-bold tracking-tight">
             {games.count7 > 0 ? games.count7 : games.upcoming}
             <span className="text-sm font-sans font-semibold text-slate-500 ml-1">
               {games.count7 > 0 ? 'next 7 days' : 'upcoming'}
@@ -309,7 +340,7 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
 
         <button
           type="button"
-          onClick={() => setActiveTab('squad')}
+          onClick={() => goManagerAction(setActiveTab, 'squad')}
           className={`text-left rounded-2xl border p-4 transition hover:shadow-md ${toneClass(squadStats.tone)}`}
         >
           <div className="flex items-center justify-between mb-2">
@@ -344,7 +375,7 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
             <button
               key={p.id}
               type="button"
-              onClick={() => setActiveTab(p.tab)}
+              onClick={() => goManagerAction(setActiveTab, p.tab, p.squadSub)}
               className={`w-full text-left rounded-xl border px-3 py-2.5 flex items-center justify-between gap-2 transition hover:shadow-sm ${toneClass(p.tone)}`}
             >
               <div className="min-w-0">
@@ -361,7 +392,7 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => setActiveTab('squad')}
+            onClick={() => goManagerAction(setActiveTab, 'squad')}
             className="inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1.5 rounded-lg hover:bg-indigo-100"
           >
             <Users className="w-3.5 h-3.5" /> Player list
@@ -375,10 +406,17 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('squad')}
+            onClick={() => goManagerAction(setActiveTab, 'squad', 'training')}
             className="inline-flex items-center gap-1.5 text-[11px] font-bold text-violet-700 bg-violet-50 border border-violet-100 px-2.5 py-1.5 rounded-lg hover:bg-violet-100"
           >
             <GraduationCap className="w-3.5 h-3.5" /> Training
+          </button>
+          <button
+            type="button"
+            onClick={() => goManagerAction(setActiveTab, 'squad', 'estimator')}
+            className="inline-flex items-center gap-1.5 text-[11px] font-bold text-teal-800 bg-teal-50 border border-teal-100 px-2.5 py-1.5 rounded-lg hover:bg-teal-100"
+          >
+            <Target className="w-3.5 h-3.5" /> Gaps
           </button>
           <button
             type="button"
