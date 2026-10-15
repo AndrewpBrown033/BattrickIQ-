@@ -6,6 +6,7 @@ import SquadDashboard from './components/SquadDashboard';
 import SquadManagerBar from './components/SquadManagerBar';
 import FixturesDashboard from './components/FixturesDashboard';
 import LineupOptimizer from './components/LineupOptimizer';
+import LineupMatchBanner from './components/LineupMatchBanner';
 import OpponentScout from './components/OpponentScout';
 import { LeagueStandings } from './components/LeagueStandings';
 import WageCalculator from './components/WageCalculator';
@@ -182,7 +183,12 @@ export default function App() {
             />
           </div>
         )}
-        {activeTab === 'lineup' && <LineupOptimizer />}
+        {activeTab === 'lineup' && (
+          <div>
+            <LineupMatchBanner />
+            <LineupOptimizer />
+          </div>
+        )}
         {activeTab === 'scout' && <OpponentScout />}
         {activeTab === 'league' && <LeagueStandings setActiveTab={setActiveTab as any} />}
         {activeTab === 'wage' && <WageCalculator />}
