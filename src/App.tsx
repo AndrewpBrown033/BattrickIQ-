@@ -22,6 +22,7 @@ import LoginPage from './components/LoginPage';
 import BattrickAuthBar from './components/BattrickAuthBar';
 import { onCustomAuthStateChanged, getCustomUser, CustomUser } from './lib/customAuth';
 import { parseHash, navigateTo, type AppTab } from './lib/navigation';
+import { loadJarvisSettingsFromCloud } from './utils/jarvisSettingsStore';
 
 type TabType = AppTab | string;
 
@@ -77,6 +78,12 @@ export default function App() {
   useEffect(() => {
     return onCustomAuthStateChanged((u) => setUser(u));
   }, []);
+
+  // Pull Jarvis API key + model from Firestore into localStorage for this device
+  useEffect(() => {
+    if (!user) return;
+    loadJarvisSettingsFromCloud().catch(() => {});
+  }, [user?.uid]);
 
   const setActiveTab = (tab: TabType | string, opts?: { playerId?: string | null }) => {
     const next = tab as TabType;
