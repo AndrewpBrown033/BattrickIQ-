@@ -261,6 +261,19 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
         tone: 'info',
       });
     }
+    try {
+      const targets = loadJson<Record<string, number> | null>('bt_rating_targets', null);
+      if (targets && squad.length > 0) {
+        list.push({
+          id: 'gap-transfers',
+          title: 'Fill skill gaps on the market',
+          detail: 'Open Estimator, scan the transfer list for players that close your Team Rating gaps.',
+          tab: 'squad',
+          squadSub: 'estimator',
+          tone: 'info',
+        });
+      }
+    } catch {}
     if (list.length === 0) {
       list.push({
         id: 'gaps',
@@ -393,6 +406,11 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
                   const sug = suggestStartingXI(squad, games.next);
                   if (sug) saveLineupContext(sug);
                 }
+                if (p.id === 'gap-transfers' || p.squadSub === 'estimator') {
+                  try {
+                    localStorage.setItem('bt_estimator_autoscan', '1');
+                  } catch {}
+                }
                 goManagerAction(setActiveTab, p.tab, p.squadSub);
               }}
               className={`w-full text-left rounded-xl border px-3 py-2.5 flex items-center justify-between gap-2 transition hover:shadow-sm ${toneClass(p.tone)}`}
@@ -438,10 +456,15 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
           </button>
           <button
             type="button"
-            onClick={() => goManagerAction(setActiveTab, 'squad', 'estimator')}
+            onClick={() => {
+              try {
+                localStorage.setItem('bt_estimator_autoscan', '1');
+              } catch {}
+              goManagerAction(setActiveTab, 'squad', 'estimator');
+            }}
             className="inline-flex items-center gap-1.5 text-[11px] font-bold text-teal-800 bg-teal-50 border border-teal-100 px-2.5 py-1.5 rounded-lg hover:bg-teal-100"
           >
-            <Target className="w-3.5 h-3.5" /> Gaps
+            <Target className="w-3.5 h-3.5" /> Gaps → transfers
           </button>
           <button
             type="button"
