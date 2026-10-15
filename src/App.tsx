@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { LayoutGrid, Users, Calendar, Swords, Trophy, Calculator, Building2, Bot, Settings, BookOpen, RefreshCw, Shield, MoreHorizontal, X } from 'lucide-react';
-import SummaryDashboard from './components/SummaryDashboard';
 import ManagerDesk from './components/ManagerDesk';
 import SquadDashboard from './components/SquadDashboard';
 import SquadManagerBar from './components/SquadManagerBar';
@@ -165,10 +164,7 @@ export default function App() {
 
       <main className="flex-1 w-full max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         {activeTab === 'summary' && (
-          <div className="flex flex-col gap-6">
-            <ManagerDesk setActiveTab={setActiveTab as any} />
-            <SummaryDashboard setActiveTab={setActiveTab as any} />
-          </div>
+          <ManagerDesk setActiveTab={setActiveTab as any} />
         )}
         {activeTab === 'fixtures' && <FixturesDashboard setActiveTab={setActiveTab as any} />}
         {activeTab === 'squad' && (
@@ -189,7 +185,7 @@ export default function App() {
             <LineupOptimizer />
           </div>
         )}
-        {activeTab === 'scout' && <OpponentScout />}
+        {activeTab === 'scout' && <OpponentScout setActiveTab={setActiveTab as any} />}
         {activeTab === 'league' && <LeagueStandings setActiveTab={setActiveTab as any} />}
         {activeTab === 'wage' && <WageCalculator />}
         {activeTab === 'stadium' && <StadiumPlanner />}
