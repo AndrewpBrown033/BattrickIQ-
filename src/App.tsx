@@ -33,12 +33,12 @@ const PRIMARY_TABS = [
 ] as const;
 
 const MORE_TABS = [
+  { id: 'coach', label: 'Jarvis', desc: 'AI club advisor', icon: <Bot className="w-4 h-4" />, iconBg: 'bg-indigo-100 text-indigo-700' },
+  { id: 'jarvis-settings', label: 'Jarvis Settings', desc: 'OpenRouter API key & model', icon: <Settings className="w-4 h-4" />, iconBg: 'bg-slate-100 text-slate-700' },
   { id: 'scout', label: 'Scout', desc: 'Opponent & player scout', icon: <Swords className="w-4 h-4" />, iconBg: 'bg-rose-100 text-rose-700' },
   { id: 'league', label: 'League', desc: 'Tables & ladders', icon: <Trophy className="w-4 h-4" />, iconBg: 'bg-amber-100 text-amber-700' },
   { id: 'wage', label: 'Finances', desc: 'Cash, wages & forecast', icon: <Calculator className="w-4 h-4" />, iconBg: 'bg-green-100 text-green-700' },
   { id: 'stadium', label: 'Stadium', desc: 'Capacity planning', icon: <Building2 className="w-4 h-4" />, iconBg: 'bg-sky-100 text-sky-700' },
-  { id: 'coach', label: 'Jarvis', desc: 'AI club advisor', icon: <Bot className="w-4 h-4" />, iconBg: 'bg-indigo-100 text-indigo-700' },
-  { id: 'jarvis-settings', label: 'Jarvis Settings', desc: 'OpenRouter key & model', icon: <Settings className="w-4 h-4" />, iconBg: 'bg-slate-100 text-slate-700' },
   { id: 'coach-history', label: 'Coach History', desc: 'Past Jarvis sessions', icon: <BookOpen className="w-4 h-4" />, iconBg: 'bg-violet-100 text-violet-700' },
   { id: 'sync', label: 'Sync', desc: 'Pull live Battrick data', icon: <RefreshCw className="w-4 h-4" />, iconBg: 'bg-cyan-100 text-cyan-700' },
   { id: 'rules', label: 'Rules', desc: 'Club setup & multipliers', icon: <BookOpen className="w-4 h-4" />, iconBg: 'bg-orange-100 text-orange-700' },
@@ -142,8 +142,17 @@ export default function App() {
                 ))}
               </nav>
             </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('jarvis-settings')}
+              className="sm:hidden p-2 rounded-lg text-slate-600 hover:bg-slate-100"
+              title="Jarvis Settings"
+              aria-label="Jarvis Settings"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
             <div className="hidden sm:flex items-center gap-1 flex-wrap justify-end">
-              {[...PRIMARY_TABS, ...MORE_TABS.slice(0, 4)].map((t) => (
+              {[...PRIMARY_TABS, ...MORE_TABS.filter((t) => ['coach', 'jarvis-settings', 'scout', 'wage', 'sync'].includes(t.id))].map((t) => (
                 <button
                   key={t.id}
                   type="button"
@@ -195,7 +204,7 @@ export default function App() {
         {activeTab === 'league' && <LeagueStandings setActiveTab={setActiveTab as any} />}
         {activeTab === 'wage' && <WageCalculator />}
         {activeTab === 'stadium' && <StadiumPlanner />}
-        {activeTab === 'coach' && <AICoach />}
+        {activeTab === 'coach' && <AICoach setActiveTab={setActiveTab as any} />}
         {activeTab === 'jarvis-settings' && <JarvisSettings />}
         {activeTab === 'coach-history' && <AICoachHistory />}
         {activeTab === 'sync' && <SyncHub />}
