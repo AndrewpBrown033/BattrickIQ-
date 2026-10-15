@@ -1,5 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Cpu, ShieldCheck, Eye, EyeOff, Check, ExternalLink, Bot } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Cpu, ShieldCheck, Eye, EyeOff, Check, ExternalLink, Bot, Cloud, Loader2 } from 'lucide-react';
+import {
+  loadJarvisSettingsFromCloud,
+  saveJarvisSettingsToCloud,
+  readJarvisLocal,
+} from '../utils/jarvisSettingsStore';
 
 export const OPENROUTER_MODELS = [
   { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', desc: 'Top strategic reasoning & cricket tactics', free: false },
@@ -17,50 +22,103 @@ export const OPENROUTER_MODELS = [
   { id: 'liquid/lfm-2.5-2.6b:free', name: 'LiquidAI LFM2.5 2.6B (Free)', desc: 'Compact, quick answers for simple questions', free: true },
 ];
 
-function notifyChanged() {
-  try {
-    window.dispatchEvent(new Event('bt_jarvis_settings_changed'));
-  } catch {
-    // ignore
-  }
-}
-
 export default function JarvisSettings() {
-  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('bt_llm_model') || 'anthropic/claude-3.5-sonnet');
-  const [showFreeOnly, setShowFreeOnly] = useState(() => localStorage.getItem('bt_llm_free_only') === 'true');
-  const [openRouterKey, setOpenRouterKey] = useState(() => localStorage.getItem('bt_openrouter_api_key') || '');
+  const local0 = readJarvisLocal();
+  const [selectedModel, setSelectedModel] = useState(local0.llmModel);
+  const [showFreeOnly, setShowFreeOnly] = useState(local0.freeOnly);
+  const [openRouterKey, setOpenRouterKey] = useState(local0.openRouterApiKey);
   const [showKey, setShowKey] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState<'idle' | 'loading' | 'saved' | 'error'>('idle');
+  const [cloudMsg, setCloudMsg] = useState<string | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setCloudStatus('loading');
+      try {
+        const s = await loadJarvisSettingsFromCloud();
+        if (cancelled) return;
+        setOpenRouterKey(s.openRouterApiKey);
+        setSelectedModel(s.llmModel);
+        setShowFreeOnly(s.freeOnly);
+        setCloudStatus('idle');
+        setCloudMsg(s.openRouterApiKey ? 'Loaded from your account (cloud)' : 'No key in cloud yet — paste one to save');
+      } catch {
+        if (!cancelled) {
+          setCloudStatus('error');
+          setCloudMsg('Could not load from cloud — using this device only');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const flash = () => {
     setSavedFlash(true);
-    window.setTimeout(() => setSavedFlash(false), 2000);
-    notifyChanged();
+    window.setTimeout(() => setSavedFlash(false), 1500);
+  };
+
+  const persist = (partial: {
+    openRouterApiKey?: string;
+    llmModel?: string;
+    freeOnly?: boolean;
+  }) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      setCloudStatus('loading');
+      try {
+        await saveJarvisSettingsToCloud(partial);
+        setCloudStatus('saved');
+        setCloudMsg('Saved to your account (cloud) and this device');
+        flash();
+        window.setTimeout(() => setCloudStatus('idle'), 2000);
+      } catch {
+        setCloudStatus('error');
+        setCloudMsg('Saved on this device only — cloud save failed');
+      }
+    }, 400);
   };
 
   const visibleModels = showFreeOnly ? OPENROUTER_MODELS.filter((m) => m.free) : OPENROUTER_MODELS;
 
   useEffect(() => {
-    if (!visibleModels.some((m) => m.id === selectedModel) && visibleModels.length > 0) {
+    if (showFreeOnly && !visibleModels.some((m) => m.id === selectedModel) && visibleModels[0]) {
       setSelectedModel(visibleModels[0].id);
-      localStorage.setItem('bt_llm_model', visibleModels[0].id);
-      notifyChanged();
+      persist({ llmModel: visibleModels[0].id, freeOnly: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showFreeOnly]);
 
   return (
-    <div className="max-w-2xl mx-auto space-y-5">
+    <div className="flex flex-col gap-4 max-w-xl mx-auto">
       <div className="flex items-start gap-3">
-        <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-600 shrink-0">
-          <Bot className="w-6 h-6" />
+        <div className="p-2.5 rounded-xl bg-indigo-100 text-indigo-700">
+          <Bot className="w-5 h-5" />
         </div>
-        <div>
-          <h1 className="text-lg font-bold text-slate-900">Jarvis Settings</h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-lg font-extrabold text-slate-900 tracking-tight">Jarvis Settings</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            OpenRouter API key and model for Coach Jarvis. These are stored only in this browser.
+            OpenRouter API key and model for Coach Jarvis. Saved to your BattrickIQ account so it follows you across devices.
           </p>
         </div>
+        {savedFlash && (
+          <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg">
+            Saved
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 text-[11px] text-slate-600 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2">
+        {cloudStatus === 'loading' ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+        ) : (
+          <Cloud className="w-3.5 h-3.5 text-indigo-600" />
+        )}
+        <span>{cloudMsg || 'Syncing with your account…'}</span>
       </div>
 
       <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
@@ -87,8 +145,7 @@ export default function JarvisSettings() {
               type="button"
               onClick={() => {
                 setOpenRouterKey('');
-                localStorage.removeItem('bt_openrouter_api_key');
-                flash();
+                persist({ openRouterApiKey: '' });
               }}
               className="text-[11px] font-mono text-rose-600 hover:text-rose-800 underline"
             >
@@ -97,8 +154,7 @@ export default function JarvisSettings() {
           )}
         </div>
         <p className="text-[12px] text-slate-500 leading-relaxed">
-          Use your existing OpenRouter key. Stored in this browser only.
-          Get a key at{' '}
+          Stored in your account database and mirrored on this device. Get a key at{' '}
           <a
             href="https://openrouter.ai/keys"
             target="_blank"
@@ -116,9 +172,7 @@ export default function JarvisSettings() {
             onChange={(e) => {
               const val = e.target.value.trim();
               setOpenRouterKey(val);
-              if (val) localStorage.setItem('bt_openrouter_api_key', val);
-              else localStorage.removeItem('bt_openrouter_api_key');
-              flash();
+              persist({ openRouterApiKey: val });
             }}
             placeholder="sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxx"
             className="w-full text-sm font-mono p-3 pr-11 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -136,17 +190,10 @@ export default function JarvisSettings() {
         </div>
         {openRouterKey && (
           <p className="text-[11px] font-mono text-slate-400">
-            Saved: {showKey ? openRouterKey : `${openRouterKey.slice(0, 7)}${'•'.repeat(Math.min(12, Math.max(0, openRouterKey.length - 11)))}${openRouterKey.slice(-4)}`}
-          </p>
-        )}
-        {savedFlash && (
-          <p className="text-[12px] text-emerald-600 font-semibold flex items-center gap-1">
-            <Check className="w-3.5 h-3.5" /> Preference updated
-          </p>
-        )}
-        {!openRouterKey && (
-          <p className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            No key set — Coach Jarvis cannot reply until you paste an OpenRouter key above.
+            Saved:{' '}
+            {showKey
+              ? openRouterKey
+              : `${openRouterKey.slice(0, 7)}${'•'.repeat(Math.min(12, Math.max(0, openRouterKey.length - 11)))}${openRouterKey.slice(-4)}`}
           </p>
         )}
       </section>
@@ -159,7 +206,7 @@ export default function JarvisSettings() {
             onClick={() => {
               const next = !showFreeOnly;
               setShowFreeOnly(next);
-              localStorage.setItem('bt_llm_free_only', String(next));
+              persist({ freeOnly: next });
             }}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold transition ${
               showFreeOnly
@@ -179,8 +226,7 @@ export default function JarvisSettings() {
                 type="button"
                 onClick={() => {
                   setSelectedModel(m.id);
-                  localStorage.setItem('bt_llm_model', m.id);
-                  flash();
+                  persist({ llmModel: m.id });
                 }}
                 className={`w-full p-3 rounded-xl border text-left transition flex items-start justify-between gap-2 ${
                   active
