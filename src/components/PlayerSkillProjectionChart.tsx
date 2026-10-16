@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { BattrickPlayer, getSkillLabel } from '../types';
-import { estimateWeeksToNextLevel } from '../parser';
+import { estimateWeeksToNextLevel, estimateSecondarySkillWeeks } from '../parser';
 import { getCurrentBattrickDate } from '../utils/history';
 import {
   ResponsiveContainer,
@@ -186,16 +186,16 @@ export default function PlayerSkillProjectionChart({
       } else if (sk.key === 'concentration') {
         // Secondary training synergy from Batting nets
         if (plannerNets.batting > 0) {
-          const batWeeks = estimateWeeksToNextLevel(player.skills.batting, player.age, plannerNets.batting, coachLevel, 'batting');
-          rates[sk.key] = batWeeks > 0 && batWeeks !== Infinity ? (1.0 / batWeeks) * 0.25 : 0;
+          const batWeeks = estimateSecondarySkillWeeks(player.skills.batting, sk.baseLevel, player.age, plannerNets.batting, coachLevel, 'batting');
+          rates[sk.key] = batWeeks > 0 && batWeeks !== Infinity ? 1.0 / batWeeks : 0;
         } else {
           rates[sk.key] = 0;
         }
       } else if (sk.key === 'consistency') {
         // Secondary training synergy from Bowling nets
         if (plannerNets.bowling > 0) {
-          const bowlWeeks = estimateWeeksToNextLevel(player.skills.bowling, player.age, plannerNets.bowling, coachLevel, 'bowling');
-          rates[sk.key] = bowlWeeks > 0 && bowlWeeks !== Infinity ? (1.0 / bowlWeeks) * 0.25 : 0;
+          const bowlWeeks = estimateSecondarySkillWeeks(player.skills.bowling, sk.baseLevel, player.age, plannerNets.bowling, coachLevel, 'bowling');
+          rates[sk.key] = bowlWeeks > 0 && bowlWeeks !== Infinity ? 1.0 / bowlWeeks : 0;
         } else {
           rates[sk.key] = 0;
         }

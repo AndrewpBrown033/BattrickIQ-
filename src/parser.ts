@@ -1875,6 +1875,28 @@ export function estimateWeeksToNextLevel(
   return parseFloat(totalWeeks.toFixed(1));
 }
 
+/**
+ * Concentration / Consistency are not net-trained directly: they creep up as a by-product of
+ * Batting / Bowling nets. Modelled as a fixed fraction of the PRIMARY skill's pop speed
+ * (the primary skill's own level, age and nets set the pace). One shared definition so the
+ * player-details forecast and the growth chart can never disagree.
+ */
+export const SECONDARY_TRAINING_SYNERGY = 0.25;
+
+export function estimateSecondarySkillWeeks(
+  primaryLevel: number,
+  secondaryLevel: number,
+  playerAge: number,
+  primaryNets: number,
+  coachLevel: number,
+  primary: 'batting' | 'bowling'
+): number {
+  if (secondaryLevel >= 20 || primaryNets <= 0) return primaryNets <= 0 ? Infinity : 0;
+  const primaryWeeks = estimateWeeksToNextLevel(primaryLevel, playerAge, primaryNets, coachLevel, primary);
+  if (!(primaryWeeks > 0) || primaryWeeks === Infinity) return Infinity;
+  return parseFloat((primaryWeeks / SECONDARY_TRAINING_SYNERGY).toFixed(1));
+}
+
 // Helper utilities for quick Stamina & Fielding calculations
 export function getStaminaPopWeeks(playerAge: number, netsCount: number = 1, isSquadTraining: boolean = false): number {
   return estimateWeeksToNextLevel(0, playerAge, netsCount, 9, 'stamina', isSquadTraining);

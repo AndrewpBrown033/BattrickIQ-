@@ -3,7 +3,8 @@ import { BattrickPlayer, SKILL_LEVELS, STAMINA_LEVELS, getSkillLabel } from '../
 import { 
   getPlayerWeightedScore, 
   getTradeAction, 
-  estimateWeeksToNextLevel 
+  estimateWeeksToNextLevel,
+  estimateSecondarySkillWeeks 
 } from '../parser';
 import { 
   Search, Coins, User, TrendingUp, 
@@ -325,9 +326,9 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
 
     const activeNetsList = [
       { key: 'batting' as const, label: 'Batting', level: player.skills.batting, isSquad: false },
-      { key: 'batting' as const, label: 'Concentration', level: player.skills.concentration || 0, isSquad: false },
+      { key: 'batting' as const, label: 'Concentration', level: player.skills.concentration || 0, isSquad: false, secondary: true },
       { key: 'bowling' as const, label: 'Bowling', level: player.skills.bowling, isSquad: false },
-      { key: 'bowling' as const, label: 'Consistency', level: player.skills.consistency || 0, isSquad: false },
+      { key: 'bowling' as const, label: 'Consistency', level: player.skills.consistency || 0, isSquad: false, secondary: true },
       { key: 'keeping' as const, label: 'Wicket Keeping', level: player.skills.keeping, isSquad: false },
       { key: 'stamina' as const, label: 'Stamina', level: player.skills.stamina, isSquad: squadTrainingStamina },
       { key: 'fielding' as const, label: 'Fielding', level: player.skills.fielding || 0, isSquad: squadTrainingFielding },
@@ -338,7 +339,9 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
       const maxLevelForSkill = n.key === 'stamina' ? 11 : 20;
       const isTrainingActive = count > 0 || (n.isSquad && count === 0);
       if (isTrainingActive && n.level < maxLevelForSkill) {
-        const weeks = estimateWeeksToNextLevel(n.level, player.age, count, coachLevel, n.key, n.isSquad);
+        const weeks = (n as any).secondary
+          ? estimateSecondarySkillWeeks(player.skills[n.key as 'batting' | 'bowling'], n.level, player.age, count, coachLevel, n.key as 'batting' | 'bowling')
+          : estimateWeeksToNextLevel(n.level, player.age, count, coachLevel, n.key, n.isSquad);
         if (weeks !== Infinity && weeks > 0) {
           const target = addWeeks(currentSeason, currentWeek, weeks);
           forecasts.push({
