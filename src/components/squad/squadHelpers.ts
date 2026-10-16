@@ -52,3 +52,75 @@ export const defaultRatings = (): Record<TeamRatingKey, number> => ({
   fielding: labelToLevel('strong'),
   wicketKeeping: labelToLevel('exquisite'),
 });
+
+/** Skills you can prioritise on the transfer market / Estimator scan. */
+export type SearchSkill = 'batting' | 'seam' | 'spin' | 'fielding' | 'keeping' | 'stamina';
+
+export const SEARCH_SKILLS: {
+  id: SearchSkill;
+  label: string;
+  /** Team rating keys this skill primarily lifts */
+  ratingKeys: TeamRatingKey[];
+}[] = [
+  { id: 'batting', label: 'Batting', ratingKeys: ['topOrder', 'middleOrder', 'lowerOrder'] },
+  { id: 'seam', label: 'Seam bowling', ratingKeys: ['seamBowling'] },
+  { id: 'spin', label: 'Spin bowling', ratingKeys: ['spinBowling'] },
+  { id: 'fielding', label: 'Fielding', ratingKeys: ['fielding'] },
+  { id: 'keeping', label: 'Wicket keeping', ratingKeys: ['wicketKeeping'] },
+  { id: 'stamina', label: 'Stamina', ratingKeys: [] },
+];
+
+export type SkillRecommendation = {
+  skill: SearchSkill;
+  label: string;
+  minSkill: number;
+  gap: number;
+  reason: string;
+  recommended: boolean;
+};
+
+/**
+ * Map team-rating gaps → transfer search skills with suggested min levels.
+ * Largest gaps are marked recommended=true.
+ */
+export function recommendSkillsFromGaps(
+  gaps: { key: TeamRatingKey; current: number; target: number; gap: number }[]
+): SkillRecommendation[] {
+  const bySkill = new Map<SearchSkill, SkillRecommendation>();
+
+  for (const g of gaps) {
+    if (g.gap <= 0) continue;
+    const def = SEARCH_SKILLS.find((s) => s.ratingKeys.includes(g.key));
+    if (!def) continue;
+    const minSkill = Math.max(1, g.target - 1);
+    const reason = `${g.key} gap +${g.gap} (need ~level ${g.target})`;
+    const prev = bySkill.get(def.id);
+    if (!prev || g.gap > prev.gap || minSkill > prev.minSkill) {
+      bySkill.set(def.id, {
+        skill: def.id,
+        label: def.label,
+        minSkill: prev ? Math.max(prev.minSkill, minSkill) : minSkill,
+        gap: prev ? Math.max(prev.gap, g.gap) : g.gap,
+        reason: prev ? prev.reason + '; ' + reason : reason,
+        recommended: true,
+      });
+    }
+  }
+
+  // Always surface all skills; non-gap ones are optional (not recommended)
+  const out: SkillRecommendation[] = [];
+  for (const def of SEARCH_SKILLS) {
+    const hit = bySkill.get(def.id);
+    if (hit) out.push(hit);
+    else
+      out.push({
+        skill: def.id,
+        label: def.label,
+        minSkill: 0,
+        gap: 0,
+        reason: 'No gap for this skill',
+        recommended: false,
+      });
+  }
+  return out.sort((a, b) => Number(b.recommended) - Number(a.recommended) || b.gap - a.gap);
+}
