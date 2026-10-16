@@ -54,6 +54,11 @@ service cloud.firestore {
       }
     }
 
+    // 1b. Per-user app data mirror (match archive, scouted opponent squads, etc.)
+    match /users_data/{userId}/{document=**} {
+      allow read, write: if true;
+    }
+
     // 2. Users Auth credentials: Secure credentials database for custom session authentication
     match /users_auth/{email} {
       // Allows getting individual document for password validation, but completely blocks list/scanning queries
