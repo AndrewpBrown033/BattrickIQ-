@@ -82,21 +82,21 @@ function extractListingFromBlock(
   blockText: string
 ): TransferListing {
   const ageMatch =
-    blockText.match(/\\b(?:age|aged)\\s*[:=]?\\s*(\\d{1,2})\\b/i) || blockText.match(/\\((\\d{2})\\)/);
+    blockText.match(/\b(?:age|aged)\s*[:=]?\s*(\d{1,2})\b/i) || blockText.match(/\((\d{2})\)/);
   const age = ageMatch ? parseInt(ageMatch[1], 10) : undefined;
   const priceMatch =
-    blockText.match(/(?:asking\\s*price|reserve|min(?:imum)?\\s*bid|price)\\s*[:=]?\\s*[£$€]?\\s*([\\d,]+)/i) ||
-    blockText.match(/[£$€]\\s*([\\d,]{3,})/);
+    blockText.match(/(?:asking\s*price|reserve|min(?:imum)?\s*bid|price)\s*[:=]?\s*[£$€]?\s*([\d,]+)/i) ||
+    blockText.match(/[£$€]\s*([\d,]{3,})/);
   const askingPrice = priceMatch ? parseMoney(priceMatch[1]) : undefined;
-  const bidMatch = blockText.match(/(?:current\\s*bid|highest\\s*bid|bid)\\s*[:=]?\\s*[£$€]?\\s*([\\d,]+)/i);
+  const bidMatch = blockText.match(/(?:current\s*bid|highest\s*bid|bid)\s*[:=]?\s*[£$€]?\s*([\d,]+)/i);
   const currentBid = bidMatch ? parseMoney(bidMatch[1]) : undefined;
   const deadlineMatch =
-    blockText.match(/(?:deadline|ends?|closes?)\\s*[:=]?\\s*([0-3]?\\d\\/[0-1]?\\d\\/\\d{2,4}(?:\\s+\\d{1,2}:\\d{2})?)/i) ||
-    blockText.match(/\\b(\\d{1,2}\\/\\d{1,2}\\/\\d{2,4}\\s+\\d{1,2}:\\d{2})\\b/);
+    blockText.match(/(?:deadline|ends?|closes?)\s*[:=]?\s*([0-3]?\d\/[0-1]?\d\/\d{2,4}(?:\s+\d{1,2}:\d{2})?)/i) ||
+    blockText.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2})\b/);
   const deadline = deadlineMatch ? deadlineMatch[1] : undefined;
-  const btrMatch = blockText.match(/\\b(?:BTR|Battrick\\s*Rating|BT\\s*Rating)\\s*[:=]?\\s*([\\d,]+)/i);
+  const btrMatch = blockText.match(/\b(?:BTR|Battrick\s*Rating|BT\s*Rating)\s*[:=]?\s*([\d,]+)/i);
   const btRating = btrMatch ? parseMoney(btrMatch[1]) : undefined;
-  const wageMatch = blockText.match(/\\b(?:wage|salary)\\s*[:=]?\\s*[£$€]?\\s*([\\d,]+)/i);
+  const wageMatch = blockText.match(/\b(?:wage|salary)\s*[:=]?\s*[£$€]?\s*([\d,]+)/i);
   const wage = wageMatch ? parseMoney(wageMatch[1]) : undefined;
   const skills = {
     batting: parseSkillToken(blockText, ['batting', 'bat']),
@@ -108,7 +108,7 @@ function extractListingFromBlock(
     consistency: parseSkillToken(blockText, ['consistency', 'cons']),
   };
   const bowlTypeMatch = blockText.match(
-    /\\b(RFM|LFM|RF|LF|RM|LM|RS|LS|RO|LO|RMF|LMF|fast|medium|spin|off.?spin|leg.?spin|orthodox|chinaman)\\b/i
+    /\b(RFM|LFM|RF|LF|RM|LM|RS|LS|RO|LO|RMF|LMF|fast|medium|spin|off.?spin|leg.?spin|orthodox|chinaman)\b/i
   );
   const bowlingType = bowlTypeMatch ? bowlTypeMatch[1] : undefined;
   let role: string | undefined;
@@ -118,7 +118,7 @@ function extractListingFromBlock(
 
   const playerUrl = href.startsWith('http')
     ? href
-    : 'https://www.battrick.org/nl/' + href.replace(/^\\//, '');
+    : 'https://www.battrick.org/nl/' + href.replace(/^\//, '');
 
   return {
     playerId,
@@ -141,26 +141,26 @@ function parseTransferListRegex(html: string): TransferListing[] {
   const listings: TransferListing[] = [];
   const seen = new Set<string>();
   const re =
-    /<a[^>]+href=["']([^"']*(?:playerdetails\\.asp|player\\.asp|playerid=|PlayerID=|player_id=)[^"']*)["'][^>]*>([\\s\\S]*?)<\\/a>/gi;
+    /<a[^>]+href=["']([^"']*(?:playerdetails\.asp|player\.asp|playerid=|PlayerID=|player_id=)[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
     const href = m[1];
     const idMatch =
-      href.match(/playerid=(\\d+)/i) ||
-      href.match(/PlayerID=(\\d+)/i) ||
-      href.match(/(?:playerid|id)[=_](\\d+)/i);
+      href.match(/playerid=(\d+)/i) ||
+      href.match(/PlayerID=(\d+)/i) ||
+      href.match(/(?:playerid|id)[=_](\d+)/i);
     if (!idMatch) continue;
     const playerId = idMatch[1];
     if (seen.has(playerId)) continue;
     seen.add(playerId);
-    const name = m[2].replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();
+    const name = m[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     if (!name || name.length < 2 || name.length > 60) continue;
     const start = Math.max(0, m.index - 400);
     const end = Math.min(html.length, m.index + m[0].length + 600);
     const blockText = html
       .slice(start, end)
       .replace(/<[^>]+>/g, ' ')
-      .replace(/\\s+/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
     listings.push(extractListingFromBlock(playerId, name, href, blockText));
   }
@@ -174,7 +174,7 @@ export function looksLikeTransferListing(l: TransferListing): boolean {
       (l.currentBid != null && l.currentBid > 0) ||
       (l.deadline && String(l.deadline).trim()) ||
       (l.snippet &&
-        /(?:asking|current\\s*bid|deadline|reserve|min(?:imum)?\\s*bid|transfer)/i.test(l.snippet))
+        /(?:asking|current\s*bid|deadline|reserve|min(?:imum)?\s*bid|transfer)/i.test(l.snippet))
   );
 }
 
@@ -184,15 +184,15 @@ export function isTransferMarketHtml(html: string): boolean {
   const lower = html.toLowerCase();
   if (lower.includes('log in to battrick') && lower.includes('name="password"')) return false;
   const marketHits =
-    (lower.match(/asking\\s*price/g) || []).length +
-    (lower.match(/current\\s*bid/g) || []).length +
+    (lower.match(/asking\s*price/g) || []).length +
+    (lower.match(/current\s*bid/g) || []).length +
     (lower.match(/deadline/g) || []).length +
-    (lower.match(/transfer\\s*list/g) || []).length +
-    (lower.match(/transfer\\s*market/g) || []).length;
+    (lower.match(/transfer\s*list/g) || []).length +
+    (lower.match(/transfer\s*market/g) || []).length;
   const squadHits =
-    (lower.match(/\\bnets\\b/g) || []).length +
-    (lower.match(/player\\s*form/g) || []).length +
-    (lower.match(/training\\s*type/g) || []).length;
+    (lower.match(/\bnets\b/g) || []).length +
+    (lower.match(/player\s*form/g) || []).length +
+    (lower.match(/training\s*type/g) || []).length;
   if (marketHits >= 2) return true;
   if (marketHits >= 1 && squadHits < 3) return true;
   return false;
@@ -236,19 +236,19 @@ export function parseTransferList(
         }
         const href = link.getAttribute('href') || '';
         const idMatch =
-          href.match(/playerid=(\\d+)/i) ||
-          href.match(/PlayerID=(\\d+)/i) ||
-          href.match(/(?:playerid|id)[=_](\\d+)/i);
+          href.match(/playerid=(\d+)/i) ||
+          href.match(/PlayerID=(\d+)/i) ||
+          href.match(/(?:playerid|id)[=_](\d+)/i);
         if (!idMatch) continue;
         const playerId = idMatch[1];
         if (seen.has(playerId) || exclude.has(playerId)) continue;
-        const name = (link.textContent || '').replace(/\\s+/g, ' ').trim();
+        const name = (link.textContent || '').replace(/\s+/g, ' ').trim();
         if (!name || name.length < 2 || name.length > 60) continue;
         const block =
           link.closest('tr, li, .transfer, .player, .card, article, table, tbody, div') ||
           link.parentElement;
         const blockText = (block?.textContent || link.textContent || '')
-          .replace(/\\s+/g, ' ')
+          .replace(/\s+/g, ' ')
           .trim();
         push(extractListingFromBlock(playerId, name, href, blockText));
       }
@@ -266,7 +266,7 @@ export function parseTransferList(
 
 function isSpinBowler(bowlingType?: string): boolean {
   const t = (bowlingType || '').toLowerCase();
-  return /spin|off|leg|orthodox|chinaman|rs\\b|ls\\b|ro\\b|lo\\b/.test(t);
+  return /spin|off|leg|orthodox|chinaman|rs\b|ls\b|ro\b|lo\b/.test(t);
 }
 
 function isSeamBowler(bowlingType?: string): boolean {
@@ -446,10 +446,15 @@ export function rankBuyRecommendations(
       if (skillVal > 0) {
         if (skillVal >= need.minSkill) {
           score += 32 + (skillVal - need.minSkill) * 12;
-          reasons.push(need.reason + ' — has ' + skillVal + ' (' + getSkillLabel(
-            need.need === 'keeping' ? 'keeping' : need.need === 'fielding' ? 'fielding' : need.need === 'batting' ? 'batting' : 'bowling',
-            skillVal
-          ) + ')');
+          const sk =
+            need.need === 'keeping'
+              ? 'keeping'
+              : need.need === 'fielding'
+                ? 'fielding'
+                : need.need === 'batting'
+                  ? 'batting'
+                  : 'bowling';
+          reasons.push(need.reason + ' — has ' + skillVal + ' (' + getSkillLabel(sk as any, skillVal) + ')');
           fitsNeed = need.ratingKey || need.need;
         } else if (skillVal >= need.minSkill - 2) {
           score += 14;
@@ -460,12 +465,9 @@ export function rankBuyRecommendations(
 
     if (listing.age && listing.age <= 25) score += 6;
     if (listing.age && listing.age >= 32) score -= 4;
-    if (!opts.factorFinance) {
-      /* still rank by skill */
-    } else if (affordable) {
-      score += 8;
-    } else {
-      score -= 6;
+    if (opts.factorFinance) {
+      if (affordable) score += 8;
+      else score -= 6;
     }
 
     if (score <= 0 && reasons.length === 0) {
