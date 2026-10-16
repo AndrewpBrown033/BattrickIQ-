@@ -271,6 +271,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
         if (data.sessionToken) localStorage.setItem('bt_sync_session', data.sessionToken);
         if (!data.success || !data.html) throw new Error(data.error || 'Could not load transfer list');
         html = data.html;
+        if (data.transferDebug) { try { localStorage.setItem('bt_transfer_debug', JSON.stringify(data.transferDebug)); } catch {} }
       }
       const lower = html.toLowerCase();
       if (
@@ -298,8 +299,11 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
             'Transfer page is only the search form — no auction rows yet. On Battrick run a skill search (use recommended skills below), then Scan again or paste results HTML.'
           );
         }
+        let dbg = '';
+        try { dbg = localStorage.getItem('bt_transfer_debug') || ''; } catch {}
         throw new Error(
-          'No transfer-market players parsed (' + html.length + ' chars). Run a skill search on Battrick, paste results HTML, or re-auth and Scan again.'
+          'No transfer-market players parsed (' + html.length + ' chars). Run a skill search on Battrick, paste results HTML, or re-auth and Scan again.' +
+            (dbg ? ' Server trace: ' + dbg.slice(0, 600) : '')
         );
       }
       let needs = deriveNeedsFromRatingGaps(ratingGaps);

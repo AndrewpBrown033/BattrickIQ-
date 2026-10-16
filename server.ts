@@ -162,14 +162,29 @@ async function startServer() {
     return { success: res.ok, html, status: res.status, updatedCookieHeader: cookieHeader };
   }
 
+  function pickSearchForm(html: string) {
+    const forms = [...html.matchAll(/<form([^>]*)>([\s\S]*?)<\/form>/gi)].map((m) => {
+      const attrs = m[1] || "";
+      const inner = m[2] || "";
+      const fieldCount = (inner.match(/<(?:input|select)\b/gi) || []).length;
+      const isLogin = /type=["']?password/i.test(inner);
+      const action = (attrs.match(/action=["']([^"']*)["']/i) || [])[1] || "";
+      const method = ((attrs.match(/method=["']?(\w+)/i) || [])[1] || "post").toLowerCase();
+      const looksTransfer = /transfer|skill|bat|bowl|age|price|bid/i.test(inner) ? 1 : 0;
+      return { inner, action, method, score: isLogin ? -1 : fieldCount + looksTransfer * 50 };
+    });
+    forms.sort((a, b) => b.score - a.score);
+    return forms[0] && forms[0].score >= 0 ? forms[0] : null;
+  }
+
   function buildFormParams(html: string, skillMins: Record<string, number> = {}) {
     const params = new URLSearchParams();
-    const formMatch = html.match(/<form[^>]*>([\s\S]*?)<\/form>/i);
-    if (!formMatch) {
+    const picked = pickSearchForm(html);
+    if (!picked) {
       params.set("search", "Search");
       return params;
     }
-    const formInner = formMatch[1];
+    const formInner = picked.inner;
     const inputRe = /<input([^>]+)>/gi;
     let im: RegExpExecArray | null;
     while ((im = inputRe.exec(formInner)) !== null) {
@@ -309,33 +324,48 @@ async function startServer() {
         return;
       }
 
+      const transferDebug: Record<string, unknown> = {};
       if (/transferlist/i.test(pageKey) || /transferlist\.asp/i.test(targetUrl)) {
         try {
-          let html0 = pageResult.html || "";
+          const html0 = pageResult.html || "";
           const clientPost = typeof req.body.postBody === "string" ? req.body.postBody : "";
           const skillMins: Record<string, number> =
             req.body.skillMins && typeof req.body.skillMins === "object" ? req.body.skillMins : {};
-          const playerHits = (html0.match(/playerdetails\.asp/gi) || []).length;
-          const resultHints =
-            (html0.match(/asking\s*price/gi) || []).length +
-            (html0.match(/current\s*bid/gi) || []).length +
-            (html0.match(/time\s*left/gi) || []).length;
-          if (clientPost || (playerHits < 3 && resultHints < 2)) {
+          const countHits = (h: string) => ({
+            playerLinks: (h.match(/playerdetails\.asp/gi) || []).length,
+            markers:
+              (h.match(/asking\s*price/gi) || []).length +
+              (h.match(/current\s*bid/gi) || []).length +
+              (h.match(/time\s*left/gi) || []).length,
+          });
+          const first = countHits(html0);
+          transferDebug.initial = { length: html0.length, ...first };
+          if (clientPost || (first.playerLinks < 3 && first.markers < 2)) {
+            const form = pickSearchForm(html0);
             const params = clientPost
               ? new URLSearchParams(clientPost)
               : buildFormParams(html0, skillMins);
-            if ([...params.keys()].length > 0) {
-              const postResult = await fetchPage(active.cookieMap, targetUrl, params.toString());
-              if (postResult.updatedCookieHeader) {
-                active.cookieHeader = postResult.updatedCookieHeader;
-                active.timestamp = Date.now();
-              }
-              if (postResult.success && postResult.html && postResult.html.length > 500) {
-                pageResult = postResult;
-              }
+            transferDebug.form = form ? { action: form.action, method: form.method } : null;
+            transferDebug.params = Object.fromEntries(params.entries());
+            let submitUrl = targetUrl;
+            if (form?.action) {
+              try { submitUrl = new URL(form.action, targetUrl).toString(); } catch {}
+              if (!submitUrl.startsWith("https://www.battrick.org/")) submitUrl = targetUrl;
             }
+            const useGet = !clientPost && form?.method === "get";
+            const attempt = useGet
+              ? await fetchPage(active.cookieMap, `${submitUrl}${submitUrl.includes("?") ? "&" : "?"}${params.toString()}`)
+              : await fetchPage(active.cookieMap, submitUrl, params.toString());
+            if (attempt.updatedCookieHeader) {
+              active.cookieHeader = attempt.updatedCookieHeader;
+              active.timestamp = Date.now();
+            }
+            const after = attempt.html ? countHits(attempt.html) : { playerLinks: 0, markers: 0 };
+            transferDebug.search = { method: useGet ? "GET" : "POST", status: attempt.status, length: (attempt.html || "").length, ...after };
+            if (attempt.success && attempt.html && attempt.html.length > 500) pageResult = attempt;
           }
         } catch (e: any) {
+          transferDebug.error = String(e?.message || e);
           console.warn("Transfer auto-search failed", e?.message || e);
         }
       }
@@ -343,6 +373,7 @@ async function startServer() {
       res.json({
         success: true,
         html: pageResult.html,
+        transferDebug: Object.keys(transferDebug).length ? transferDebug : undefined,
         pageName,
         sessionToken: sessionToken || undefined,
       });
