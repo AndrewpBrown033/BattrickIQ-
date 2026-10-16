@@ -1,3 +1,4 @@
+import { parseFinanceTransactions, deriveInterestModel } from './utils/financeHistory';
 import { 
   BattrickPlayer, 
   ClubFinances, 
@@ -1514,6 +1515,20 @@ function parseFinancesAndClub(content: string, type: 'finances' | 'club'): Parti
       }
     }
 
+    // 1b-iii. Full transaction history (weekly billing runs + individual gate receipts) and
+    // the real interest model derived from it - this is what makes the forecast use the
+    // club's actual numbers instead of assumptions.
+    if (type === 'finances') {
+      const tx = parseFinanceTransactions(doc);
+      if (tx.weeklyHistory.length > 0) {
+        finances.weeklyHistory = tx.weeklyHistory;
+        Object.assign(finances, deriveInterestModel(tx.weeklyHistory));
+        const latestWeek = tx.weeklyHistory[tx.weeklyHistory.length - 1];
+        if (latestWeek.groundMaintenance > 0) finances.groundMaintenance = latestWeek.groundMaintenance;
+      }
+      if (tx.gateHistory.length > 0) finances.gateHistory = tx.gateHistory;
+    }
+
     // 1c. Try to extract transaction values directly from battrick's structured transactions list
     const transactionRows = Array.from(doc.querySelectorAll('li, tr'));
     transactionRows.forEach(row => {
@@ -1544,6 +1559,8 @@ function parseFinancesAndClub(content: string, type: 'finances' | 'club'): Parti
               if (finances.playerWages === undefined) finances.playerWages = amount;
             } else if (desc.includes('backroom staff salaries')) {
               if (finances.staffWages === undefined) finances.staffWages = amount;
+            } else if (desc.includes('ground maintenance')) {
+              if (finances.groundMaintenance === undefined) finances.groundMaintenance = amount;
             }
           }
         }

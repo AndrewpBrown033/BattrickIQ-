@@ -280,7 +280,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
       ) {
         throw new Error('Battrick returned the login page. Re-authenticate in Sync / Auth bar, then scan again.');
       }
-      const ownIds = new Set(squad.map((p) => String(p.id)).filter(Boolean));
+      const ownIds = new Set<string>(squad.map((p) => String(p.id)).filter(Boolean));
       if (!isTransferMarketHtml(html) && !pasteHtml) {
         throw new Error(
           'HTML does not look like the transfer market. Paste view-source of transferlist results after a skill search, or re-sync auth.'
@@ -403,7 +403,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
         if (!data.success || !data.html) throw new Error(data.error || 'Could not load transfer list');
         html = data.html;
       }
-      const ownIds = new Set(squad.map((p) => String(p.id)).filter(Boolean));
+      const ownIds = new Set<string>(squad.map((p) => String(p.id)).filter(Boolean));
       const listings = parseTransferList(html, { excludePlayerIds: ownIds });
       try { localStorage.setItem('bt_transfer_listings', JSON.stringify(listings)); } catch {}
       const { watchlist: wl } = refreshWatchlistFromListings(listings, { cash: finances?.cash });

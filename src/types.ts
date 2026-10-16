@@ -260,6 +260,39 @@ export interface ClubFinances {
   seasonPaymentsOut?: number;
   seasonProfitLoss?: number;
   seasonLabel?: string;
+  /** Real weekly Ground Maintenance bill from the latest billing week on finances.asp. */
+  groundMaintenance?: number;
+  /** One record per weekly billing run (Player Salaries / Staff / Maintenance / Sponsorship / Interest). */
+  weeklyHistory?: FinanceWeekRecord[];
+  /** Every individual Gate Receipts payment seen on finances.asp, by date. */
+  gateHistory?: GateReceiptRecord[];
+  /** Interest earned per week as a fraction of the balance at billing time (e.g. 0.048), derived from weeklyHistory. */
+  interestRate?: number;
+  /** Maximum weekly interest actually observed being paid out (the cap), if a capped week was seen. */
+  interestCap?: number;
+  /** Interest charged per week on an overdrawn balance, as a fraction of the overdraft. */
+  overdraftRate?: number;
+}
+
+/** A single weekly billing run parsed from the finances.asp transaction list. */
+export interface FinanceWeekRecord {
+  /** ISO date (YYYY-MM-DD) of the billing run. */
+  date: string;
+  playerSalaries: number;
+  staffSalaries: number;
+  groundMaintenance: number;
+  sponsorship: number;
+  interestReceived: number;
+  interestPaid: number;
+  /** Account balance immediately before this billing run (derived: after minus the run's net). */
+  balanceBefore?: number;
+  balanceAfter?: number;
+}
+
+export interface GateReceiptRecord {
+  /** ISO date (YYYY-MM-DD) the gate receipts were paid. */
+  date: string;
+  amount: number;
 }
 
 /**

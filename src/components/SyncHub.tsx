@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { BattrickPlayer, ClubFinances, BattrickGame, PavilionInfo, DiaryEntry } from '../types';
 import { parseBattrickPage, isNameMatch, extractTeamIdsFromMatchInfoHtml } from '../parser';
+import { mergeFinances } from '../utils/financeHistory';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
 import { mergePlayerAndTrackHistory, generateRealisticHistory } from '../utils/history';
 import { 
@@ -765,7 +766,7 @@ export default function SyncHub({ setActiveTab }: SyncHubProps) {
         ]
       });
     } else if ((result.type === 'finances' || result.type === 'club') && result.finances) {
-      const updatedFin = { ...activeFinances, ...result.finances } as ClubFinances;
+      const updatedFin = mergeFinances(activeFinances, result.finances as Partial<ClubFinances>);
       financesRef.current = updatedFin;
       setFinances(updatedFin);
       saveToLocalStorage(activeSquad, updatedFin, activeFixtures.length > 0 ? activeFixtures : undefined, activePavilion || undefined, activeDiary.length > 0 ? activeDiary : undefined);
