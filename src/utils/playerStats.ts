@@ -33,166 +33,293 @@ export interface ComprehensivePlayerStats {
     totalCatches: number;
     bestRoleHighlight: string;
   };
+  /** True when at least one format has real match data from Battrick */
+  hasRealData: boolean;
+  /** True when values were synthesised (should stay false after this change) */
+  isEstimated: boolean;
 }
 
-// Generate deterministic yet realistic Battrick career stats for any player based on age, skills & ID
-export function getPlayerStats(player: BattrickPlayer): ComprehensivePlayerStats {
-  if (player.stats) {
-    return {
-      firstClass: player.stats.firstClass || buildFormatStats(player, 'First Class', 'FC', 0.4),
-      oneDay: player.stats.oneDay || buildFormatStats(player, 'One Day', 'OD', 0.35),
-      bt20: player.stats.bt20 || buildFormatStats(player, 'BT20', 'BT20', 0.25),
-      summary: computeSummary(
-        player.stats.firstClass || buildFormatStats(player, 'First Class', 'FC', 0.4),
-        player.stats.oneDay || buildFormatStats(player, 'One Day', 'OD', 0.35),
-        player.stats.bt20 || buildFormatStats(player, 'BT20', 'BT20', 0.25)
-      )
-    };
-  }
-
-  const fc = buildFormatStats(player, 'First Class', 'FC', 0.4);
-  const od = buildFormatStats(player, 'One Day', 'OD', 0.35);
-  const t20 = buildFormatStats(player, 'BT20', 'BT20', 0.25);
-
-  return {
-    firstClass: fc,
-    oneDay: od,
-    bt20: t20,
-    summary: computeSummary(fc, od, t20)
-  };
-}
-
-function hashString(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
-
-function buildFormatStats(
-  player: BattrickPlayer, 
+function emptyFormat(
   formatName: 'First Class' | 'One Day' | 'BT20',
-  shortCode: 'FC' | 'OD' | 'BT20',
-  weight: number
+  shortCode: 'FC' | 'OD' | 'BT20'
 ): FormatStats {
-  const seed = hashString(player.id + shortCode);
-  const pseudoRand = (mod: number) => (seed % mod);
-
-  // Experience & age determine match count
-  const seasonsPlayed = Math.max(1, player.age - 17);
-  const baseMatchesPerSeason = shortCode === 'FC' ? 10 : shortCode === 'OD' ? 12 : 14;
-  const matches = Math.round(seasonsPlayed * baseMatchesPerSeason * (0.6 + (pseudoRand(40) / 100)));
-
-  const isBatter = player.role === 'Batter' || player.skills.batting >= player.skills.bowling;
-  const isBowler = player.role === 'Bowler' || player.skills.bowling > player.skills.batting;
-  const isKeeper = player.role === 'Keeper' || player.skills.keeping > 5;
-  const isAllRounder = player.role === 'All-rounder' || (player.skills.batting >= 6 && player.skills.bowling >= 6);
-
-  // Batting stats math
-  const inningsBatted = Math.round(matches * (shortCode === 'FC' ? 1.6 : 0.85));
-  const notOuts = Math.round(inningsBatted * (0.1 + (pseudoRand(15) / 100)));
-  const dismissals = Math.max(1, inningsBatted - notOuts);
-
-  let expectedAvg = 15;
-  if (isBatter || isAllRounder) {
-    expectedAvg = 22 + (player.skills.batting * 2.2) + (player.skills.concentration * 0.8);
-  } else if (isKeeper) {
-    expectedAvg = 18 + (player.skills.batting * 1.8);
-  } else {
-    expectedAvg = 8 + (player.skills.batting * 1.1);
-  }
-  expectedAvg = Number((expectedAvg * (0.9 + (pseudoRand(20) / 100))).toFixed(2));
-
-  const runs = Math.round(dismissals * expectedAvg);
-  const battingAverage = Number((runs / dismissals).toFixed(2));
-
-  let strikeRate = shortCode === 'BT20' ? 125 + (player.skills.batting * 2) : shortCode === 'OD' ? 78 + (player.skills.batting * 1.5) : 48 + (player.skills.batting * 1.1);
-  strikeRate = Number((strikeRate * (0.95 + (pseudoRand(10) / 100))).toFixed(1));
-
-  let maxBatInnings = Math.min(runs, Math.round(expectedAvg * (2.2 + (pseudoRand(10) / 10))));
-  if (shortCode === 'BT20') maxBatInnings = Math.min(135, maxBatInnings);
-  const isNotOutHS = pseudoRand(2) === 1;
-  const highScore = `${Math.max(12, maxBatInnings)}${isNotOutHS ? '*' : ''}`;
-
-  const fifties = Math.round(inningsBatted * (expectedAvg > 35 ? 0.25 : expectedAvg > 20 ? 0.15 : 0.05));
-  const hundreds = Math.round(fifties * (expectedAvg > 40 ? 0.35 : expectedAvg > 28 ? 0.2 : 0.05));
-
-  // Bowling stats math
-  let oversBowled = 0;
-  let wickets = 0;
-  let bestBowling = '0/0';
-  let bowlingAverage = 0;
-  let economyRate = 0;
-  let fiveWickets = 0;
-
-  if (isBowler || isAllRounder || player.skills.bowling >= 5) {
-    const oversPerMatch = shortCode === 'FC' ? 24 : shortCode === 'OD' ? 8.5 : 3.8;
-    oversBowled = Math.round(matches * oversPerMatch * (0.7 + (pseudoRand(30) / 100)));
-
-    let expectedBowlAvg = 38 - (player.skills.bowling * 1.2) - (player.skills.consistency * 0.5);
-    expectedBowlAvg = Math.max(12, Number((expectedBowlAvg * (0.9 + (pseudoRand(20) / 100))).toFixed(2)));
-
-    let econ = shortCode === 'BT20' ? 7.2 - (player.skills.consistency * 0.15) : shortCode === 'OD' ? 4.8 - (player.skills.consistency * 0.1) : 3.2 - (player.skills.consistency * 0.08);
-    econ = Math.max( shortCode === 'BT20' ? 5.2 : 2.5, Number((econ * (0.95 + (pseudoRand(10) / 100))).toFixed(2)));
-    economyRate = econ;
-
-    const runsConceded = Math.round(oversBowled * econ);
-    wickets = Math.max(1, Math.round(runsConceded / expectedBowlAvg));
-    bowlingAverage = Number((runsConceded / wickets).toFixed(2));
-
-    const bestWkts = Math.min(shortCode === 'FC' ? 8 : 6, Math.max(2, Math.round(player.skills.bowling * 0.45 + (pseudoRand(3)))));
-    const bestRuns = Math.round(bestWkts * (econ * 3.5 + pseudoRand(10)));
-    bestBowling = `${bestWkts}/${bestRuns}`;
-
-    fiveWickets = Math.round(matches * (player.skills.bowling > 10 ? 0.12 : 0.04));
-  }
-
-  // Fielding & Wicketkeeping stats
-  let catches = Math.round(matches * (isKeeper ? 1.4 : isBatter ? 0.4 : 0.25));
-  let stumpings = isKeeper ? Math.round(matches * 0.22) : 0;
-
   return {
     formatName,
     shortCode,
-    matches,
-    inningsBatted,
-    notOuts,
-    runs,
-    highScore,
-    battingAverage,
-    strikeRate,
-    fifties,
-    hundreds,
-    oversBowled,
-    wickets,
-    bestBowling,
-    bowlingAverage,
-    economyRate,
-    fiveWickets,
-    catches,
-    stumpings
+    matches: 0,
+    inningsBatted: 0,
+    notOuts: 0,
+    runs: 0,
+    highScore: '0',
+    battingAverage: 0,
+    strikeRate: 0,
+    fifties: 0,
+    hundreds: 0,
+    oversBowled: 0,
+    wickets: 0,
+    bestBowling: '0/0',
+    bowlingAverage: 0,
+    economyRate: 0,
+    fiveWickets: 0,
+    catches: 0,
+    stumpings: 0,
   };
+}
+
+function num(v: unknown): number {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string') {
+    const n = parseFloat(v.replace(/,/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
+function mergeFormat(base: FormatStats, raw: any | undefined | null): FormatStats {
+  if (!raw || typeof raw !== 'object') return base;
+  return {
+    ...base,
+    matches: num(raw.matches) || base.matches,
+    inningsBatted: num(raw.inningsBatted ?? raw.innings) || base.inningsBatted,
+    notOuts: num(raw.notOuts) || base.notOuts,
+    runs: num(raw.runs) || base.runs,
+    highScore: raw.highScore != null ? String(raw.highScore) : base.highScore,
+    battingAverage: num(raw.battingAverage ?? raw.batAvg) || base.battingAverage,
+    strikeRate: num(raw.strikeRate) || base.strikeRate,
+    fifties: num(raw.fifties) || base.fifties,
+    hundreds: num(raw.hundreds) || base.hundreds,
+    oversBowled: num(raw.oversBowled ?? raw.overs) || base.oversBowled,
+    wickets: num(raw.wickets) || base.wickets,
+    bestBowling: raw.bestBowling != null ? String(raw.bestBowling) : base.bestBowling,
+    bowlingAverage: num(raw.bowlingAverage ?? raw.bowlAvg) || base.bowlingAverage,
+    economyRate: num(raw.economyRate ?? raw.economy) || base.economyRate,
+    fiveWickets: num(raw.fiveWickets) || base.fiveWickets,
+    catches: num(raw.catches) || base.catches,
+    stumpings: num(raw.stumpings) || base.stumpings,
+  };
+}
+
+function fromCareerStats(player: BattrickPlayer): {
+  fc: FormatStats;
+  od: FormatStats;
+  t20: FormatStats;
+  has: boolean;
+} {
+  const fc = emptyFormat('First Class', 'FC');
+  const od = emptyFormat('One Day', 'OD');
+  const t20 = emptyFormat('BT20', 'BT20');
+  const cs = player.careerStats;
+  if (!cs) return { fc, od, t20, has: false };
+
+  if (cs.fc) {
+    fc.matches = num(cs.fc.matches);
+    fc.runs = num(cs.fc.runs);
+    fc.oversBowled = num(cs.fc.overs);
+  }
+  if (cs.od) {
+    od.matches = num(cs.od.matches);
+    od.runs = num(cs.od.runs);
+    od.oversBowled = num(cs.od.overs);
+  }
+  if (cs.t20) {
+    t20.matches = num(cs.t20.matches);
+    t20.runs = num(cs.t20.runs);
+    t20.oversBowled = num(cs.t20.overs);
+  }
+
+  if (!fc.matches && !od.matches && !t20.matches && num(cs.matches) > 0) {
+    od.matches = num(cs.matches);
+    od.runs = num(cs.runs);
+    od.oversBowled = num(cs.overs);
+  }
+
+  if (player.battingAverage) {
+    for (const f of [fc, od, t20]) {
+      if (f.matches > 0 && !f.battingAverage) f.battingAverage = num(player.battingAverage);
+    }
+  }
+  if (player.bowlingAverage) {
+    for (const f of [fc, od, t20]) {
+      if (f.matches > 0 && !f.bowlingAverage) f.bowlingAverage = num(player.bowlingAverage);
+    }
+  }
+
+  const has = fc.matches + od.matches + t20.matches + fc.runs + od.runs + t20.runs > 0;
+  return { fc, od, t20, has };
 }
 
 function computeSummary(fc: FormatStats, od: FormatStats, t20: FormatStats) {
   const totalMatches = fc.matches + od.matches + t20.matches;
   const totalRuns = fc.runs + od.runs + t20.runs;
   const totalWickets = fc.wickets + od.wickets + t20.wickets;
-  const totalCatches = fc.catches + od.catches + t20.catches + fc.stumpings + od.stumpings + t20.stumpings;
+  const totalCatches =
+    fc.catches + od.catches + t20.catches + fc.stumpings + od.stumpings + t20.stumpings;
 
-  let highlight = 'Versatile Team Contributor';
-  if (totalRuns > 3000) highlight = 'Prolific Milestone Batter';
-  else if (totalWickets > 150) highlight = 'Frontline Strike Bowler';
-  else if (totalCatches > 80) highlight = 'Elite Safe-Hands Keeper';
-  else if (totalRuns > 1500 && totalWickets > 75) highlight = 'Core All-Round Match Winner';
+  let highlight = 'No career data yet';
+  if (totalMatches > 0) {
+    highlight = 'From Battrick career tables';
+    if (totalRuns > totalWickets * 20) highlight = 'Batting-focused career (synced)';
+    else if (totalWickets > totalRuns / 15) highlight = 'Bowling-focused career (synced)';
+  }
 
   return {
     totalMatches,
     totalRuns,
     totalWickets,
     totalCatches,
-    bestRoleHighlight: highlight
+    bestRoleHighlight: highlight,
+  };
+}
+
+/**
+ * Career statistics for the player inspector.
+ * Uses ONLY real data from Battrick (player.stats or player.careerStats).
+ * Never invents match totals from skill/age hashes.
+ */
+export function getPlayerStats(player: BattrickPlayer): ComprehensivePlayerStats {
+  let fc = emptyFormat('First Class', 'FC');
+  let od = emptyFormat('One Day', 'OD');
+  let t20 = emptyFormat('BT20', 'BT20');
+  let hasRealData = false;
+
+  if (player.stats && typeof player.stats === 'object') {
+    const s = player.stats as any;
+    fc = mergeFormat(fc, s.firstClass || s.fc || s.FC);
+    od = mergeFormat(od, s.oneDay || s.od || s.OD || s.odi);
+    t20 = mergeFormat(t20, s.bt20 || s.t20 || s.BT20 || s.T20);
+    hasRealData =
+      fc.matches + od.matches + t20.matches + fc.runs + od.runs + t20.runs + fc.wickets + od.wickets + t20.wickets >
+      0;
+  }
+
+  if (!hasRealData) {
+    const mapped = fromCareerStats(player);
+    fc = mapped.fc;
+    od = mapped.od;
+    t20 = mapped.t20;
+    hasRealData = mapped.has;
+  }
+
+  return {
+    firstClass: fc,
+    oneDay: od,
+    bt20: t20,
+    summary: computeSummary(fc, od, t20),
+    hasRealData,
+    isEstimated: false,
+  };
+}
+
+/**
+ * Parse FC / OD / BT20 career tables from a Battrick playerdetails.asp HTML page.
+ */
+export function parseCareerStatsFromPlayerHtml(html: string): {
+  firstClass: FormatStats;
+  oneDay: FormatStats;
+  bt20: FormatStats;
+  careerStats: BattrickPlayer['careerStats'];
+} | null {
+  if (!html || html.length < 200) return null;
+
+  const fc = emptyFormat('First Class', 'FC');
+  const od = emptyFormat('One Day', 'OD');
+  const t20 = emptyFormat('BT20', 'BT20');
+
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  const rowRe =
+    /(First\s*Class|One\s*Day|Twenty\s*20|BT\s*20|T20|FC|OD|ODI)\s+(\d+)\s+(\d+)\s+(\d+)\s+([\d,]+)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = rowRe.exec(text)) !== null) {
+    const label = m[1].toLowerCase().replace(/\s+/g, '');
+    const matches = parseInt(m[2], 10) || 0;
+    const innings = parseInt(m[3], 10) || 0;
+    const notOuts = parseInt(m[4], 10) || 0;
+    const runs = parseInt(m[5].replace(/,/g, ''), 10) || 0;
+    const target =
+      label.includes('first') || label === 'fc'
+        ? fc
+        : label.includes('one') || label === 'od' || label === 'odi'
+          ? od
+          : t20;
+    target.matches = Math.max(target.matches, matches);
+    target.inningsBatted = Math.max(target.inningsBatted, innings);
+    target.notOuts = Math.max(target.notOuts, notOuts);
+    target.runs = Math.max(target.runs, runs);
+    const dismissals = Math.max(1, innings - notOuts);
+    if (runs > 0) target.battingAverage = Number((runs / dismissals).toFixed(2));
+  }
+
+  const bowlRe =
+    /(First\s*Class|One\s*Day|Twenty\s*20|BT\s*20|T20|FC|OD|ODI)[^\d]{0,40}([\d.]+)\s+overs?[^\d]{0,20}(\d+)\s+wickets?/gi;
+  while ((m = bowlRe.exec(text)) !== null) {
+    const label = m[1].toLowerCase().replace(/\s+/g, '');
+    const overs = parseFloat(m[2]) || 0;
+    const wickets = parseInt(m[3], 10) || 0;
+    const target =
+      label.includes('first') || label === 'fc'
+        ? fc
+        : label.includes('one') || label === 'od' || label === 'odi'
+          ? od
+          : t20;
+    target.oversBowled = Math.max(target.oversBowled, overs);
+    target.wickets = Math.max(target.wickets, wickets);
+  }
+
+  try {
+    if (typeof DOMParser !== 'undefined' && html.includes('<')) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const rows = Array.from(doc.querySelectorAll('tr'));
+      for (const row of rows) {
+        const cells = Array.from(row.querySelectorAll('td, th')).map(
+          (c) => (c.textContent || '').trim()
+        );
+        if (cells.length < 4) continue;
+        const head = cells[0].toLowerCase();
+        let target: FormatStats | null = null;
+        if (/first\s*class|^fc$/.test(head)) target = fc;
+        else if (/one\s*day|^od$|^odi$/.test(head)) target = od;
+        else if (/twenty|bt\s*20|^t20$/.test(head)) target = t20;
+        if (!target) continue;
+
+        const nums = cells.slice(1).map((c) => parseFloat(c.replace(/,/g, '')) || 0);
+        if (nums.length >= 4 && nums[0] > 0) {
+          target.matches = Math.max(target.matches, Math.round(nums[0]));
+          if (nums[1] > 0) target.inningsBatted = Math.max(target.inningsBatted, Math.round(nums[1]));
+          if (nums.length > 3 && nums[3] > 0) target.runs = Math.max(target.runs, Math.round(nums[3]));
+          if (nums.length > 2) target.notOuts = Math.max(target.notOuts, Math.round(nums[2]));
+          if (nums.length > 5 && nums[5] > 0) target.battingAverage = nums[5];
+          if (cells.length > 5 && cells[5] && /[\d*]/.test(cells[5])) {
+            target.highScore = cells[5];
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  const has =
+    fc.matches + od.matches + t20.matches + fc.runs + od.runs + t20.runs + fc.wickets + od.wickets + t20.wickets >
+    0;
+  if (!has) return null;
+
+  return {
+    firstClass: fc,
+    oneDay: od,
+    bt20: t20,
+    careerStats: {
+      matches: fc.matches + od.matches + t20.matches,
+      runs: fc.runs + od.runs + t20.runs,
+      overs: fc.oversBowled + od.oversBowled + t20.oversBowled,
+      fc: { matches: fc.matches, runs: fc.runs, overs: fc.oversBowled },
+      od: { matches: od.matches, runs: od.runs, overs: od.oversBowled },
+      t20: { matches: t20.matches, runs: t20.runs, overs: t20.oversBowled },
+    },
   };
 }
