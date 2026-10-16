@@ -1101,14 +1101,14 @@ function extractPlayerFromText(text: string, name: string, id: string): Battrick
 
 // Regex helper to extract skill words
 function matchSkill(text: string, skillName: string): string {
-  const skillLevelsRegex = '(?:useless|worthless|abysmal|woeful|feeble|mediocre|competent|respectable|proficient|strong|superb|quality|remarkable|wonderful|exceptional|sensational|exquisite|masterful|miraculous|phenomenal|elite)';
+  const skillLevelsRegex = '(?:useless|worthless|abysmal|woeful|feeble|mediocre|competent|respectable|proficient|strong|superb\\*|superb|quality|remarkable|wonderful|exceptional|sensational|exquisite|masterful|miraculous|phenomenal|elite)';
   const regex = new RegExp(`\\b${skillName}\\b:?\\s*(?:\\[|\\()?(${skillLevelsRegex})\\b`, 'i');
   const match = text.match(regex);
   if (match) {
     return match[1];
   }
   // Fallback to the original regex if we don't find a skill level match
-  const fallbackRegex = new RegExp(`\\b${skillName}\\b:?\\s*(?:\\[|\\()?([a-zA-Z]+)\\b`, 'i');
+  const fallbackRegex = new RegExp(`\\b${skillName}\\b:?\\s*(?:\\[|\\()?([a-zA-Z\\*]+)\\b`, 'i');
   const fallbackMatch = text.match(fallbackRegex);
   return fallbackMatch ? fallbackMatch[1] : '';
 }
@@ -1793,31 +1793,39 @@ export function estimateWeeksToNextLevel(
   playerAge: number,
   netsCount: number,
   coachLevel: number = 9, // Default Superb Coach
-  skillType: 'batting' | 'bowling' | 'keeping' | 'stamina' | 'fielding' = 'batting',
+  skillType: 'batting' | 'bowling' | 'keeping' | 'stamina' | 'fielding' | 'concentration' | 'consistency' = 'batting',
   isSquadTraining: boolean = false
 ): number {
   // Max skill levels in Battrick: Stamina max is 11 (superb*), other skills max is 20 (elite)
   const maxLevel = skillType === 'stamina' ? 11 : 20;
   if (currentSkillLevel >= maxLevel) return 0;
-  if (netsCount <= 0 && !isSquadTraining) return Infinity;
+
+  const isSquadEligible = skillType === 'stamina' || skillType === 'fielding';
+  if (netsCount <= 0 && (!isSquadEligible || !isSquadTraining)) return Infinity;
 
   // 1. Stamina Training:
-  // Rule: Squad Training for stamina is a flat 5-6 weeks per pop, and this
-  // is IDENTICAL for every player age - unlike one-on-one net training,
-  // squad sessions don't scale with player age or decay for veterans.
+  // Rule: Squad Training for stamina is a flat 5.5 weeks per pop for all ages.
+  // When combined with individual nets, it stacks with diminishing returns.
   if (skillType === 'stamina') {
-    let effectiveNets = isSquadTraining && netsCount === 0 ? 1 : netsCount;
+    let effectiveInputs = Math.max(0, netsCount) + (isSquadTraining ? 1 : 0);
     let netMultiplier = 1.0;
-    if (effectiveNets === 1) netMultiplier = 1.0;
-    else if (effectiveNets === 2) netMultiplier = 1.5;
-    else if (effectiveNets >= 3) netMultiplier = 1.75;
+    if (effectiveInputs === 1) netMultiplier = 1.0;
+    else if (effectiveInputs === 2) netMultiplier = 1.5;
+    else if (effectiveInputs >= 3) netMultiplier = 1.75;
 
-    if (isSquadTraining) {
-      const weeks = 5.5 / netMultiplier; // flat 5-6 wks, same for all ages
+    // Squad Training alone (0 individual nets)
+    if (isSquadTraining && netsCount <= 0) {
+      return 5.5; // flat 5-6 wks, same for all ages
+    }
+
+    // Squad Training combined with individual net(s)
+    if (isSquadTraining && netsCount > 0) {
+      const weeks = 5.5 / netMultiplier;
       return parseFloat(weeks.toFixed(1));
     }
 
-    // For ages 17 to 32: Flat 6 weeks per pop with 1 net (individual coaching)
+    // Individual net without squad training:
+    // For ages 17 to 32: Flat 6 weeks per pop with 1 net
     if (playerAge >= 17 && playerAge <= 32) {
       const weeks = 6.0 / netMultiplier;
       return parseFloat(weeks.toFixed(1));
@@ -1830,24 +1838,26 @@ export function estimateWeeksToNextLevel(
   }
 
   // 2. Fielding Training:
-  // Rule: Squad Training for fielding is also a flat 5-6 weeks per pop and
-  // is IDENTICAL for every player age - same as stamina squad training, it
-  // does not scale with coach quality or age the way individual coaching does.
+  // Squad Training for fielding is a flat 5.5 weeks per pop for all ages.
   if (skillType === 'fielding') {
-    let effectiveNets = isSquadTraining && netsCount === 0 ? 1 : netsCount;
+    let effectiveInputs = Math.max(0, netsCount) + (isSquadTraining ? 1 : 0);
     let netMultiplier = 1.0;
-    if (effectiveNets === 1) netMultiplier = 1.0;
-    else if (effectiveNets === 2) netMultiplier = 1.5;
-    else if (effectiveNets >= 3) netMultiplier = 1.75;
+    if (effectiveInputs === 1) netMultiplier = 1.0;
+    else if (effectiveInputs === 2) netMultiplier = 1.5;
+    else if (effectiveInputs >= 3) netMultiplier = 1.75;
 
     const baseFieldingWeeks = 5.5; // 5 to 6 weeks standard
 
-    if (isSquadTraining) {
-      const weeks = baseFieldingWeeks / netMultiplier; // flat 5-6 wks, same for all ages
+    if (isSquadTraining && netsCount <= 0) {
+      return parseFloat(baseFieldingWeeks.toFixed(1));
+    }
+
+    if (isSquadTraining && netsCount > 0) {
+      const weeks = baseFieldingWeeks / netMultiplier;
       return parseFloat(weeks.toFixed(1));
     }
 
-    // Individual coached fielding nets still scale with coach quality and age
+    // Individual coached fielding nets scale with coach quality and age
     const coachFactor = 1.0 / (0.8 + (coachLevel * 0.022));
 
     if (playerAge <= 30) {
@@ -1860,8 +1870,26 @@ export function estimateWeeksToNextLevel(
     return parseFloat(weeks.toFixed(1));
   }
 
-  // 3. Primary Skills (Batting, Bowling, Keeping):
+  // 3. Secondary Skills (Concentration trained by Batting nets, Consistency trained by Bowling nets):
+  // Secondary skills train at ~38% of the primary skill rate (~2.6x to 3x longer per pop)
+  if (skillType === 'concentration' || skillType === 'consistency') {
+    if (netsCount <= 0) return Infinity;
+    const effectiveNets = Math.max(1, netsCount);
+    let effectiveNetStrength = 1.0;
+    if (effectiveNets === 2) effectiveNetStrength = 1.5;
+    else if (effectiveNets >= 3) effectiveNetStrength = 1.75;
+
+    const ageFactor = Math.pow(1.22, Math.max(0, playerAge - 17));
+    const coachFactor = 1.0 / (0.6 + (coachLevel * 0.044));
+    const skillFactor = 4.0 + (currentSkillLevel * 0.14);
+    const totalWeeks = ((skillFactor * ageFactor * coachFactor) / effectiveNetStrength) / 0.38;
+
+    return parseFloat(totalWeeks.toFixed(1));
+  }
+
+  // 4. Primary Skills (Batting, Bowling, Keeping):
   // Age factor with 22% decay per year from 17, coach multiplier, and diminishing returns for multiple nets
+  if (netsCount <= 0) return Infinity;
   const effectiveNets = Math.max(1, netsCount);
   let effectiveNetStrength = 1.0;
   if (effectiveNets === 2) effectiveNetStrength = 1.5;
@@ -6222,7 +6250,7 @@ export function parseBattrickPlayerDetails(content: string): BattrickPlayer | nu
     let t20Stats = { matches: 0, runs: 0, overs: 0 };
 
     if (doc) {
-      // 1. Check if we are viewing the raw HTML with tabs
+      // 1. Check if we are viewing the raw HTML with tabs or multiple format tables
       let activeFormatTab = '';
       const activeTabEl = doc.querySelector('.tabs .selected a');
       if (activeTabEl) {
@@ -6230,90 +6258,101 @@ export function parseBattrickPlayerDetails(content: string): BattrickPlayer | nu
         if (tabText === 'FC') activeFormatTab = 'FC';
         else if (tabText === 'OD' || tabText === 'ODI') activeFormatTab = 'OD';
         else if (tabText === 'BT20' || tabText === 'T20') activeFormatTab = 'T20';
-        
-        const ths = doc.querySelectorAll('th');
-        let currentMatches = 0;
-        let currentRuns = 0;
-        let currentOvers = 0;
-
-        ths.forEach(th => {
-          if (th.textContent?.trim() === 'Career') {
-            const row = th.parentElement;
-            if (row) {
-              const tds = row.querySelectorAll('td');
-              // Batting Career row has 11 cells
-              if (tds.length >= 11) {
-                currentMatches = parseInt(tds[0].textContent?.replace(/,/g, '') || '0', 10) || 0;
-                currentRuns = parseInt(tds[2].textContent?.replace(/,/g, '') || '0', 10) || 0;
-              } 
-              // Bowling Career row has 9 cells
-              else if (tds.length >= 9) {
-                currentOvers = parseFloat(tds[0].textContent?.replace(/,/g, '') || '0') || 0;
-              }
-            }
-          }
-        });
-
-        if (activeFormatTab === 'FC') fcStats = { matches: currentMatches, runs: currentRuns, overs: currentOvers };
-        else if (activeFormatTab === 'OD') odStats = { matches: currentMatches, runs: currentRuns, overs: currentOvers };
-        else if (activeFormatTab === 'T20') t20Stats = { matches: currentMatches, runs: currentRuns, overs: currentOvers };
-
-        matchesVal = currentMatches;
-        runsVal = currentRuns;
-        oversVal = currentOvers;
-      } else {
-        // Fallback for copy-pasted HTML tables that contain the format in the first cell
-        const rows = doc.querySelectorAll('tr');
-        rows.forEach(row => {
-          const cells = row.querySelectorAll('td');
-          if (cells.length >= 11) {
-            const firstCellText = cells[0].textContent?.trim() || '';
-            if (/^(First\s+Class|One\s+Day|Twenty20|FC|OD|T20)$/i.test(firstCellText)) {
-              const m = parseInt(cells[1].textContent?.replace(/,/g, '') || '0', 10) || 0;
-              const r = parseInt(cells[2].textContent?.replace(/,/g, '') || '0', 10) || 0;
-              const o = parseFloat(cells[10].textContent?.replace(/,/g, '') || '0') || 0;
-              matchesVal += m;
-              runsVal += r;
-              oversVal += o;
-              
-              if (firstCellText.toLowerCase().includes('first') || firstCellText.toLowerCase() === 'fc') {
-                fcStats = { matches: m, runs: r, overs: o };
-              } else if (firstCellText.toLowerCase().includes('one') || firstCellText.toLowerCase() === 'od') {
-                odStats = { matches: m, runs: r, overs: o };
-              } else if (firstCellText.toLowerCase().includes('twenty') || firstCellText.toLowerCase() === 't20') {
-                t20Stats = { matches: m, runs: r, overs: o };
-              }
-            }
-          }
-        });
       }
+
+      // Helper to process a table row for stats
+      const tables = doc.querySelectorAll('table');
+      tables.forEach(table => {
+        const headerTexts = Array.from(table.querySelectorAll('th, tr:first-child td')).map(el => el.textContent?.trim().toLowerCase() || '');
+        const isBowlingTable = headerTexts.some(h => h === 'o' || h === 'ov' || h.includes('overs') || h.includes('econ') || h.includes('bowling'));
+        const isBattingTable = headerTexts.some(h => h === 'hs' || h.includes('high') || h.includes('batting') || (h === 'r' && !isBowlingTable));
+
+        const rows = table.querySelectorAll('tr');
+        rows.forEach(row => {
+          const rowHeader = row.querySelector('th')?.textContent?.trim() || row.querySelector('td:first-child')?.textContent?.trim() || '';
+          const isCareerRow = /^career$/i.test(rowHeader);
+          const formatMatch = rowHeader.match(/^(First\s+Class|One\s+Day|Twenty20|FC|OD|T20)$/i);
+          
+          if (isCareerRow || formatMatch) {
+            const tds = Array.from(row.querySelectorAll('td'));
+            if (tds.length >= 8) {
+              const targetFormat = formatMatch 
+                ? (formatMatch[1].toLowerCase().includes('first') || formatMatch[1].toLowerCase() === 'fc' ? 'FC' : formatMatch[1].toLowerCase().includes('one') || formatMatch[1].toLowerCase() === 'od' ? 'OD' : 'T20')
+                : (activeFormatTab || 'FC');
+
+              const m = parseInt(tds[0]?.textContent?.replace(/,/g, '') || '0', 10) || 0;
+
+              if (isBowlingTable) {
+                // Bowling: [0: Matches, 1: Overs, 2: Maidens, 3: Runs, 4: Wickets...]
+                const o = parseFloat(tds[1]?.textContent?.replace(/,/g, '') || '0') || 0;
+                if (targetFormat === 'FC') fcStats.overs = o;
+                else if (targetFormat === 'OD') odStats.overs = o;
+                else if (targetFormat === 'T20') t20Stats.overs = o;
+                oversVal += o;
+              } else if (isBattingTable || tds.length >= 10) {
+                // Batting: [0: Matches, 1: Innings, (2: Not Outs)?, (3 or 2: Runs), (4: HS)...]
+                // If cell 4 looks like High Score (e.g. 104* or digits) and cell 3 is runs
+                let r = 0;
+                if (tds.length >= 11) {
+                  // Standard Battrick batting: M, I, NO, R, HS, Av, SR, 100, 50, Ct, St
+                  r = parseInt(tds[3]?.textContent?.replace(/,/g, '') || '0', 10) || 0;
+                } else {
+                  // M, I, R, HS, Av, SR, 100, 50...
+                  r = parseInt(tds[2]?.textContent?.replace(/,/g, '') || '0', 10) || 0;
+                }
+
+                if (targetFormat === 'FC') { fcStats.matches = m; fcStats.runs = r; }
+                else if (targetFormat === 'OD') { odStats.matches = m; odStats.runs = r; }
+                else if (targetFormat === 'T20') { t20Stats.matches = m; t20Stats.runs = r; }
+                matchesVal += m;
+                runsVal += r;
+              }
+            }
+          }
+        });
+      });
     }
 
+    // Text parsing fallback for copy-pasted career blocks
     if (matchesVal === 0) {
       const lines = text.split(/\r?\n/);
+      let currentSection = 'unknown';
+
       for (const line of lines) {
         const trimmed = line.trim();
+        const lower = trimmed.toLowerCase();
+        if (lower.includes('batting career') || lower.includes('batting statistics')) currentSection = 'batting';
+        else if (lower.includes('bowling career') || lower.includes('bowling statistics')) currentSection = 'bowling';
+
         if (/^(First\s+Class|One\s+Day|Twenty20|FC|OD|T20)\b/i.test(trimmed)) {
           const parts = trimmed.split(/\s+/);
           let numStartIndex = 1;
-          if (/^(First|One)$/i.test(parts[0])) {
-            numStartIndex = 2;
-          }
+          if (/^(First|One)$/i.test(parts[0])) numStartIndex = 2;
           const numericParts = parts.slice(numStartIndex);
-          if (numericParts.length >= 10) {
+          const fmtKey = trimmed.toLowerCase().includes('first') || trimmed.toLowerCase().startsWith('fc') ? 'FC'
+            : trimmed.toLowerCase().includes('one') || trimmed.toLowerCase().startsWith('od') ? 'OD' : 'T20';
+
+          if (numericParts.length >= 8) {
             const m = parseInt(numericParts[0].replace(/,/g, ''), 10) || 0;
-            const r = parseInt(numericParts[1].replace(/,/g, ''), 10) || 0;
-            const o = parseFloat(numericParts[9].replace(/,/g, '')) || 0;
-            matchesVal += m;
-            runsVal += r;
-            oversVal += o;
-            
-            if (trimmed.toLowerCase().includes('first') || trimmed.toLowerCase().startsWith('fc')) {
-              fcStats = { matches: m, runs: r, overs: o };
-            } else if (trimmed.toLowerCase().includes('one') || trimmed.toLowerCase().startsWith('od')) {
-              odStats = { matches: m, runs: r, overs: o };
-            } else if (trimmed.toLowerCase().includes('twenty') || trimmed.toLowerCase().startsWith('t20')) {
-              t20Stats = { matches: m, runs: r, overs: o };
+            const isBowling = currentSection === 'bowling' || numericParts[1].includes('.') || numericParts.some(p => p.includes('/'));
+
+            if (isBowling) {
+              const o = parseFloat(numericParts[1].replace(/,/g, '')) || 0;
+              if (fmtKey === 'FC') fcStats.overs = o;
+              else if (fmtKey === 'OD') odStats.overs = o;
+              else if (fmtKey === 'T20') t20Stats.overs = o;
+              oversVal += o;
+            } else {
+              // Batting runs is typically index 2 (M, I, R) or index 3 (M, I, NO, R)
+              const r = numericParts.length >= 11 
+                ? parseInt(numericParts[3].replace(/,/g, ''), 10) || 0
+                : parseInt(numericParts[2].replace(/,/g, ''), 10) || 0;
+
+              if (fmtKey === 'FC') { fcStats.matches = m; fcStats.runs = r; }
+              else if (fmtKey === 'OD') { odStats.matches = m; odStats.runs = r; }
+              else if (fmtKey === 'T20') { t20Stats.matches = m; t20Stats.runs = r; }
+              matchesVal += m;
+              runsVal += r;
             }
           }
         }
