@@ -15,6 +15,7 @@ import { isGameInNext7Days, parseGameDateToTimestamp } from '../utils/history';
 import { navigateTo, type SquadSubTab } from '../lib/navigation';
 import NextMatchLineupCard from './NextMatchLineupCard';
 import ClubHeroHeader from './ClubHeroHeader';
+import TransferMonitorCard from './TransferMonitorCard';
 import { suggestStartingXI, saveLineupContext } from '../utils/suggestLineup';
 
 interface ManagerDeskProps {
@@ -310,6 +311,8 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
         nationalRank={(pavilion as any)?.teamRankingNational || undefined}
         worldRank={(pavilion as any)?.teamRankingWorld || undefined}
       />
+
+      <TransferMonitorCard setActiveTab={setActiveTab} />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <button
