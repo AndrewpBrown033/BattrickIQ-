@@ -17,14 +17,13 @@ interface JarvisFooterProps {
  * two stay in sync via the `bt_jarvis_settings_changed` event.
  */
 export default function JarvisFooter({ onOpenFullSettings }: JarvisFooterProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => !readJarvisLocal().openRouterApiKey);
   const [savedKey, setSavedKey] = useState(() => readJarvisLocal().openRouterApiKey);
   const [draft, setDraft] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'localOnly'>('idle');
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Keep in sync with the Jarvis Settings screen / inline key field / cloud hydrate.
   useEffect(() => {
     const refresh = () => setSavedKey(readJarvisLocal().openRouterApiKey);
     window.addEventListener('bt_jarvis_settings_changed', refresh);
@@ -44,7 +43,6 @@ export default function JarvisFooter({ onOpenFullSettings }: JarvisFooterProps) 
       await saveJarvisSettingsToCloud({ openRouterApiKey: v });
       setStatus('saved');
     } catch {
-      // saveJarvisSettingsToCloud writes localStorage first, so the key still works on this device.
       setStatus('localOnly');
     }
     setSavedKey(v);
@@ -58,7 +56,7 @@ export default function JarvisFooter({ onOpenFullSettings }: JarvisFooterProps) 
     : '';
 
   return (
-    <footer className="border-t border-slate-200 bg-white">
+    <footer className="sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
       <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2.5">
         <button
           type="button"
