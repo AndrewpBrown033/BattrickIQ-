@@ -24,6 +24,7 @@ import BattrickAuthBar from './components/BattrickAuthBar';
 import { onCustomAuthStateChanged, getCustomUser, CustomUser } from './lib/customAuth';
 import { parseHash, navigateTo, type AppTab } from './lib/navigation';
 import { loadJarvisSettingsFromCloud } from './utils/jarvisSettingsStore';
+import { hydrateWatchlistFromCloud } from './utils/transferWatchlist';
 
 type TabType = AppTab | string;
 
@@ -83,6 +84,7 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     loadJarvisSettingsFromCloud().catch(() => {});
+    hydrateWatchlistFromCloud().catch(() => {});
   }, [user?.uid]);
 
   const setActiveTab = (tab: TabType | string, opts?: { playerId?: string | null }) => {
@@ -254,7 +256,7 @@ export default function App() {
               moreActive ? 'text-indigo-700' : 'text-slate-500'
             }`}
           >
-            <span className={`p-1.5 rounded-lg ${moreActive ? 'bg-indigo-100' : ''}`}>
+            <span className={`p-1.5 rounded-lg ${moreActive ? 'bg-indigo-100' : ''`}>
               {showMobileMore ? <X className="w-5 h-5" /> : <MoreHorizontal className="w-5 h-5" />}
             </span>
             More
