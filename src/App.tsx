@@ -155,7 +155,7 @@ export default function App() {
               type="button"
               onClick={() => setActiveTab('jarvis-settings')}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-indigo-50 border border-indigo-200 bg-indigo-50/50 text-xs font-bold shrink-0"
-              title="Jarvis Settings — API key & model"
+              title="Jarvis Settings - API key & model"
               aria-label="Jarvis Settings"
             >
               <Settings className="w-4 h-4 text-indigo-600" />
@@ -256,7 +256,7 @@ export default function App() {
               moreActive ? 'text-indigo-700' : 'text-slate-500'
             }`}
           >
-            <span className={`p-1.5 rounded-lg ${moreActive ? 'bg-indigo-100' : ''`}>
+            <span className={`p-1.5 rounded-lg ${moreActive ? 'bg-indigo-100' : ''}`}>
               {showMobileMore ? <X className="w-5 h-5" /> : <MoreHorizontal className="w-5 h-5" />}
             </span>
             More
