@@ -47,6 +47,11 @@ service cloud.firestore {
       match /chats/{chatId} {
         allow read, write: if true;
       }
+
+      // Jarvis OpenRouter key + model (and future per-user settings)
+      match /settings/{settingId} {
+        allow read, write: if true;
+      }
     }
 
     // 2. Users Auth credentials: Secure credentials database for custom session authentication
