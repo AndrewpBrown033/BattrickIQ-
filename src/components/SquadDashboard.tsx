@@ -241,6 +241,19 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
     );
   };
 
+  const transferScanBody = () => ({
+    pageName: 'transferlist.asp',
+    pageUrl: 'https://www.battrick.org/nl/transferlist.asp',
+    username,
+    password,
+    sessionToken: localStorage.getItem('bt_sync_session') || '',
+    skillMins: selectedSkills.reduce((acc, sk) => {
+      const m = skillMins[sk];
+      if (m != null && m > 0) acc[sk] = m;
+      return acc;
+    }, {} as Record<string, number>),
+  });
+
   const runTransferScan = async () => {
     setTransferBusy(true);
     setTransferError(null);
@@ -252,13 +265,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
         const res = await fetch('/api/sync-battrick-step', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            pageName: 'transferlist.asp',
-            pageUrl: 'https://www.battrick.org/nl/transferlist.asp',
-            username,
-            password,
-            sessionToken: localStorage.getItem('bt_sync_session') || '',
-          }),
+          body: JSON.stringify(transferScanBody()),
         });
         const data = await res.json();
         if (data.sessionToken) localStorage.setItem('bt_sync_session', data.sessionToken);
@@ -326,11 +333,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
               (sk === 'keeping' && n.need === 'keeping')
           );
           if (!already) {
-            mapped.push({
-              need: sk,
-              minSkill: min,
-              reason: `Selected skill: ${sk} ≥ ${min}`,
-            });
+            mapped.push({ need: sk, minSkill: min, reason: `Selected skill: ${sk} ≥ ${min}` });
           } else {
             for (const n of mapped) {
               if (
@@ -393,13 +396,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
         const res = await fetch('/api/sync-battrick-step', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            pageName: 'transferlist.asp',
-            pageUrl: 'https://www.battrick.org/nl/transferlist.asp',
-            username,
-            password,
-            sessionToken: localStorage.getItem('bt_sync_session') || '',
-          }),
+          body: JSON.stringify(transferScanBody()),
         });
         const data = await res.json();
         if (data.sessionToken) localStorage.setItem('bt_sync_session', data.sessionToken);
@@ -575,11 +572,8 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                       <div className="text-[11px] font-bold text-slate-700">{label}</div>
                       <div className="text-[10px] text-slate-500">
                         Now {levelToLabel(current)} → target{' '}
-                        <select
-                          value={target}
-                          onChange={(e) => setRatingTarget(key, Number(e.target.value))}
-                          className="border border-slate-200 rounded px-1 py-0.5 text-[10px]"
-                        >
+                        <select value={target} onChange={(e) => setRatingTarget(key, Number(e.target.value))}
+                          className="border border-slate-200 rounded px-1 py-0.5 text-[10px]">
                           {Array.from({ length: 21 }, (_, i) => (
                             <option key={i} value={i}>{levelToLabel(i)}</option>
                           ))}
@@ -602,25 +596,18 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <div className="text-[11px] font-bold text-slate-800">Skills to look for</div>
-                  <p className="text-[10px] text-slate-500">
-                    Recommended from your rating gaps. Toggle skills and set minimum levels for the transfer scan.
-                  </p>
+                  <p className="text-[10px] text-slate-500">Recommended from your rating gaps. Toggle skills and set minimum levels for the transfer scan.</p>
                 </div>
-                <button
-                  type="button"
-                  className="text-[10px] font-bold text-teal-700 underline shrink-0"
+                <button type="button" className="text-[10px] font-bold text-teal-700 underline shrink-0"
                   onClick={() => {
                     const rec = skillRecs.filter((r) => r.recommended).map((r) => r.skill);
                     setSelectedSkills(rec.length ? rec : SEARCH_SKILLS.map((s) => s.id));
                     setSkillMins((prev) => {
                       const next = { ...prev };
-                      for (const r of skillRecs) {
-                        if (r.recommended) next[r.skill] = r.minSkill;
-                      }
+                      for (const r of skillRecs) { if (r.recommended) next[r.skill] = r.minSkill; }
                       return next;
                     });
-                  }}
-                >
+                  }}>
                   Reset to recommended
                 </button>
               </div>
@@ -628,30 +615,13 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                 {skillRecs.map((r) => {
                   const on = selectedSkills.includes(r.skill);
                   return (
-                    <button
-                      key={r.skill}
-                      type="button"
-                      onClick={() => toggleSkill(r.skill)}
-                      title={r.reason}
+                    <button key={r.skill} type="button" onClick={() => toggleSkill(r.skill)} title={r.reason}
                       className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition ${
-                        on
-                          ? r.recommended
-                            ? 'border-teal-400 bg-teal-50 text-teal-900'
-                            : 'border-indigo-300 bg-indigo-50 text-indigo-900'
-                          : 'border-slate-200 bg-white text-slate-500'
-                      }`}
-                    >
-                      <span
-                        className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-[9px] ${
-                          on ? 'bg-teal-600 border-teal-600 text-white' : 'border-slate-300'
-                        }`}
-                      >
-                        {on ? '✓' : ''}
-                      </span>
+                        on ? (r.recommended ? 'border-teal-400 bg-teal-50 text-teal-900' : 'border-indigo-300 bg-indigo-50 text-indigo-900') : 'border-slate-200 bg-white text-slate-500'
+                      }`}>
+                      <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-[9px] ${on ? 'bg-teal-600 border-teal-600 text-white' : 'border-slate-300'}`}>{on ? '✓' : ''}</span>
                       {r.label}
-                      {r.recommended && (
-                        <span className="text-[9px] font-bold uppercase tracking-wide text-rose-600">gap</span>
-                      )}
+                      {r.recommended && <span className="text-[9px] font-bold uppercase tracking-wide text-rose-600">gap</span>}
                     </button>
                   );
                 })}
@@ -663,19 +633,9 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                     return (
                       <label key={sk} className="text-[10px] font-semibold text-slate-600 flex flex-col gap-0.5">
                         Min {rec?.label || sk}
-                        <input
-                          type="number"
-                          min={0}
-                          max={20}
-                          value={skillMins[sk] ?? rec?.minSkill ?? 0}
-                          onChange={(e) =>
-                            setSkillMins((prev) => ({
-                              ...prev,
-                              [sk]: Math.max(0, Math.min(20, Number(e.target.value) || 0)),
-                            }))
-                          }
-                          className="border border-slate-200 rounded-lg px-2 py-1 text-xs w-full"
-                        />
+                        <input type="number" min={0} max={20} value={skillMins[sk] ?? rec?.minSkill ?? 0}
+                          onChange={(e) => setSkillMins((prev) => ({ ...prev, [sk]: Math.max(0, Math.min(20, Number(e.target.value) || 0)) }))}
+                          className="border border-slate-200 rounded-lg px-2 py-1 text-xs w-full" />
                       </label>
                     );
                   })}
@@ -684,8 +644,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
               {skillRecs.some((r) => r.recommended) && (
                 <p className="text-[10px] text-slate-600 bg-white border border-slate-100 rounded-lg px-2 py-1.5">
                   <span className="font-bold text-slate-800">Suggested Battrick search: </span>
-                  {skillRecs
-                    .filter((r) => r.recommended && selectedSkills.includes(r.skill))
+                  {skillRecs.filter((r) => r.recommended && selectedSkills.includes(r.skill))
                     .map((r) => `${r.label} ≥ ${levelToLabel(skillMins[r.skill] ?? r.minSkill)} (${skillMins[r.skill] ?? r.minSkill})`)
                     .join(' · ') || 'Select a recommended skill above'}
                 </p>
@@ -744,9 +703,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                       <div className="text-sm font-bold text-slate-800 truncate">{r.listing.name}</div>
                       <div className="text-[11px] text-slate-500">{(r.reasons || []).join(' · ')}</div>
                       {r.listing.playerUrl && (
-                        <a href={r.listing.playerUrl} target="_blank" rel="noreferrer" className="text-[10px] text-teal-700 underline">
-                          Open on Battrick
-                        </a>
+                        <a href={r.listing.playerUrl} target="_blank" rel="noreferrer" className="text-[10px] text-teal-700 underline">Open on Battrick</a>
                       )}
                     </div>
                     <div className="text-right shrink-0 space-y-1">
@@ -754,16 +711,8 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                         inactive ? 'bg-slate-200 text-slate-600' : 'bg-emerald-100 text-emerald-800'
                       }`}>{inactive ? 'Inactive' : 'Active'}</span>
                       <div className="text-[11px] font-bold text-slate-700">£{(r.cost || 0).toLocaleString()}</div>
-                      <button
-                        type="button"
-                        className="text-[10px] font-bold text-indigo-700 underline"
-                        onClick={() => {
-                          try {
-                            addRecommendationToWatchlist(r);
-                            setWatchlist(loadWatchlist());
-                          } catch {}
-                        }}
-                      >
+                      <button type="button" className="text-[10px] font-bold text-indigo-700 underline"
+                        onClick={() => { try { addRecommendationToWatchlist(r); setWatchlist(loadWatchlist()); } catch {} }}>
                         Watch
                       </button>
                     </div>
