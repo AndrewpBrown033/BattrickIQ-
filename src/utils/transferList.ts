@@ -276,6 +276,15 @@ function isSeamBowler(bowlingType?: string): boolean {
   return true;
 }
 
+export function labelToLevel(label: string): number {
+  const normalized = String(label || '').toLowerCase().trim();
+  const idx = SKILL_LEVELS.findIndex((l) => String(l).toLowerCase() === normalized);
+  if (idx >= 0) return idx;
+  const n = Number(normalized);
+  if (Number.isFinite(n)) return Math.max(0, Math.min(20, Math.round(n)));
+  return 0;
+}
+
 export function levelToLabel(level: number): string {
   const clamped = Math.max(0, Math.min(20, Math.round(level)));
   return SKILL_LEVELS[clamped] || String(clamped);
