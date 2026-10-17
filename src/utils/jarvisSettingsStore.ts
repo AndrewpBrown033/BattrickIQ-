@@ -2,8 +2,8 @@
  * Persist Jarvis OpenRouter key + model in Firestore under the signed-in user,
  * and mirror to localStorage for offline/fast reads.
  *
- * Path: users/{uid}/settings/jarvis
- * Fields: openRouterApiKey, llmModel, freeOnly, updatedAt
+ * Primary path: users/{uid}/settings/jarvis
+ * Fallback path: users/{uid} fields (jarvisOpenRouterApiKey, jarvisLlmModel, jarvisFreeOnly)
  */
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -21,6 +21,10 @@ const LOCAL_FREE = 'bt_llm_free_only';
 
 function jarvisDocRef(uid: string) {
   return doc(db, 'users', uid, 'settings', 'jarvis');
+}
+
+function userDocRef(uid: string) {
+  return doc(db, 'users', uid);
 }
 
 export function readJarvisLocal(): JarvisCloudSettings {
@@ -57,6 +61,21 @@ export function writeJarvisLocal(settings: Partial<JarvisCloudSettings>) {
   }
 }
 
+function fromUserDoc(data: Record<string, unknown>, local: JarvisCloudSettings): JarvisCloudSettings | null {
+  const key = String(
+    data.jarvisOpenRouterApiKey || data.openRouterApiKey || ''
+  ).trim();
+  const model = String(data.jarvisLlmModel || data.llmModel || '').trim();
+  if (!key && !model && data.jarvisFreeOnly === undefined && data.freeOnly === undefined) {
+    return null;
+  }
+  return {
+    openRouterApiKey: key || local.openRouterApiKey,
+    llmModel: model || local.llmModel || 'anthropic/claude-3.5-sonnet',
+    freeOnly: data.jarvisFreeOnly === true || data.freeOnly === true,
+  };
+}
+
 /** Load from Firestore and hydrate localStorage. Falls back to local. */
 export async function loadJarvisSettingsFromCloud(): Promise<JarvisCloudSettings> {
   const local = readJarvisLocal();
@@ -64,33 +83,58 @@ export async function loadJarvisSettingsFromCloud(): Promise<JarvisCloudSettings
   if (!user?.uid) return local;
 
   try {
-    const snap = await getDoc(jarvisDocRef(user.uid));
-    if (!snap.exists()) {
-      if (local.openRouterApiKey) {
-        await saveJarvisSettingsToCloud(local);
+    // 1) settings/jarvis subdoc
+    try {
+      const snap = await getDoc(jarvisDocRef(user.uid));
+      if (snap.exists()) {
+        const data = snap.data() || {};
+        const cloud: JarvisCloudSettings = {
+          openRouterApiKey: String(data.openRouterApiKey || '').trim(),
+          llmModel: String(data.llmModel || local.llmModel || 'anthropic/claude-3.5-sonnet'),
+          freeOnly: data.freeOnly === true,
+        };
+        const merged: JarvisCloudSettings = {
+          openRouterApiKey: cloud.openRouterApiKey || local.openRouterApiKey,
+          llmModel: cloud.llmModel || local.llmModel,
+          freeOnly: cloud.openRouterApiKey ? cloud.freeOnly : local.freeOnly,
+        };
+        writeJarvisLocal(merged);
+        return merged;
       }
-      return local;
+    } catch (e) {
+      console.warn('Jarvis settings/jarvis load failed', e);
     }
-    const data = snap.data() || {};
-    const cloud: JarvisCloudSettings = {
-      openRouterApiKey: String(data.openRouterApiKey || '').trim(),
-      llmModel: String(data.llmModel || local.llmModel || 'anthropic/claude-3.5-sonnet'),
-      freeOnly: data.freeOnly === true,
-    };
-    const merged: JarvisCloudSettings = {
-      openRouterApiKey: cloud.openRouterApiKey || local.openRouterApiKey,
-      llmModel: cloud.llmModel || local.llmModel,
-      freeOnly: cloud.openRouterApiKey ? cloud.freeOnly : local.freeOnly,
-    };
-    writeJarvisLocal(merged);
-    return merged;
+
+    // 2) fields on users/{uid}
+    try {
+      const userSnap = await getDoc(userDocRef(user.uid));
+      if (userSnap.exists()) {
+        const fromUser = fromUserDoc(userSnap.data() || {}, local);
+        if (fromUser) {
+          writeJarvisLocal(fromUser);
+          return fromUser;
+        }
+      }
+    } catch (e) {
+      console.warn('Jarvis user-doc load failed', e);
+    }
+
+    // Nothing in cloud yet — push local if we have a key
+    if (local.openRouterApiKey) {
+      try {
+        await saveJarvisSettingsToCloud(local);
+      } catch {
+        /* keep local */
+      }
+    }
+    return local;
   } catch (e) {
     console.warn('Jarvis settings cloud load failed, using local', e);
     return local;
   }
 }
 
-/** Save to Firestore + localStorage. */
+/** Save to Firestore + localStorage. Tries subdoc then user doc. */
 export async function saveJarvisSettingsToCloud(
   settings: Partial<JarvisCloudSettings>
 ): Promise<void> {
@@ -98,22 +142,58 @@ export async function saveJarvisSettingsToCloud(
   writeJarvisLocal(current);
 
   const user = getCustomUser();
-  if (!user?.uid) return;
+  if (!user?.uid) {
+    // No signed-in custom user — local only is intentional
+    return;
+  }
+
+  const payload = {
+    openRouterApiKey: (current.openRouterApiKey || '').trim(),
+    llmModel: current.llmModel || 'anthropic/claude-3.5-sonnet',
+    freeOnly: !!current.freeOnly,
+    updatedAt: new Date().toISOString(),
+    email: user.email || null,
+  };
+
+  const userPayload = {
+    jarvisOpenRouterApiKey: payload.openRouterApiKey,
+    jarvisLlmModel: payload.llmModel,
+    jarvisFreeOnly: payload.freeOnly,
+    jarvisUpdatedAt: payload.updatedAt,
+    email: user.email || null,
+  };
+
+  let lastErr: unknown = null;
 
   try {
-    await setDoc(
-      jarvisDocRef(user.uid),
-      {
-        openRouterApiKey: (current.openRouterApiKey || '').trim(),
-        llmModel: current.llmModel || 'anthropic/claude-3.5-sonnet',
-        freeOnly: !!current.freeOnly,
-        updatedAt: new Date().toISOString(),
-        email: user.email || null,
-      },
-      { merge: true }
-    );
+    await setDoc(jarvisDocRef(user.uid), payload, { merge: true });
+    // Also mirror onto user doc so older rules still work
+    try {
+      await setDoc(userDocRef(user.uid), userPayload, { merge: true });
+    } catch {
+      /* optional mirror */
+    }
+    return;
   } catch (e) {
-    console.warn('Jarvis settings cloud save failed (kept local)', e);
-    throw e;
+    lastErr = e;
+    console.warn('Jarvis settings/jarvis write failed, trying user doc', e);
   }
+
+  try {
+    await setDoc(userDocRef(user.uid), userPayload, { merge: true });
+    return;
+  } catch (e) {
+    lastErr = e;
+    console.warn('Jarvis user-doc write failed', e);
+  }
+
+  const msg =
+    lastErr && typeof lastErr === 'object' && 'message' in lastErr
+      ? String((lastErr as { message?: string }).message)
+      : String(lastErr || 'Firestore write denied');
+  const code =
+    lastErr && typeof lastErr === 'object' && 'code' in lastErr
+      ? String((lastErr as { code?: string }).code)
+      : '';
+  throw new Error(code ? `${code}: ${msg}` : msg);
 }
