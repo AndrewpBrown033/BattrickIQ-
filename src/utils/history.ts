@@ -300,6 +300,10 @@ export function mergePlayerAndTrackHistory(
     ...newPlayer,
     nets: existingPlayer.nets,
     history: existingHistory,
+    // Downloaded career stats live only on the player-details pages, never on squad.asp,
+    // so a squad resync must carry them over.
+    ...(existingPlayer.stats ? { stats: existingPlayer.stats } : {}),
+    ...(existingPlayer.careerStats && !newPlayer.careerStats ? { careerStats: existingPlayer.careerStats } : {}),
     // Respect a manual role tag the user set on this player — never let a
     // resync from parsed Battrick data silently overwrite it.
     ...(existingPlayer.roleManuallySet

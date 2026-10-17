@@ -4,6 +4,7 @@ import { getPlayerWeightedScore } from '../parser';
 import { parseHash, navigateTo, type SquadSubTab } from '../lib/navigation';
 import { Users, Dumbbell, ArrowLeftRight, Target } from 'lucide-react';
 import SquadRosterTab from './squad/SquadRosterTab';
+import PlayerStatsDownloadButton from './PlayerStatsDownloadButton';
 
 type SubTab = 'roster' | 'training' | 'trading' | 'estimator';
 
@@ -92,6 +93,14 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
           </button>
         ))}
       </div>
+
+      {subTab === 'roster' && squad.length > 0 && (
+        <PlayerStatsDownloadButton
+          playerIds={squad.map((p) => p.id).filter(Boolean)}
+          label={`Download career stats for all ${squad.length} players`}
+          className="px-1"
+        />
+      )}
 
       {subTab === 'roster' && (
         <SquadRosterTab

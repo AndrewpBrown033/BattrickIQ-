@@ -210,116 +210,79 @@ export function getPlayerStats(player: BattrickPlayer): ComprehensivePlayerStats
   };
 }
 
+/** Battrick `statview` ids on playerdetails.asp for the formats the app tracks. */
+export const STATVIEW_TO_FORMAT: Record<number, 'firstClass' | 'oneDay' | 'bt20'> = {
+  1: 'oneDay',
+  8: 'bt20',
+  2: 'firstClass',
+};
+
+function cellNum(text: string | null | undefined): number {
+  const t = (text || '').replace(/[,\s*]/g, '');
+  if (!t || t === '-') return 0;
+  const n = parseFloat(t);
+  return Number.isFinite(n) ? n : 0;
+}
+
 /**
- * Parse FC / OD / BT20 career tables from a Battrick playerdetails.asp HTML page.
+ * Parse ONE playerdetails.asp page (a single `statview` tab: OD, BT20 or FC).
+ * The page holds two `table.playerstats` tables (Batting, Bowling), each with a
+ * "Season" and a "Career" row. Career rows are used.
+ *   Batting: M I R n.o. Ave SR HS C st 50s 100s
+ *   Bowling: O M R W Ave SR Econ Best 5wi
+ * Returns null if the page has no stats tables (e.g. the login page).
  */
-export function parseCareerStatsFromPlayerHtml(html: string): {
-  firstClass: FormatStats;
-  oneDay: FormatStats;
-  bt20: FormatStats;
-  careerStats: BattrickPlayer['careerStats'];
+export function parsePlayerStatsPage(html: string): {
+  statview: number | null;
+  stats: FormatStats;
 } | null {
-  if (!html || html.length < 200) return null;
+  if (!html || typeof DOMParser === 'undefined') return null;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const tables = Array.from(doc.querySelectorAll('table.playerstats'));
+  if (tables.length === 0) return null;
 
-  const fc = emptyFormat('First Class', 'FC');
-  const od = emptyFormat('One Day', 'OD');
-  const t20 = emptyFormat('BT20', 'BT20');
+  const selectedId = doc.querySelector('.stats-table ul.tabs li.selected')?.getAttribute('id') || '';
+  const statview = /^tab(\d+)$/.test(selectedId) ? parseInt(selectedId.slice(3), 10) : null;
+  const tabLabel = (doc.querySelector('.stats-table ul.tabs li.selected a')?.textContent || '').trim().toUpperCase();
+  const fmt: FormatStats =
+    tabLabel === 'FC' ? emptyFormat('First Class', 'FC')
+    : tabLabel === 'BT20' ? emptyFormat('BT20', 'BT20')
+    : emptyFormat('One Day', 'OD');
 
-  const text = html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ');
-
-  const rowRe =
-    /(First\s*Class|One\s*Day|Twenty\s*20|BT\s*20|T20|FC|OD|ODI)\s+(\d+)\s+(\d+)\s+(\d+)\s+([\d,]+)/gi;
-  let m: RegExpExecArray | null;
-  while ((m = rowRe.exec(text)) !== null) {
-    const label = m[1].toLowerCase().replace(/\s+/g, '');
-    const matches = parseInt(m[2], 10) || 0;
-    const innings = parseInt(m[3], 10) || 0;
-    const notOuts = parseInt(m[4], 10) || 0;
-    const runs = parseInt(m[5].replace(/,/g, ''), 10) || 0;
-    const target =
-      label.includes('first') || label === 'fc'
-        ? fc
-        : label.includes('one') || label === 'od' || label === 'odi'
-          ? od
-          : t20;
-    target.matches = Math.max(target.matches, matches);
-    target.inningsBatted = Math.max(target.inningsBatted, innings);
-    target.notOuts = Math.max(target.notOuts, notOuts);
-    target.runs = Math.max(target.runs, runs);
-    const dismissals = Math.max(1, innings - notOuts);
-    if (runs > 0) target.battingAverage = Number((runs / dismissals).toFixed(2));
-  }
-
-  const bowlRe =
-    /(First\s*Class|One\s*Day|Twenty\s*20|BT\s*20|T20|FC|OD|ODI)[^\d]{0,40}([\d.]+)\s+overs?[^\d]{0,20}(\d+)\s+wickets?/gi;
-  while ((m = bowlRe.exec(text)) !== null) {
-    const label = m[1].toLowerCase().replace(/\s+/g, '');
-    const overs = parseFloat(m[2]) || 0;
-    const wickets = parseInt(m[3], 10) || 0;
-    const target =
-      label.includes('first') || label === 'fc'
-        ? fc
-        : label.includes('one') || label === 'od' || label === 'odi'
-          ? od
-          : t20;
-    target.oversBowled = Math.max(target.oversBowled, overs);
-    target.wickets = Math.max(target.wickets, wickets);
-  }
-
-  try {
-    if (typeof DOMParser !== 'undefined' && html.includes('<')) {
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      const rows = Array.from(doc.querySelectorAll('tr'));
-      for (const row of rows) {
-        const cells = Array.from(row.querySelectorAll('td, th')).map(
-          (c) => (c.textContent || '').trim()
-        );
-        if (cells.length < 4) continue;
-        const head = cells[0].toLowerCase();
-        let target: FormatStats | null = null;
-        if (/first\s*class|^fc$/.test(head)) target = fc;
-        else if (/one\s*day|^od$|^odi$/.test(head)) target = od;
-        else if (/twenty|bt\s*20|^t20$/.test(head)) target = t20;
-        if (!target) continue;
-
-        const nums = cells.slice(1).map((c) => parseFloat(c.replace(/,/g, '')) || 0);
-        if (nums.length >= 4 && nums[0] > 0) {
-          target.matches = Math.max(target.matches, Math.round(nums[0]));
-          if (nums[1] > 0) target.inningsBatted = Math.max(target.inningsBatted, Math.round(nums[1]));
-          if (nums.length > 3 && nums[3] > 0) target.runs = Math.max(target.runs, Math.round(nums[3]));
-          if (nums.length > 2) target.notOuts = Math.max(target.notOuts, Math.round(nums[2]));
-          if (nums.length > 5 && nums[5] > 0) target.battingAverage = nums[5];
-          if (cells.length > 5 && cells[5] && /[\d*]/.test(cells[5])) {
-            target.highScore = cells[5];
-          }
-        }
+  const careerCells = (table: Element): string[] | null => {
+    for (const row of Array.from(table.querySelectorAll('tr'))) {
+      const th = row.querySelector('th');
+      if (th && /^career$/i.test((th.textContent || '').trim())) {
+        return Array.from(row.querySelectorAll('td')).map((td) => (td.textContent || '').trim());
       }
     }
-  } catch {
-    // ignore
-  }
-
-  const has =
-    fc.matches + od.matches + t20.matches + fc.runs + od.runs + t20.runs + fc.wickets + od.wickets + t20.wickets >
-    0;
-  if (!has) return null;
-
-  return {
-    firstClass: fc,
-    oneDay: od,
-    bt20: t20,
-    careerStats: {
-      matches: fc.matches + od.matches + t20.matches,
-      runs: fc.runs + od.runs + t20.runs,
-      overs: fc.oversBowled + od.oversBowled + t20.oversBowled,
-      fc: { matches: fc.matches, runs: fc.runs, overs: fc.oversBowled },
-      od: { matches: od.matches, runs: od.runs, overs: od.oversBowled },
-      t20: { matches: t20.matches, runs: t20.runs, overs: t20.oversBowled },
-    },
+    return null;
   };
+
+  for (const table of tables) {
+    const heading = (table.querySelector('th')?.textContent || '').trim().toLowerCase();
+    const c = careerCells(table);
+    if (!c) continue;
+    if (heading === 'batting' && c.length >= 11) {
+      fmt.matches = cellNum(c[0]);
+      fmt.inningsBatted = cellNum(c[1]);
+      fmt.runs = cellNum(c[2]);
+      fmt.notOuts = cellNum(c[3]);
+      fmt.battingAverage = cellNum(c[4]);
+      fmt.strikeRate = cellNum(c[5]);
+      fmt.highScore = c[6] || '0';
+      fmt.catches = cellNum(c[7]);
+      fmt.stumpings = cellNum(c[8]);
+      fmt.fifties = cellNum(c[9]);
+      fmt.hundreds = cellNum(c[10]);
+    } else if (heading === 'bowling' && c.length >= 9) {
+      fmt.oversBowled = cellNum(c[0]);
+      fmt.wickets = cellNum(c[3]);
+      fmt.bowlingAverage = cellNum(c[4]);
+      fmt.economyRate = cellNum(c[6]);
+      fmt.bestBowling = c[7] && c[7] !== '-' ? c[7] : '0/0';
+      fmt.fiveWickets = cellNum(c[8]);
+    }
+  }
+  return { statview, stats: fmt };
 }

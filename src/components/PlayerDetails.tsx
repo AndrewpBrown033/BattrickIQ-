@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 import { generateRealisticHistory, getWeeklyChanges, getCurrentBattrickDate } from '../utils/history';
 import { getPlayerStats } from '../utils/playerStats';
+import PlayerStatsDownloadButton from './PlayerStatsDownloadButton';
 import PlayerSkillProjectionChart from './PlayerSkillProjectionChart';
 
 interface PlayerDetailsProps {
@@ -615,6 +616,10 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
 
           return (
             <div className="flex flex-col gap-6">
+              <PlayerStatsDownloadButton
+                playerIds={[player.id]}
+                label={stats.hasRealData ? 'Refresh career stats from Battrick' : 'Download career stats from Battrick'}
+              />
               {/* Career High-Level Summary Card */}
               <div className="bg-slate-900 text-white rounded-2xl p-5 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-6 border border-slate-800">
                 <div className="flex items-center gap-4">
