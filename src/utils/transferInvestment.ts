@@ -1,13 +1,7 @@
 import type { BuyRecommendation, SquadGapNeed, TransferListing } from './transferList';
 import { estimateWeeksToNextLevel } from '../parser';
 import { hoursUntilDeadline } from './transferWatchlist';
-
-/**
- * Investment view of a transfer listing: beyond "does he meet my skill minimum today",
- * would he be worth buying as an asset - will he grow into a gap, is he cheap for what he
- * offers, is he about to close. Uses the same training-speed model as the rest of the app
- * (1 net, given coach level), so projections are estimates, not guarantees.
- */
+import { estimateOwnershipCost, MIN_CONTRACT_WEEKS } from './transferCosting';
 
 export type InvestFlagKind =
   | 'fills_gap'
@@ -15,7 +9,9 @@ export type InvestFlagKind =
   | 'prospect'
   | 'cheap_for_rating'
   | 'ending_soon'
-  | 'ageing';
+  | 'ageing'
+  | 'wage_strain'
+  | 'wage_ok';
 
 export interface InvestFlag {
   kind: InvestFlagKind;
@@ -30,7 +26,6 @@ export interface InvestmentView {
   isInvestment: boolean;
   primary?: 'batting' | 'bowling' | 'keeping';
   primaryNow?: number;
-  /** Projected primary skill after one 16-week season on 1 net. */
   primaryInSeason?: number;
   weeksPerPop?: number;
 }
@@ -56,12 +51,12 @@ function needMatchesPrimary(n: SquadGapNeed, p: Primary): boolean {
 export function annotateInvestments(
   recs: BuyRecommendation[],
   needs: SquadGapNeed[],
-  ctx: { coachLevel?: number } = {}
+  ctx: { coachLevel?: number; cash?: number; wageWeeks?: number; weeklyOutgoings?: number } = {}
 ): Map<string, InvestmentView> {
   const coach = ctx.coachLevel ?? 9;
+  const wageWeeks = ctx.wageWeeks ?? MIN_CONTRACT_WEEKS;
   const out = new Map<string, InvestmentView>();
 
-  // Relative cheapness: rating per £ of the current price, compared across the whole market.
   const ratios = recs
     .map((r) => ({ id: r.listing.playerId, btr: r.listing.btRating || 0, cost: Math.max(1000, r.cost || 0) }))
     .filter((x) => x.btr > 0);
@@ -88,7 +83,6 @@ export function annotateInvestments(
       }
     }
 
-    // 1. Fills a gap today.
     if (rec.fitsNeed && rec.score >= 32) {
       flags.push({
         kind: 'fills_gap',
@@ -99,7 +93,6 @@ export function annotateInvestments(
       score += 30;
     }
 
-    // 2. Grows into a gap: below the minimum today, but training gets him there.
     if (primary && weeksPerPop && !flags.some((f) => f.kind === 'fills_gap')) {
       const need = needs.find((n) => needMatchesPrimary(n, primary) && now < n.minSkill);
       if (need) {
@@ -120,7 +113,6 @@ export function annotateInvestments(
       }
     }
 
-    // 3. Young prospect.
     if (age <= 21 && primary && now >= 7) {
       flags.push({
         kind: 'prospect',
@@ -131,19 +123,17 @@ export function annotateInvestments(
       score += 15;
     }
 
-    // 4. Cheap for his rating, relative to the rest of the market.
     const cost = Math.max(1000, rec.cost || 0);
     if ((l.btRating || 0) >= medianBtr && l.btRating && l.btRating / cost >= cheapCut) {
       flags.push({
         kind: 'cheap_for_rating',
         label: 'Cheap for his rating',
-        detail: `BT rating ${l.btRating.toLocaleString()} at £${cost.toLocaleString()} (top quarter on the market). Price will rise as bids come in.`,
+        detail: `BT rating ${l.btRating.toLocaleString()} at £${cost.toLocaleString()} (top quarter on the market).`,
         tone: 'info',
       });
       score += 10;
     }
 
-    // 5. Ending soon (only an opportunity if there is some other reason to want him).
     const hrs = hoursUntilDeadline(l.deadline);
     if (hrs != null && hrs >= 0 && hrs <= 12) {
       flags.push({
@@ -155,7 +145,6 @@ export function annotateInvestments(
       if (score >= 20) score += 5;
     }
 
-    // 6. Ageing.
     if (age >= 32) {
       flags.push({
         kind: 'ageing',
@@ -164,6 +153,34 @@ export function annotateInvestments(
         tone: 'warn',
       });
       score -= 10;
+    }
+
+    // Forward wage vs cash
+    if (ctx.cash != null) {
+      const own = estimateOwnershipCost(l, {
+        cash: ctx.cash,
+        weeklyOutgoings: ctx.weeklyOutgoings,
+        wageWeeks,
+      });
+      if (own.weeklyWage > 0) {
+        if (!own.solvent) {
+          flags.push({
+            kind: 'wage_strain',
+            label: `Wage strain (${wageWeeks}w)`,
+            detail: `Fee £${own.transferFee.toLocaleString()} + £${own.weeklyWage.toLocaleString()}/wk × ${wageWeeks} = £${own.totalCost.toLocaleString()} exceeds comfortable cash`,
+            tone: 'warn',
+          });
+          score -= 12;
+        } else if (own.feeAffordable) {
+          flags.push({
+            kind: 'wage_ok',
+            label: `OK after ${wageWeeks}w wages`,
+            detail: `Total ~£${own.totalCost.toLocaleString()} (fee + wages)`,
+            tone: 'good',
+          });
+          score += 4;
+        }
+      }
     }
 
     if (!(rec.active ?? rec.affordable)) score = Math.round(score * 0.5);
