@@ -191,16 +191,16 @@ export function looksLikeTransferListing(l: TransferListing, relaxed = false): b
 /** True when HTML is the transfer search form with no result rows yet. */
 export function isTransferSearchFormOnly(html: string): boolean {
   if (!html) return false;
-  const lower = html.toLowerCase();
-  const playerLinks = (lower.match(/playerdetails\.asp/g) || []).length;
-  const hasSearchUi =
-    /transfer\s*list|transfer\s*market|search/.test(lower) &&
-    (lower.includes('<form') || lower.includes('type="submit"') || lower.includes("type='submit'"));
-  const hasResultMarkers =
-    (lower.match(/asking\s*price/g) || []).length >= 2 ||
-    (lower.match(/current\s*bid/g) || []).length >= 2 ||
-    (lower.match(/time\s*left/g) || []).length >= 1;
-  return hasSearchUi && playerLinks < 3 && !hasResultMarkers;
+  // Real result tables (not the squad links in Battrick's top menu).
+  const resultTables = (html.match(/<table[^>]*class=["']rtable["'][\s\S]*?<\/table>/gi) || []).filter((t) =>
+    /playerdetails\.asp/i.test(t)
+  ).length;
+  if (resultTables > 0 || /\d[\d,]*\s+Players?\s+found/i.test(html)) return false;
+  return (
+    /Transfer\s+Search(?!\s+Results)/i.test(html) ||
+    /name=["']SkillType1["']/i.test(html) ||
+    /<form[^>]+action=["']transferlist\.asp["']/i.test(html)
+  );
 }
 
 /** Reject pages that are clearly squad/office rather than the transfer market. */

@@ -335,13 +335,15 @@ async function startServer() {
           const clientPost = typeof req.body.postBody === "string" ? req.body.postBody : "";
           const skillMins: Record<string, number> =
             req.body.skillMins && typeof req.body.skillMins === "object" ? req.body.skillMins : {};
-          const countHits = (h: string) => ({
-            playerLinks: (h.match(/playerdetails\.asp/gi) || []).length,
-            markers:
-              (h.match(/asking\s*price/gi) || []).length +
-              (h.match(/current\s*bid/gi) || []).length +
-              (h.match(/time\s*left/gi) || []).length,
-          });
+          // Count only REAL result rows. Battrick's top menu lists your own squad as
+          // playerdetails.asp links on every page, so counting all links wrongly looks like results.
+          const countHits = (h: string) => {
+            const tables = h.match(/<table[^>]*class=["']rtable["'][\s\S]*?<\/table>/gi) || [];
+            return {
+              playerLinks: tables.filter((t) => /playerdetails\.asp/i.test(t)).length,
+              markers: /\d[\d,]*\s+Players?\s+found/i.test(h) || /Transfer\s+Search\s+Results/i.test(h) ? 2 : 0,
+            };
+          };
           const first = countHits(html0);
           transferDebug.initial = { length: html0.length, ...first };
           if (clientPost || (first.playerLinks < 3 && first.markers < 2)) {
