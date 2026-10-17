@@ -140,8 +140,8 @@ async function startServer() {
 
   async function fetchPage(cookieMap: Record<string, string>, pageUrl: string, postBody?: string) {
     const headers: Record<string, string> = {
-      Referer: pageUrl.includes("transferlist")
-        ? "https://www.battrick.org/nl/transferlist.asp"
+      Referer: /transfer/i.test(pageUrl)
+        ? "https://www.battrick.org/nl/transfers.asp"
         : "https://www.battrick.org/nl/myoffice.asp",
       Origin: "https://www.battrick.org",
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -274,9 +274,13 @@ async function startServer() {
         "club.asp": "https://www.battrick.org/nl/club.asp",
         myoffice: "https://www.battrick.org/nl/myoffice.asp",
         "myoffice.asp": "https://www.battrick.org/nl/myoffice.asp",
-        transferlist: "https://www.battrick.org/nl/transferlist.asp",
-        transfer: "https://www.battrick.org/nl/transferlist.asp",
-        "transferlist.asp": "https://www.battrick.org/nl/transferlist.asp",
+        // Battrick's real transfer market page is transfers.asp (menu: Global > Transfer Market).
+        // "transferlist" names are kept as aliases for older clients.
+        transfers: "https://www.battrick.org/nl/transfers.asp",
+        "transfers.asp": "https://www.battrick.org/nl/transfers.asp",
+        transferlist: "https://www.battrick.org/nl/transfers.asp",
+        transfer: "https://www.battrick.org/nl/transfers.asp",
+        "transferlist.asp": "https://www.battrick.org/nl/transfers.asp",
         ground: "https://www.battrick.org/nl/ground.asp",
         "ground.asp": "https://www.battrick.org/nl/ground.asp",
       };
@@ -325,7 +329,7 @@ async function startServer() {
       }
 
       const transferDebug: Record<string, unknown> = {};
-      if (/transferlist/i.test(pageKey) || /transferlist\.asp/i.test(targetUrl)) {
+      if (/transfer/i.test(pageKey) || /transfers?(?:list)?\.asp/i.test(targetUrl)) {
         try {
           const html0 = pageResult.html || "";
           const clientPost = typeof req.body.postBody === "string" ? req.body.postBody : "";
