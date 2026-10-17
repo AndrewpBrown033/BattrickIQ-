@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Eye, Bot, StopCircle, RefreshCw, ExternalLink, AlertTriangle } from 'lucide-react';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
 import {
@@ -25,6 +25,8 @@ export default function TransferWatchPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [globalMsg, setGlobalMsg] = useState<string | null>(null);
   const [maxDraft, setMaxDraft] = useState<Record<string, string>>({});
+  // One check at a time per player: a slow check overlapping the next 1-minute tick could post a double bid.
+  const inFlight = useRef<Set<string>>(new Set());
 
   const reload = useCallback(() => setList(loadWatchlist()), []);
 
@@ -78,6 +80,8 @@ export default function TransferWatchPage() {
 
   const tickOne = async (entry: WatchEntry) => {
     if (!entry.botEnabled || !entry.maxBid) return;
+    if (inFlight.current.has(entry.playerId)) return;
+    inFlight.current.add(entry.playerId);
     setBusyId(entry.playerId);
     try {
       const panel = await fetchPanel(entry.playerId);
@@ -101,6 +105,19 @@ export default function TransferWatchPage() {
                 : 'armed',
         lastBotAction: plan.message,
       });
+
+      // Never bid more than the club can actually pay.
+      let cash: number | undefined;
+      try { cash = JSON.parse(localStorage.getItem('bt_finances') || 'null')?.cash; } catch {}
+      if (plan.action === 'bid_placed' && plan.nextBid != null && cash != null && plan.nextBid > cash) {
+        updateWatchAfterBotTick(entry.playerId, {
+          botStatus: 'maxed',
+          lastBotAction: `Next bid £${plan.nextBid.toLocaleString()} is more than your cash £${cash.toLocaleString()} — not bidding`,
+        });
+        setGlobalMsg(`${entry.name}: next bid exceeds your available cash`);
+        reload();
+        return;
+      }
 
       if (plan.action === 'bid_placed' && plan.nextBid != null) {
         updateWatchAfterBotTick(entry.playerId, {
@@ -127,6 +144,7 @@ export default function TransferWatchPage() {
       });
       reload();
     } finally {
+      inFlight.current.delete(entry.playerId);
       setBusyId(null);
     }
   };
