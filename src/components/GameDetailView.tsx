@@ -180,6 +180,39 @@ export default function GameDetailView({ fixture, onBack, setActiveTab }: GameDe
         }
       }
 
+      // A squad scouted earlier (or pulled from the cloud) beats a generated benchmark roster.
+      try {
+        const rosterRaw = localStorage.getItem('bt_scout_roster_' + opponentName);
+        if (rosterRaw) {
+          const r = JSON.parse(rosterRaw);
+          const ps: any[] = Array.isArray(r) ? r : r?.players;
+          if (Array.isArray(ps) && ps.length > 0) {
+            const roles = ['Batter', 'Bowler', 'Keeper', 'All-rounder', 'Prospect'];
+            const flat: OpponentPlayer[] = ps.map((p) => {
+              if (!p.skills) return p as OpponentPlayer; // already the flat OpponentPlayer shape
+              return {
+                id: String(p.id),
+                name: p.name,
+                age: p.age ?? 26,
+                wage: p.wage ?? 0,
+                btRating: p.btRating ?? 0,
+                role: (roles.includes(p.role) ? p.role : 'Batter') as OpponentPlayer['role'],
+                roleManuallySet: p.roleManuallySet,
+                bowlingType: p.bowlingType || '',
+                batting: p.skills.batting ?? 0,
+                bowling: p.skills.bowling ?? 0,
+                keeping: p.skills.keeping ?? 0,
+                stamina: p.skills.stamina ?? 0,
+                fielding: p.skills.fielding,
+                experience: p.skills.experience ?? 0,
+              };
+            });
+            setOpponentPlayers(flat);
+            return;
+          }
+        }
+      } catch {}
+
       // Fallback: Generate realistic opponent benchmark roster
       const targetId = fixture.opponentTeamId || (fixture.venue === 'Home' ? fixture.awayTeamId : fixture.homeTeamId);
       const benchmark = generateRealisticOpponentRoster(opponentName, false, matchFormat, targetId);

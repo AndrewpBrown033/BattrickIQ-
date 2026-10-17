@@ -10,7 +10,7 @@
 import { OpponentPlayer } from '../types';
 import { db } from '../lib/firebase';
 import { getCustomUser } from '../lib/customAuth';
-import { doc, setDoc, getDocs, collection } from 'firebase/firestore';
+import { doc, setDoc, getDocs, collection, deleteDoc } from 'firebase/firestore';
 
 export interface StoredOpponentSquad {
   squadId: string;
@@ -58,13 +58,33 @@ export async function saveOpponentSquadToFirestore(
   }
 }
 
-// Pull every scouted opponent squad the user has stored in the cloud and
-// merge each into localStorage (keyed the same way OpponentScout/GameDetailView
-// already read: bt_scout_squad_<teamId> and bt_scout_squad_<teamName lowercased>).
-// Only writes a key when the cloud copy differs from what's cached locally,
-// and dispatches the same events the rest of the app listens for.
+// One local cache format for scouted squads, read by Opponent Scout and written by both the
+// scout screen and the cloud pull:  bt_scout_roster_<team name>  ->  { teamId, teamName, players, updatedAt }
+export const SCOUT_ROSTER_PREFIX = 'bt_scout_roster_';
+// Legacy cloud-pull keys: written (twice per squad, by id and by name) but never read by anything.
+const LEGACY_SQUAD_PREFIX = 'bt_scout_squad_';
+
+export function scoutRosterKey(teamName: string): string {
+  return SCOUT_ROSTER_PREFIX + teamName;
+}
+
+/** Remove the dead duplicate `bt_scout_squad_*` caches. Returns how many keys were removed. */
+export function removeLegacySquadKeys(): number {
+  const dead: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(LEGACY_SQUAD_PREFIX)) dead.push(k);
+  }
+  dead.forEach((k) => localStorage.removeItem(k));
+  return dead.length;
+}
+
+// Pull every scouted opponent squad stored in the cloud into the unified local cache.
+// A cloud copy only replaces the local one when it is newer, so an older cloud snapshot can
+// never overwrite a scout you just did. Also drops the legacy duplicate keys.
 export async function syncOpponentSquadsFromFirestore(): Promise<number> {
   try {
+    removeLegacySquadKeys();
     const user = getCustomUser();
     if (!user || !user.uid || !db) return 0;
     const squadsCol = collection(db, 'users_data', user.uid, 'opponentSquads');
@@ -72,27 +92,25 @@ export async function syncOpponentSquadsFromFirestore(): Promise<number> {
     if (snap.empty) return 0;
 
     let updatedCount = 0;
-    snap.forEach(docSnap => {
+    snap.forEach((docSnap) => {
       const data = docSnap.data() as StoredOpponentSquad;
-      if (!data || !Array.isArray(data.players) || data.players.length === 0) return;
-
-      const keys: string[] = [];
-      if (data.teamId) keys.push(`bt_scout_squad_${data.teamId}`);
-      if (data.teamName) keys.push(`bt_scout_squad_${data.teamName.trim().toLowerCase()}`);
-
-      keys.forEach(key => {
-        try {
-          const existingRaw = localStorage.getItem(key);
-          const existing = existingRaw ? JSON.parse(existingRaw) : null;
-          if (!existing || JSON.stringify(existing) !== JSON.stringify(data.players)) {
-            localStorage.setItem(key, JSON.stringify(data.players));
-            updatedCount++;
-          }
-        } catch {
-          localStorage.setItem(key, JSON.stringify(data.players));
+      if (!data || !data.teamName || !Array.isArray(data.players) || data.players.length === 0) return;
+      const key = scoutRosterKey(data.teamName);
+      try {
+        const existingRaw = localStorage.getItem(key);
+        const existing = existingRaw ? JSON.parse(existingRaw) : null;
+        const localAt = existing && !Array.isArray(existing) ? Date.parse(existing.updatedAt || '') || 0 : 0;
+        const cloudAt = Date.parse(data.updatedAt || '') || 0;
+        if (!existing || cloudAt > localAt) {
+          localStorage.setItem(
+            key,
+            JSON.stringify({ teamId: data.teamId, teamName: data.teamName, players: data.players, updatedAt: data.updatedAt })
+          );
           updatedCount++;
         }
-      });
+      } catch {
+        // ignore unreadable local entry; leave it for the manager to prune
+      }
     });
 
     if (updatedCount > 0) {
@@ -103,5 +121,17 @@ export async function syncOpponentSquadsFromFirestore(): Promise<number> {
   } catch (err) {
     console.warn('Failed to sync opponent squads from Firestore:', err);
     return 0;
+  }
+}
+
+/** Delete a scouted squad from the cloud mirror (best effort). */
+export async function deleteOpponentSquadFromFirestore(teamName: string, teamId?: string): Promise<void> {
+  try {
+    const squadId = getOpponentSquadId(teamId, teamName);
+    const user = getCustomUser();
+    if (!squadId || !user || !user.uid || !db) return;
+    await deleteDoc(doc(db, 'users_data', user.uid, 'opponentSquads', squadId));
+  } catch (e) {
+    console.warn('Could not delete opponent squad from cloud:', e);
   }
 }

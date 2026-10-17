@@ -8,6 +8,8 @@ import { useBattrickAuth } from '../lib/battrickAuthContext';
 import { evaluateScoutBuyFit, type BuyFitVerdict } from '../utils/scoutBuyFit';
 import { isGameInNext7Days, parseGameDateToTimestamp } from '../utils/history';
 import { getOwnTeamId as getStoredOwnTeamId } from '../utils/teamIdentity';
+import { saveOpponentSquadToFirestore, syncOpponentSquadsFromFirestore } from '../utils/opponentSquadSync';
+import SavedSquadsManager from './SavedSquadsManager';
 
 interface Props {
   setActiveTab?: (tab: any) => void;
@@ -183,6 +185,7 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Prop
   const [selectedOpponent, setSelectedOpponent] = useState<string>('');
   const [roster, setRoster] = useState<ScoutPlayer[]>([]);
   const [busy, setBusy] = useState(false);
+  useEffect(() => { void syncOpponentSquadsFromFirestore(); }, []);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -339,9 +342,11 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Prop
       try {
         localStorage.setItem(
           'bt_scout_roster_' + (selectedOpponent || teamId || 'unknown'),
-          JSON.stringify({ teamId, teamName: pageName, players })
+          JSON.stringify({ teamId, teamName: pageName, players, updatedAt: new Date().toISOString() })
         );
       } catch {}
+      // Mirror to the cloud so the scout survives a cleared browser and follows you across devices.
+      void saveOpponentSquadToFirestore(selectedOpponent || pageName, players as any, teamId);
     } catch (e: any) {
       setError(e?.message || 'Scout sync failed');
       setRoster([]);
@@ -430,6 +435,7 @@ export default function OpponentScout({ setActiveTab, initialScoutTarget }: Prop
 
   return (
     <div className="flex flex-col gap-4">
+      <SavedSquadsManager />
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
         <div className="flex items-center gap-2">
           <Swords className="w-5 h-5 text-rose-600" />
