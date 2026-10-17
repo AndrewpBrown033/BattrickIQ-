@@ -14,7 +14,9 @@ import {
   isTransferSearchFormOnly,
   type BuyRecommendation,
   type TeamRatingKey,
+  type SquadGapNeed,
 } from '../utils/transferList';
+import { annotateInvestments, type InvestFlag } from '../utils/transferInvestment';
 import {
   addRecommendationToWatchlist,
   loadWatchlist,
@@ -69,6 +71,9 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
     return defaultRatings();
   });
   const [buyRecs, setBuyRecs] = useState<BuyRecommendation[]>([]);
+  const [lastNeeds, setLastNeeds] = useState<SquadGapNeed[]>([]);
+  const [shortlistSort, setShortlistSort] = useState<'fit' | 'invest'>('invest');
+  const investments = useMemo(() => annotateInvestments(buyRecs, lastNeeds), [buyRecs, lastNeeds]);
   const [factorFinance, setFactorFinance] = useState(true);
   const [transferBusy, setTransferBusy] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
@@ -346,6 +351,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
         }
         if (mapped.length) needs = mapped;
       }
+      setLastNeeds(needs);
       let recs = rankBuyRecommendations(listings, needs, {
         cash: finances?.cash,
         factorFinance,
@@ -685,46 +691,106 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
             </label>
           </div>
 
-          {buyRecs.length > 0 && (
-            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-2">
-              <h4 id="transfer-shortlist" className="text-sm font-bold text-slate-900">Transfer shortlist ({buyRecs.length})</h4>
-              <div className="flex flex-wrap gap-2 text-[10px] font-mono text-slate-500">
-                <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                  {buyRecs.filter((r) => r.active ?? r.affordable).length} active
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                  {buyRecs.filter((r) => !(r.active ?? r.affordable)).length} inactive
-                </span>
-              </div>
-              {buyRecs.slice(0, 40).map((r) => {
-                const inactive = !(r.active ?? r.affordable);
-                return (
-                  <div key={r.listing.playerId}
-                    className={`p-3 rounded-xl border flex justify-between gap-2 ${
-                      inactive ? 'border-slate-200 bg-slate-50/80 opacity-70' : 'border-emerald-200 bg-emerald-50/30'
-                    }`}>
-                    <div className="min-w-0">
-                      <div className="text-sm font-bold text-slate-800 truncate">{r.listing.name}</div>
-                      <div className="text-[11px] text-slate-500">{(r.reasons || []).join(' · ')}</div>
-                      {r.listing.playerUrl && (
-                        <a href={r.listing.playerUrl} target="_blank" rel="noreferrer" className="text-[10px] text-teal-700 underline">Open on Battrick</a>
-                      )}
+          {buyRecs.length > 0 && (() => {
+            const chipTone = (f: InvestFlag) =>
+              f.tone === 'good' ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+              : f.tone === 'warn' ? 'bg-amber-50 text-amber-800 border-amber-200'
+              : 'bg-indigo-50 text-indigo-800 border-indigo-200';
+            const topInvestments = buyRecs
+              .filter((r) => investments.get(r.listing.playerId)?.isInvestment)
+              .sort((a, b) => (investments.get(b.listing.playerId)?.investScore || 0) - (investments.get(a.listing.playerId)?.investScore || 0))
+              .slice(0, 5);
+            const sorted = [...buyRecs].sort((a, b) =>
+              shortlistSort === 'invest'
+                ? (investments.get(b.listing.playerId)?.investScore || 0) - (investments.get(a.listing.playerId)?.investScore || 0) || b.score - a.score
+                : b.score - a.score
+            );
+            const renderRow = (r: BuyRecommendation, compact = false) => {
+              const inactive = !(r.active ?? r.affordable);
+              const inv = investments.get(r.listing.playerId);
+              const l = r.listing;
+              return (
+                <div key={(compact ? 'top-' : '') + l.playerId}
+                  className={`p-3 rounded-xl border flex justify-between gap-2 ${
+                    inactive ? 'border-slate-200 bg-slate-50/80 opacity-70'
+                    : inv?.isInvestment ? 'border-indigo-200 bg-indigo-50/40' : 'border-emerald-200 bg-emerald-50/30'
+                  }`}>
+                  <div className="min-w-0 space-y-1">
+                    <div className="text-sm font-bold text-slate-800 truncate">
+                      {l.name}
+                      <span className="ml-2 text-[11px] font-medium text-slate-500">
+                        {l.age ? `${l.age}y` : ''}{l.role ? ` · ${l.role}` : ''}{l.btRating ? ` · BTR ${l.btRating.toLocaleString()}` : ''}
+                      </span>
                     </div>
-                    <div className="text-right shrink-0 space-y-1">
-                      <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full ${
-                        inactive ? 'bg-slate-200 text-slate-600' : 'bg-emerald-100 text-emerald-800'
-                      }`}>{inactive ? 'Inactive' : 'Active'}</span>
-                      <div className="text-[11px] font-bold text-slate-700">£{(r.cost || 0).toLocaleString()}</div>
-                      <button type="button" className="text-[10px] font-bold text-indigo-700 underline"
-                        onClick={() => { try { addRecommendationToWatchlist(r); setWatchlist(loadWatchlist()); } catch {} }}>
-                        Watch
-                      </button>
-                    </div>
+                    {inv && inv.flags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {inv.flags.map((f) => (
+                          <span key={f.kind} title={f.detail}
+                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${chipTone(f)}`}>{f.label}</span>
+                        ))}
+                      </div>
+                    )}
+                    {inv?.primary && inv.primaryInSeason != null && (
+                      <div className="text-[11px] text-slate-600">
+                        {inv.primary} {inv.primaryNow} → ~{inv.primaryInSeason} after a season on 1 net (estimate)
+                      </div>
+                    )}
+                    <div className="text-[11px] text-slate-500">{(r.reasons || []).join(' · ')}</div>
+                    {l.deadline && <div className="text-[10px] text-slate-400">Deadline {l.deadline} (server time)</div>}
+                    {l.playerUrl && (
+                      <a href={l.playerUrl} target="_blank" rel="noreferrer" className="text-[10px] text-teal-700 underline">Open on Battrick</a>
+                    )}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  <div className="text-right shrink-0 space-y-1">
+                    <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full ${
+                      inactive ? 'bg-slate-200 text-slate-600' : 'bg-emerald-100 text-emerald-800'
+                    }`}>{inactive ? 'Inactive' : 'Active'}</span>
+                    <div className="text-[11px] font-bold text-slate-700">£{(r.cost || 0).toLocaleString()}</div>
+                    {inv && <div className="text-[10px] font-mono text-indigo-700">invest {inv.investScore}</div>}
+                    <button type="button" className="text-[10px] font-bold text-indigo-700 underline"
+                      onClick={() => { try { addRecommendationToWatchlist(r); setWatchlist(loadWatchlist()); } catch {} }}>
+                      Watch
+                    </button>
+                  </div>
+                </div>
+              );
+            };
+            return (
+              <>
+                {topInvestments.length > 0 && (
+                  <div className="bg-white border border-indigo-200 rounded-xl p-4 shadow-sm space-y-2">
+                    <h4 className="text-sm font-bold text-indigo-950">Potential investments ({topInvestments.length})</h4>
+                    <p className="text-[11px] text-slate-500">
+                      Players who fill a gap now, will grow into one, or look cheap for their rating. Growth figures are
+                      estimates from the app's training model; prices are current, not final.
+                    </p>
+                    {topInvestments.map((r) => renderRow(r, true))}
+                  </div>
+                )}
+                <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-2">
+                  <h4 id="transfer-shortlist" className="text-sm font-bold text-slate-900">Transfer shortlist ({buyRecs.length})</h4>
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono text-slate-500">
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      {buyRecs.filter((r) => r.active ?? r.affordable).length} active
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                      {buyRecs.filter((r) => !(r.active ?? r.affordable)).length} inactive
+                    </span>
+                    <span className="ml-auto flex items-center gap-1">
+                      Sort:
+                      {(['invest', 'fit'] as const).map((k) => (
+                        <button key={k} type="button" onClick={() => setShortlistSort(k)}
+                          className={`px-2 py-0.5 rounded-full border ${shortlistSort === k ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                          {k === 'invest' ? 'Investment' : 'Fit'}
+                        </button>
+                      ))}
+                    </span>
+                  </div>
+                  {sorted.slice(0, 40).map((r) => renderRow(r))}
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
     </div>

@@ -245,6 +245,23 @@ export function unreadAlertCount(): number {
   return loadAlerts().filter((a) => !a.read).length;
 }
 
+/**
+ * Battrick prints deadlines in its server time, which tracks UK time (the page's own
+ * server clock matches Europe/London, BST in summer). Interpreting them as the browser's
+ * local time makes "ends in Xh" wrong for anyone outside the UK, so convert explicitly.
+ */
+function lastSundayUtc(year: number, month: number): number {
+  const d = new Date(Date.UTC(year, month + 1, 0, 1, 0)); // last day of month, 01:00 UTC
+  d.setUTCDate(d.getUTCDate() - d.getUTCDay());
+  return d.getTime();
+}
+
+function londonToDate(y: number, mo: number, d: number, hh: number, mm: number): Date {
+  const asUtc = Date.UTC(y, mo, d, hh, mm);
+  const bst = asUtc >= lastSundayUtc(y, 2) && asUtc < lastSundayUtc(y, 9);
+  return new Date(asUtc - (bst ? 3_600_000 : 0));
+}
+
 export function parseDeadline(deadline?: string): Date | null {
   if (!deadline) return null;
   const s = deadline.trim();
@@ -256,7 +273,7 @@ export function parseDeadline(deadline?: string): Date | null {
     if (year < 100) year += 2000;
     const hh = m[4] ? Number(m[4]) : 12;
     const mm = m[5] ? Number(m[5]) : 0;
-    const d = new Date(year, month, day, hh, mm);
+    const d = londonToDate(year, month, day, hh, mm);
     return Number.isFinite(d.getTime()) ? d : null;
   }
   const t = Date.parse(s);
