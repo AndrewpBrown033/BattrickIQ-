@@ -216,19 +216,32 @@ async function startServer() {
         sm[2].match(/<option[^>]*value=["']([^"']*)["']/i);
       params.set(selName, opt ? opt[1] : "");
     }
+    // Clear default skill slots (SkillMax often defaults to "0" = empty range).
+    for (let i = 1; i <= 4; i++) {
+      params.delete(`SkillType${i}`);
+      params.delete(`SkillMin${i}`);
+      params.delete(`SkillMax${i}`);
+    }
     const SKILL_IDS: Record<string, number> = {
       stamina: 1, batting: 2, bowling: 3, seam: 3, spin: 3, consistency: 4,
       concentration: 5, fielding: 6, keeping: 7, wicketkeeping: 7, experience: 8,
     };
-    let slot = 1;
+    // Battrick ANDs skill slots — only top 2 by min so we don't ask batting≥19 AND bowling≥16 AND keeping≥15.
+    const ranked: { skill: string; id: number; level: number }[] = [];
     const usedIds = new Set<number>();
     for (const [skill, min] of Object.entries(skillMins || {})) {
       const id = SKILL_IDS[String(skill).toLowerCase().replace(/[\s_-]/g, "")];
-      const level = Math.max(0, Math.min(20, Math.round(Number(min))));
-      if (!id || usedIds.has(id) || !level || slot > 4) continue;
+      const level = Math.max(0, Math.min(16, Math.round(Number(min))));
+      if (!id || usedIds.has(id) || !level) continue;
       usedIds.add(id);
-      params.set(`SkillType${slot}`, String(id));
-      params.set(`SkillMin${slot}`, String(level));
+      ranked.push({ skill, id, level });
+    }
+    ranked.sort((a, b) => b.level - a.level);
+    let slot = 1;
+    for (const r of ranked.slice(0, 2)) {
+      params.set(`SkillType${slot}`, String(r.id));
+      params.set(`SkillMin${slot}`, String(r.level));
+      params.set(`SkillMax${slot}`, "20");
       slot++;
     }
     return params;
