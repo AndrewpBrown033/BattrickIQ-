@@ -76,9 +76,10 @@ export default function JarvisSettings() {
         setCloudMsg('Saved to your account (cloud) and this device');
         flash();
         window.setTimeout(() => setCloudStatus('idle'), 2000);
-      } catch {
+      } catch (e: any) {
         setCloudStatus('error');
-        setCloudMsg('Saved on this device only — cloud save failed');
+        const detail = e?.message ? String(e.message) : 'unknown error';
+        setCloudMsg(`Saved on this device only — cloud save failed (${detail})`);
       }
     }, 400);
   };
