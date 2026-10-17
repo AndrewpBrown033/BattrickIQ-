@@ -85,6 +85,16 @@ function writeJson(key: string, value: unknown) {
   }
 }
 
+/** Hours until a Battrick deadline string (dd/mm/yyyy HH:mm). Null if unparseable. */
+export function hoursUntilDeadline(deadline?: string | null): number | null {
+  if (!deadline) return null;
+  const m = String(deadline).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  const dt = new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5]);
+  if (Number.isNaN(dt.getTime())) return null;
+  return (dt.getTime() - Date.now()) / 3600000;
+}
+
 export function loadWatchlist(): WatchEntry[] {
   const list = readJson<WatchEntry[]>(WL_KEY, []);
   return Array.isArray(list) ? list : [];
@@ -166,11 +176,19 @@ export function acknowledgeWatch(playerId: string): WatchEntry[] {
   return next;
 }
 
-export function recordTransferScan(listingCount: number, shortlistCount: number) {
+export function recordTransferScan(listingCountOrMeta: number | TransferScanMeta, shortlistCount?: number) {
+  if (typeof listingCountOrMeta === 'object' && listingCountOrMeta) {
+    writeJson(SCAN_META_KEY, {
+      at: listingCountOrMeta.at || new Date().toISOString(),
+      listingCount: listingCountOrMeta.listingCount ?? 0,
+      shortlistCount: listingCountOrMeta.shortlistCount ?? 0,
+    } satisfies TransferScanMeta);
+    return;
+  }
   writeJson(SCAN_META_KEY, {
     at: new Date().toISOString(),
-    listingCount,
-    shortlistCount,
+    listingCount: Number(listingCountOrMeta) || 0,
+    shortlistCount: Number(shortlistCount) || 0,
   } satisfies TransferScanMeta);
 }
 
@@ -220,16 +238,10 @@ export function computeBidHint(
 ): { hint: BidHint; text: string } {
   const deadline = listing.deadline || '';
   let endingSoon = false;
-  if (deadline) {
-    const m = deadline.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
-    if (m) {
-      const dt = new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5]);
-      const hrs = (dt.getTime() - Date.now()) / 3600000;
-      if (hrs >= 0 && hrs <= 6) endingSoon = true;
-    }
-  }
+  const hrs = hoursUntilDeadline(deadline);
+  if (hrs != null && hrs >= 0 && hrs <= 6) endingSoon = true;
   if (cash != null && cost > cash) {
-    return { hint: 'over_budget', text: `Needs £${cost.toLocaleString()} — above cash` };
+    return { hint: 'over_budget', text: `Needs \u00a3${cost.toLocaleString()} \u2014 above cash` };
   }
   if (cash != null && cost > cash * 0.85) {
     return { hint: 'wait_cash', text: 'Affordable but tight on cash' };
@@ -238,9 +250,9 @@ export function computeBidHint(
     return { hint: 'ending_soon', text: 'Deadline within ~6 hours' };
   }
   if (cash != null && cost <= cash) {
-    return { hint: 'consider', text: 'Within budget — consider a bid' };
+    return { hint: 'consider', text: 'Within budget \u2014 consider a bid' };
   }
-  return { hint: 'monitor', text: 'On watch — monitor price' };
+  return { hint: 'monitor', text: 'On watch \u2014 monitor price' };
 }
 
 export function addRecommendationToWatchlist(rec: BuyRecommendation, reason?: string): WatchEntry[] {
@@ -293,7 +305,7 @@ export function refreshWatchlistFromListings(
           playerId: w.playerId,
           name: w.name,
           kind: 'affordable',
-          message: `${w.name} now within cash at £${cost.toLocaleString()}.`,
+          message: `${w.name} now within cash at \u00a3${cost.toLocaleString()}.`,
         })
       );
     }
@@ -303,7 +315,7 @@ export function refreshWatchlistFromListings(
           playerId: w.playerId,
           name: w.name,
           kind: 'price_drop',
-          message: `${w.name} price dropped (£${prevCost.toLocaleString()} → £${cost.toLocaleString()}).`,
+          message: `${w.name} price dropped (\u00a3${prevCost.toLocaleString()} \u2192 \u00a3${cost.toLocaleString()}).`,
         })
       );
     }
