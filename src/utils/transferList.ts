@@ -223,6 +223,77 @@ export function isTransferMarketHtml(html: string): boolean {
   return false;
 }
 
+/**
+ * Battrick's real transfer results: one `table.rtable` per player.
+ *   row 1: "N. <a playerdetails.asp?playerID=..>Name</a>  £1,000 (opening price)"
+ *   then:  Plays for / Age / BT Rating / Deadline in the first column, and skills as
+ *          `.skillname` label cells followed by <a class="level" data-level="N">.
+ */
+function parseBattrickResultTables(doc: Document, exclude: Set<string>): TransferListing[] {
+  const out: TransferListing[] = [];
+  const seen = new Set<string>();
+  const skillKey: Record<string, keyof TransferListing['skills']> = {
+    stamina: 'stamina',
+    batting: 'batting',
+    bowling: 'bowling',
+    'wicket keeping': 'keeping',
+    keeping: 'keeping',
+    concentration: 'concentration',
+    consistency: 'consistency',
+    fielding: 'fielding',
+  };
+  for (const table of Array.from(doc.querySelectorAll('table.rtable'))) {
+    const link = table.querySelector('a[href*="playerdetails.asp"]');
+    if (!link) continue;
+    const href = link.getAttribute('href') || '';
+    const idm = href.match(/playerID=(\d+)/i);
+    if (!idm) continue;
+    const playerId = idm[1];
+    if (seen.has(playerId) || exclude.has(playerId)) continue;
+    seen.add(playerId);
+    const name = (link.textContent || '').replace(/\s+/g, ' ').trim();
+    const text = (table.textContent || '').replace(/\s+/g, ' ');
+
+    const headCell = link.closest('td');
+    const headText = (headCell?.textContent || '').replace(/\s+/g, ' ');
+    const priceM = headText.match(/[£$€]\s*([\d,]+)\s*\(([^)]*)\)/) || headText.match(/[£$€]\s*([\d,]+)/);
+    const price = priceM ? parseMoney(priceM[1]) : undefined;
+    const priceLabel = (priceM && priceM[2] ? priceM[2] : '').toLowerCase();
+    const isBid = /bid/.test(priceLabel);
+
+    const age = parseInt((text.match(/Age:\s*(\d{1,2})/i) || [])[1] || '', 10);
+    const btr = parseMoney((text.match(/BT\s*Rating:\s*([\d,]+)/i) || [])[1]);
+    const deadline = (text.match(/Deadline:\s*(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2})/i) || [])[1];
+
+    const skills: TransferListing['skills'] = {};
+    table.querySelectorAll('td.skillname').forEach((lab) => {
+      const key = skillKey[(lab.textContent || '').replace(/[:\s]+$/, '').trim().toLowerCase()];
+      const lvl = parseInt(lab.nextElementSibling?.querySelector('a[data-level]')?.getAttribute('data-level') || '', 10);
+      if (key && Number.isFinite(lvl)) skills[key] = lvl;
+    });
+
+    let role: string | undefined;
+    if ((skills.keeping || 0) >= 6 && (skills.keeping || 0) >= (skills.batting || 0)) role = 'Keeper';
+    else if ((skills.bowling || 0) > (skills.batting || 0)) role = 'Bowler';
+    else if ((skills.batting || 0) > 0) role = 'Batter';
+
+    out.push({
+      playerId,
+      name,
+      age: Number.isFinite(age) && age >= 15 && age <= 45 ? age : undefined,
+      role,
+      askingPrice: isBid ? undefined : price,
+      currentBid: isBid ? price : undefined,
+      deadline,
+      btRating: btr,
+      skills,
+      playerUrl: 'https://www.battrick.org/nl/' + href.replace(/^\//, ''),
+      snippet: text.slice(0, 220),
+    });
+  }
+  return out;
+}
+
 export function parseTransferList(
   html: string,
   opts?: { excludePlayerIds?: Iterable<string> }
@@ -247,6 +318,9 @@ export function parseTransferList(
     if (typeof DOMParser !== 'undefined') {
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
+      // Real Battrick results layout first; fall back to the generic link scan below.
+      const real = parseBattrickResultTables(doc, exclude);
+      if (real.length > 0) return real;
       const links = Array.from(
         doc.querySelectorAll(
           'a[href*="playerdetails.asp"], a[href*="player.asp"], a[href*="playerid="], a[href*="PlayerID="], a[href*="player_id="]'

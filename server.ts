@@ -216,23 +216,23 @@ async function startServer() {
         sm[2].match(/<option[^>]*value=["']([^"']*)["']/i);
       params.set(selName, opt ? opt[1] : "");
     }
+    // Battrick's transfer form takes up to four skill filters as numbered slots:
+    // SkillType{n} (id) + SkillMin{n} (level 1-20) + SkillMax{n}. Ids from the real form:
+    const SKILL_IDS: Record<string, number> = {
+      stamina: 1, batting: 2, bowling: 3, seam: 3, spin: 3, consistency: 4,
+      concentration: 5, fielding: 6, keeping: 7, wicketkeeping: 7, experience: 8,
+    };
+    let slot = 1;
+    const usedIds = new Set<number>();
     for (const [skill, min] of Object.entries(skillMins || {})) {
-      if (min == null || Number(min) <= 0) continue;
-      const sk = String(skill).toLowerCase();
-      for (const key of [...params.keys()]) {
-        const k = key.toLowerCase();
-        if (
-          (sk === "batting" && /bat/.test(k) && /min|from|low/.test(k)) ||
-          ((sk === "seam" || sk === "spin" || sk === "bowling") && /bowl|seam|spin/.test(k) && /min|from|low/.test(k)) ||
-          (sk === "keeping" && /keep|wk|wicket/.test(k) && /min|from|low/.test(k)) ||
-          (sk === "fielding" && /field/.test(k) && /min|from|low/.test(k)) ||
-          (sk === "stamina" && /stam/.test(k) && /min|from|low/.test(k))
-        ) {
-          params.set(key, String(min));
-        }
-      }
+      const id = SKILL_IDS[String(skill).toLowerCase().replace(/[\s_-]/g, "")];
+      const level = Math.max(0, Math.min(20, Math.round(Number(min))));
+      if (!id || usedIds.has(id) || !level || slot > 4) continue;
+      usedIds.add(id);
+      params.set(`SkillType${slot}`, String(id));
+      params.set(`SkillMin${slot}`, String(level));
+      slot++;
     }
-    if (![...params.keys()].some((k) => /search|find|submit/i.test(k))) params.set("search", "Search");
     return params;
   }
 
@@ -368,6 +368,26 @@ async function startServer() {
             transferDebug.search = { method: useGet ? "GET" : "POST", status: attempt.status, length: (attempt.html || "").length, ...after };
             if (attempt.success && attempt.html && attempt.html.length > 500) pageResult = attempt;
           }
+
+          // Results are paginated (25 per page, "Next" -> transferlist.asp?startP=25). Pull the
+          // remaining pages so the scan sees the whole market, not just the first 25 players.
+          const maxPages = Math.min(10, Math.max(1, Number(req.body.maxPages) || 8));
+          let pagesFetched = 1;
+          let current = pageResult.html || "";
+          const found = (current.match(/(\d[\d,]*)\s+Players?\s+found/i) || [])[1];
+          const extra: string[] = [];
+          while (pagesFetched < maxPages) {
+            const nextHref = (current.match(/href=["'](transferlist\.asp\?startP=\d+[^"']*)["'][^>]*class=["']next["']/i) ||
+              current.match(/class=["']next["'][^>]*href=["'](transferlist\.asp\?startP=\d+[^"']*)["']/i) || [])[1];
+            if (!nextHref) break;
+            const nextPage = await fetchPage(active.cookieMap, new URL(nextHref.replace(/&amp;/g, "&"), targetUrl).toString());
+            if (!nextPage.success || !nextPage.html) break;
+            current = nextPage.html;
+            pagesFetched++;
+            (current.match(/<table[^>]*class=["']rtable["'][\s\S]*?<\/table>/gi) || []).forEach((t) => extra.push(t));
+          }
+          if (extra.length) pageResult = { ...pageResult, html: (pageResult.html || "") + "\n" + extra.join("\n") };
+          transferDebug.paging = { found: found ? Number(found.replace(/,/g, "")) : null, pagesFetched };
         } catch (e: any) {
           transferDebug.error = String(e?.message || e);
           console.warn("Transfer auto-search failed", e?.message || e);
