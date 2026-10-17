@@ -15,7 +15,8 @@ export type AppTab =
   | 'sync'
   | 'rules'
   | 'admin'
-  | 'player-details';
+  | 'player-details'
+  | 'watch';
 
 export type SquadSubTab = 'roster' | 'training' | 'trading' | 'estimator';
 
@@ -51,6 +52,7 @@ const VALID_TABS = new Set<string>([
   'rules',
   'admin',
   'player-details',
+  'watch',
 ]);
 
 export function parseHash(hash?: string): RouteState {
@@ -75,7 +77,6 @@ export function parseHash(hash?: string): RouteState {
     if (sub === 'roster' || sub === 'training' || sub === 'trading' || sub === 'estimator') {
       state.squadSub = sub;
     }
-    // #/squad/estimator/middleOrder — focus that rating gap
     if (sub === 'estimator' && parts[2]) {
       state.ratingGap = parts[2];
     }
