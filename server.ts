@@ -37,7 +37,7 @@ async function startServer() {
   setInterval(() => {
     const now = Date.now();
     for (const [k, s] of sessions.entries()) {
-      if (now - s.timestamp > 15 * 60 * 1000) sessions.delete(k);
+      if (now - s.timestamp > 60 * 60 * 1000) sessions.delete(k);
     }
   }, 60000);
 

@@ -43,40 +43,57 @@ export default function TransferWatchPage() {
     };
   }, [reload]);
 
-  const fetchPanel = async (playerId: string) => {
-    await requireAuth();
-    const res = await fetch('/api/sync-battrick-step', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        pageName: 'playerdetails.asp',
-        pageUrl: `https://www.battrick.org/nl/playerdetails.asp?playerID=${playerId}`,
-        username,
-        password,
-        sessionToken: localStorage.getItem('bt_sync_session') || '',
-      }),
-    });
-    const data = await res.json();
+  // One place for every Battrick call: checks creds, times out after 40s, and if the server has
+  // forgotten our session (restart, 15-min idle expiry) retries once with a fresh login.
+  const callBattrick = async (path: string, payload: Record<string, unknown>) => {
+    if (!password || !username) {
+      requireAuth();
+      throw new Error('Battrick session expired — sign in again (bot paused until you do)');
+    }
+    const attempt = async (token: string) => {
+      const ctl = new AbortController();
+      const timer = window.setTimeout(() => ctl.abort(), 40_000);
+      try {
+        const res = await fetch(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, username, password, sessionToken: token }),
+          signal: ctl.signal,
+        });
+        let data: any = {};
+        try { data = await res.json(); } catch { data = { error: `Server returned HTTP ${res.status}` }; }
+        return { res, data };
+      } catch (e: any) {
+        if (e?.name === 'AbortError') throw new Error('Battrick took too long to answer (timed out) — will retry next check');
+        throw e;
+      } finally {
+        window.clearTimeout(timer);
+      }
+    };
+    let { res, data } = await attempt(localStorage.getItem('bt_sync_session') || '');
+    if (res.status === 401 || data?.isAuthFailure) {
+      try { localStorage.removeItem('bt_sync_session'); } catch {}
+      ({ res, data } = await attempt(''));
+      if (res.status === 401 || data?.isAuthFailure) {
+        requireAuth();
+        throw new Error(`${data?.error || 'Battrick login failed'} — re-enter your password (bot paused)`);
+      }
+    }
     if (data.sessionToken) localStorage.setItem('bt_sync_session', data.sessionToken);
+    return data;
+  };
+
+  const fetchPanel = async (playerId: string) => {
+    const data = await callBattrick('/api/sync-battrick-step', {
+      pageName: 'playerdetails.asp',
+      pageUrl: `https://www.battrick.org/nl/playerdetails.asp?playerID=${playerId}`,
+    });
     if (!data.success || !data.html) throw new Error(data.error || 'Could not load player page');
     return parseTransferPanelFromHtml(data.html);
   };
 
   const placeBid = async (playerId: string, bidValue: number) => {
-    await requireAuth();
-    const res = await fetch('/api/battrick-place-bid', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        playerId,
-        bidValue,
-        username,
-        password,
-        sessionToken: localStorage.getItem('bt_sync_session') || '',
-      }),
-    });
-    const data = await res.json();
-    if (data.sessionToken) localStorage.setItem('bt_sync_session', data.sessionToken);
+    const data = await callBattrick('/api/battrick-place-bid', { playerId, bidValue });
     if (!data.success) throw new Error(data.error || 'Bid failed');
     return data;
   };
