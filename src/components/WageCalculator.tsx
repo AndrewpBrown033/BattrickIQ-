@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { getBattrickWeekIndex } from '../utils/history';
 import { BattrickPlayer, ClubFinances, BattrickGame, StadiumConfig, DiaryEntry, ParsedBattrickMatch } from '../types';
 import { buildFinancialProjections } from '../parser';
 import { getStoredMatchesList, syncMatchesFromFirestore } from '../utils/matchArchive';
@@ -823,25 +824,52 @@ export default function WageCalculator() {
   const currentStaffCount = currentOtherStaffCount + currentPR + currentFA;
   const currentStaffWages = currentStaffCount * 1250;
 
+  // Real calendar weeks: Battrick bills wages, staff, maintenance and sponsors ONCE PER WEEK, but
+  // a week can hold several fixtures (and some weeks none). Each row here is a fixture, so
+  // fixed costs/income are charged for the number of real weeks elapsed since the previous row,
+  // not once per fixture. Without fixture dates every row counts as one week (old behaviour).
+  const weeksChargedFor = (weekNum: number, prevIdx: number | null) => {
+    const f = upcomingFixtures[weekNum - 1];
+    const idx = getBattrickWeekIndex(f?.date);
+    if (idx == null) return { idx: prevIdx == null ? null : prevIdx + 1, weeks: 1 };
+    if (prevIdx == null) return { idx, weeks: 1 };
+    return { idx, weeks: Math.max(0, idx - prevIdx) };
+  };
+
+  // Real weekly ground maintenance from the synced finances ledger when we have it;
+  // the per-seat estimate is only a fallback.
+  const realMaint = finances?.groundMaintenance && finances.groundMaintenance > 0 ? finances.groundMaintenance : weeklyMaintCost;
+  // Interest: use the rate/cap derived from real billing history when available.
+  const interestFor = (cash: number, fa: number) =>
+    cash < 0 && finances?.overdraftRate && finances.overdraftRate > 0
+      ? -Math.floor(Math.abs(cash) * finances.overdraftRate) // overdraft interest is paid, not earned
+      : finances?.interestRate && finances.interestRate > 0
+      ? Math.floor(Math.max(0, Math.min(finances.interestCap ?? 10000000, cash)) * finances.interestRate)
+      : Math.floor(Math.max(0, Math.min(10000000, cash)) * (0.0005 + 0.0005 * fa));
+
   // 1. Calculate main simulated ledger week-by-week
   let runningCash = cashVal;
+  let prevWeekIdx: number | null = null;
   const projectionData = Array.from({ length: 16 }, (_, idx) => {
     const weekNum = idx + 1;
+    const wk = weeksChargedFor(weekNum, prevWeekIdx);
+    prevWeekIdx = wk.idx;
+    const wc = wk.weeks;
     const isHome = customVenues[weekNum] === 'Home';
     const matchType = customTypes[weekNum] || 'One Day';
     const opponent = customOpponents[weekNum] || `Opponent ${weekNum}`;
     
     // Revenue parameters (Sponsors and interest update dynamically based on staff and reserves)
-    const sponsors = simSponsorsIncome;
+    const sponsors = simSponsorsIncome * wc;
     const gate = calculateGateReceipts(isHome, matchType, weekNum);
     const gateSource = getGateReceiptsSource(isHome, weekNum);
-    const interest = Math.floor(Math.max(0, Math.min(10000000, runningCash)) * (0.0005 + 0.0005 * simFA));
+    const interest = interestFor(runningCash, simFA) * wc;
     const totalRev = sponsors + gate + interest;
 
     // Expense parameters
-    const players = playerWagesVal;
-    const staff = simStaffWages;
-    const maintenance = weeklyMaintCost;
+    const players = playerWagesVal * wc;
+    const staff = simStaffWages * wc;
+    const maintenance = realMaint * wc;
     const totalExp = players + staff + maintenance;
 
     const net = totalRev - totalExp;
@@ -851,6 +879,7 @@ export default function WageCalculator() {
 
     return {
       week: weekNum,
+      weeksCharged: wc,
       isHome,
       opponent,
       type: matchType,
@@ -872,19 +901,23 @@ export default function WageCalculator() {
 
   // 2. Calculate comparison baseline (with current non-simulated staff counts)
   let runningCashCurrent = cashVal;
+  let prevWeekIdxCur: number | null = null;
   const currentProjectionData = Array.from({ length: 16 }, (_, idx) => {
     const weekNum = idx + 1;
+    const wk = weeksChargedFor(weekNum, prevWeekIdxCur);
+    prevWeekIdxCur = wk.idx;
+    const wc = wk.weeks;
     const isHome = customVenues[weekNum] === 'Home';
     const matchType = customTypes[weekNum] || 'One Day';
     
-    const sponsors = currentSponsorsIncome;
+    const sponsors = currentSponsorsIncome * wc;
     const gate = calculateGateReceipts(isHome, matchType, weekNum);
-    const interest = Math.floor(Math.max(0, Math.min(10000000, runningCashCurrent)) * (0.0005 + 0.0005 * currentFA));
+    const interest = interestFor(runningCashCurrent, currentFA) * wc;
     const totalRev = sponsors + gate + interest;
 
-    const players = playerWagesVal;
-    const staff = currentStaffWages;
-    const maintenance = weeklyMaintCost;
+    const players = playerWagesVal * wc;
+    const staff = currentStaffWages * wc;
+    const maintenance = realMaint * wc;
     const totalExp = players + staff + maintenance;
 
     const net = totalRev - totalExp;
@@ -902,7 +935,8 @@ export default function WageCalculator() {
   const projectedEndingCash = ledgerData[ledgerData.length - 1]?.projectedCash || cashVal;
   const homeGamesCount = ledgerData.filter((r) => r.isHome).length;
   const awayGamesCount = ledgerData.filter((r) => !r.isHome).length;
-  const avgWeeklyCashflow = totalSeasonNet / 16;
+  const forecastWeeks = Math.max(1, ledgerData.reduce((acc, r: any) => acc + (r.weeksCharged ?? 1), 0));
+  const avgWeeklyCashflow = totalSeasonNet / forecastWeeks;
   // Real average home-game gate receipts, derived from the same real/
   // estimated-hierarchy ledger shown everywhere else on this page (diary data
   // when available, Jarvis-derived attendance otherwise) - this is the one
@@ -1128,7 +1162,7 @@ export default function WageCalculator() {
           {(finances.seasonClosingBalance ?? 0) < 0 && (
             <div className="mt-3 flex items-start gap-2 text-xs text-rose-700 bg-rose-50 border border-rose-100 rounded-lg p-2.5">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>Your club is currently overdrawn. The 16-week forecast below projects when this recovers based on upcoming fixtures, wages, and maintenance.</span>
+              <span>Your club is currently overdrawn. The forecast below projects when this recovers based on upcoming fixtures, wages, and maintenance.</span>
             </div>
           )}
         </div>

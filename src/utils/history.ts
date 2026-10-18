@@ -94,6 +94,16 @@ export function getNext7DaysDateRange(): { start: Date; end: Date; label: string
   return { start, end, label };
 }
 
+/** Absolute Battrick week number for a dd/mm/yyyy date (weeks tick over on the same anchor the app uses everywhere). */
+export function getBattrickWeekIndex(dateStr?: string): number | null {
+  const m = (dateStr || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!m) return null;
+  const t = Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  const anchor = Date.UTC(2026, 6, 27);
+  const days = Math.floor((t + 12 * 3600 * 1000 - anchor) / 86_400_000);
+  return Math.floor(days / 7);
+}
+
 export function getBattrickDateForString(dateStr: string): { season: number; week: number } | null {
   if (!dateStr) return null;
   let parsedDate = NaN;
