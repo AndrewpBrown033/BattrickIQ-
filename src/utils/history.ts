@@ -120,106 +120,24 @@ export function getBattrickDateForString(dateStr: string): { season: number; wee
   return { season, week };
 }
 
-// Generate beautiful, realistic, historical weekly logs for a player going back 15 weeks
+// Start a player's history with ONE real entry: what we know right now. Earlier weeks are
+// unknown, so we no longer invent them (the old version fabricated 16 weeks of skills, BTR,
+// form and "Training Pop" notes, which polluted pop detection and reports). Real history
+// accumulates as you sync: mergePlayerAndTrackHistory appends an entry whenever something changes.
 export function generateRealisticHistory(player: BattrickPlayer): PlayerHistoryEntry[] {
-  const history: PlayerHistoryEntry[] = [];
-  
-  const battrickDate = getCurrentBattrickDate();
-  const currentSeason = battrickDate.season;
-  const currentWeek = battrickDate.week;
-  
-  // Copy current skills to start reverse simulation
-  const tempSkills = { ...player.skills };
-  let currentBtr = player.btRating;
-  let currentWage = player.wage;
-  
-  // Decide which skill to simulate pops for based on player role and nets
-  const primarySkill = player.role === 'Batter' ? 'batting' : 
-                       player.role === 'Bowler' ? 'bowling' : 
-                       player.role === 'Keeper' ? 'keeping' : 'batting';
-  
-  // Secondary skill
-  const secondarySkill = primarySkill === 'batting' ? 'concentration' : 'consistency';
-  
-  // Work backwards for 15 weeks
-  for (let step = 0; step < 16; step++) {
-    // Calculate season and week
-    let w = currentWeek - step;
-    let s = currentSeason;
-    if (w <= 0) {
-      w = 16 + w; // Battrick has 16 weeks per season
-      s = currentSeason - 1;
-    }
-    
-    // Simulate training pops working backward
-    let note: string | undefined = undefined;
-    
-    // 17-21 year olds pop fast (every 4-6 weeks), 22-25 pop slower (7-10 weeks), older pop rarely
-    const popRate = player.age <= 21 ? 5 : player.age <= 25 ? 8 : 12;
-    
-    // Check for simulated primary skill pop
-    if (step > 0 && step % popRate === 0) {
-      const key = primarySkill as keyof typeof tempSkills;
-      if (tempSkills[key] > 2) {
-        tempSkills[key] = tempSkills[key] - 1;
-        note = `Training Pop: ${key.toUpperCase()} upgraded to ${getSkillLabel(key, tempSkills[key] + 1)}!`;
-      }
-    }
-    
-    // Check for simulated stamina / fielding pop
-    if (step > 0 && step % (popRate * 2) === 2) {
-      const key = Math.random() > 0.5 ? 'stamina' : 'fielding';
-      if (tempSkills[key] > 2) {
-        tempSkills[key] = tempSkills[key] - 1;
-        note = `Training Pop: ${key.toUpperCase()} upgraded to ${getSkillLabel(key, tempSkills[key] + 1)}!`;
-      }
-    }
-    
-    // Check for simulated secondary skill pop
-    if (step > 0 && step % (popRate * 2) === 5) {
-      const key = secondarySkill as keyof typeof tempSkills;
-      if (tempSkills[key] > 2) {
-        tempSkills[key] = tempSkills[key] - 1;
-        note = `Training Pop: ${key.toUpperCase()} upgraded to ${getSkillLabel(key, tempSkills[key] + 1)}!`;
-      }
-    }
-    
-    // Wage resets at season rollover (Week 1 of each season)
-    if (s < currentSeason && w === 16 && step > 0) {
-      // Younger players' wage grows faster, older players' stays constant or decays
-      const growthFactor = player.age <= 22 ? 1.15 : player.age <= 27 ? 1.05 : 0.95;
-      currentWage = Math.round((currentWage / growthFactor) / 100) * 100;
-    }
-    
-    // Btr changes slightly every week, with a pop on skill upgrades
-    let weeklyBtrChange = Math.round((Math.random() * 200 + 100)); // standard weekly growth
-    if (note) {
-      weeklyBtrChange += Math.round(1500 + Math.random() * 800); // bonus BTR on pops
-    }
-    
-    if (step > 0) {
-      currentBtr = Math.max(1000, currentBtr - weeklyBtrChange);
-    }
-    
-    // Form and fitness fluctuate week by week
-    const simForm = Math.max(3, Math.min(10, Math.round(player.form + (Math.sin(step) * 2))));
-    const simFitness = Math.max(4, Math.min(10, Math.round(player.fitness + (Math.cos(step) * 1.5))));
-    
-    // Save record
-    history.push({
-      season: s,
-      week: w,
-      btRating: currentBtr,
-      wage: currentWage,
-      form: simForm,
-      fitness: simFitness,
-      skills: { ...tempSkills },
-      note: step === 0 ? 'Current Status' : note
-    });
-  }
-  
-  // Return in chronological order (oldest to newest)
-  return history.reverse();
+  const { season, week } = getCurrentBattrickDate();
+  return [
+    {
+      season,
+      week,
+      btRating: player.btRating,
+      wage: player.wage,
+      form: player.form,
+      fitness: player.fitness,
+      skills: { ...player.skills },
+      note: 'Current Status',
+    },
+  ];
 }
 
 // Check and update player history when a new paste import occurs
@@ -365,4 +283,27 @@ export function getWeeklyChanges(player: BattrickPlayer): WeeklyChanges | null {
     isPositive,
     isNegative,
   };
+}
+
+/**
+ * One-time cleanup: earlier versions invented 16 weeks of history (fake skill pops, BTR, form).
+ * Keep only each player's most recent entry so pop detection and reports use real data only.
+ */
+export function resetSyntheticHistoryOnce(): void {
+  try {
+    if (localStorage.getItem('bt_history_reset_v1')) return;
+    const raw = localStorage.getItem('bt_squad');
+    if (raw) {
+      const squad = JSON.parse(raw);
+      if (Array.isArray(squad)) {
+        const cleaned = squad.map((p: any) =>
+          Array.isArray(p?.history) && p.history.length > 1 ? { ...p, history: p.history.slice(-1) } : p
+        );
+        localStorage.setItem('bt_squad', JSON.stringify(cleaned));
+      }
+    }
+    localStorage.setItem('bt_history_reset_v1', '1');
+  } catch {
+    // best effort
+  }
 }

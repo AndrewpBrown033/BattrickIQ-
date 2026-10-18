@@ -194,7 +194,7 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
     
     const isSquadPop = (chosenSkillKey === 'stamina' && squadTrainingStamina && plannerNets.stamina === 0) ||
                        (chosenSkillKey === 'fielding' && squadTrainingFielding && plannerNets.fielding === 0);
-    const btrGain = Math.round(1200 + Math.random() * 800 + (plannerNets[chosenSkillKey] || (isSquadPop ? 1 : 0)) * 400);
+    const btrGain = Math.round(1600 + (plannerNets[chosenSkillKey] || (isSquadPop ? 1 : 0)) * 400);
     const nextBtr = player.btRating + btrGain;
     
     let nextWage = player.wage;
@@ -237,7 +237,7 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
       nextSeason += 1;
     }
     
-    const btrGain = Math.round(150 + Math.random() * 250);
+    const btrGain = 275;
     const nextBtr = player.btRating + btrGain;
     
     let nextWage = player.wage;

@@ -4,6 +4,9 @@ import App from './App.tsx';
 import { BattrickAuthProvider } from './lib/battrickAuthContext';
 import './index.css';
 import './fixtureOpponentIdNormalize';
+import { resetSyntheticHistoryOnce } from './utils/history';
+
+resetSyntheticHistoryOnce();
 
 // Intercept localStorage writes/removes to track local modifications and avoid race conditions with incoming Firestore snapshots
 const originalSetItem = localStorage.setItem;
