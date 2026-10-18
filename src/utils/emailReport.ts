@@ -1,12 +1,8 @@
 /**
  * Email report: games played, training pops, and transfer purchases/sales.
  *
- * Sending uses Firebase's "Trigger Email from Firestore" extension: we add a document to the
- * `mail` collection and the extension delivers it through the SMTP/SendGrid account configured
- * when the extension was installed. Nothing is sent until that extension is installed.
+ * Sent by the server through Mailgun's API (POST /api/send-report-email).
  */
-import { addDoc, collection } from 'firebase/firestore';
-import { db } from '../lib/firebase';
 import { getWeeklyChanges } from './history';
 
 const REPORT_EMAIL_KEY = 'bt_report_email';
@@ -111,18 +107,25 @@ export function renderReport(r: ReportData): { subject: string; text: string; ht
   return { subject, text, html };
 }
 
-/** Queue the report for delivery by the Firestore "Trigger Email" extension. Throws with a readable message. */
+/** Send the report through the server's Mailgun route. Throws with a readable message. */
 export async function queueReportEmail(to: string, days = 7): Promise<ReportData> {
   const addr = to.trim();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) throw new Error('Enter a valid email address');
-  if (!db) throw new Error('Cloud database is not available');
   const data = buildReportData(days);
   const { subject, text, html } = renderReport(data);
+  let res: Response;
   try {
-    await addDoc(collection(db, 'mail'), { to: [addr], message: { subject, text, html } });
-  } catch (e: any) {
-    throw new Error(`Could not queue the email: ${e?.code || e?.message || e}`);
+    res = await fetch('/api/send-report-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: addr, subject, text, html }),
+    });
+  } catch {
+    throw new Error('Could not reach the server');
   }
+  let body: any = {};
+  try { body = await res.json(); } catch {}
+  if (!res.ok || !body.success) throw new Error(body.error || `Email failed (HTTP ${res.status})`);
   saveReportEmail(addr);
   return data;
 }

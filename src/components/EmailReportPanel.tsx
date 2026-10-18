@@ -20,10 +20,10 @@ export default function EmailReportPanel() {
       const d = await queueReportEmail(email, days);
       setMsg({
         ok: true,
-        text: `Queued: ${d.games.length} game(s), ${d.pops.length} pop(s), ${d.purchases.length} purchase(s). It sends once the Firebase "Trigger Email" extension picks it up (usually under a minute).`,
+        text: `Sent: ${d.games.length} game(s), ${d.pops.length} pop(s), ${d.purchases.length} purchase(s). Check your inbox (and spam) in a minute.`,
       });
     } catch (e: any) {
-      setMsg({ ok: false, text: e?.message || 'Could not queue the email' });
+      setMsg({ ok: false, text: e?.message || 'Could not send the email' });
     } finally {
       setBusy(false);
     }
@@ -36,8 +36,7 @@ export default function EmailReportPanel() {
         <h3 className="text-sm font-black text-slate-900">Email report</h3>
       </div>
       <p className="text-[11px] text-slate-600 mb-3">
-        Games played, training pops and purchases/sales from your last sync. Needs the Firebase
-        "Trigger Email from Firestore" extension to be installed on your project.
+        Games played, training pops and purchases/sales from your last sync, sent through Mailgun.
       </p>
       <div className="flex flex-wrap gap-2 items-end">
         <label className="text-[10px] font-semibold text-slate-600 flex flex-col gap-0.5 flex-1 min-w-[200px]">

@@ -549,6 +549,71 @@ async function startServer() {
     }
   });
 
+  // Email report via Mailgun's HTTP API. Config comes from Cloud Run environment variables:
+  //   MAILGUN_API_KEY, MAILGUN_DOMAIN, MAILGUN_FROM (optional), MAILGUN_REGION ("eu" for EU accounts),
+  //   REPORT_RECIPIENTS (comma list of addresses allowed to receive reports; stops this open endpoint being used as a mail relay).
+  const reportSends: number[] = [];
+  app.post("/api/send-report-email", async (req, res) => {
+    try {
+      const apiKey = String(process.env.MAILGUN_API_KEY || "").trim();
+      const domain = String(process.env.MAILGUN_DOMAIN || "").trim();
+      if (!apiKey || !domain) {
+        res.status(503).json({ success: false, error: "Mailgun is not configured on the server (set MAILGUN_API_KEY and MAILGUN_DOMAIN on the Cloud Run service)." });
+        return;
+      }
+      const { to, subject, text, html } = req.body || {};
+      const addr = String(to || "").trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) {
+        res.status(400).json({ success: false, error: "Invalid recipient address" });
+        return;
+      }
+      const allowed = String(process.env.REPORT_RECIPIENTS || "andrewpbrown33@gmail.com")
+        .split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+      if (!allowed.includes(addr)) {
+        res.status(403).json({ success: false, error: `${addr} is not an allowed report recipient. Add it to REPORT_RECIPIENTS on the server.` });
+        return;
+      }
+      const subj = String(subject || "").slice(0, 200);
+      if (!/^BattrickIQ report/.test(subj) || !(text || html)) {
+        res.status(400).json({ success: false, error: "Invalid report payload" });
+        return;
+      }
+      const nowMs = Date.now();
+      while (reportSends.length && nowMs - reportSends[0] > 3_600_000) reportSends.shift();
+      if (reportSends.length >= 10) {
+        res.status(429).json({ success: false, error: "Too many report emails this hour" });
+        return;
+      }
+      reportSends.push(nowMs);
+
+      const base = String(process.env.MAILGUN_REGION || "").toLowerCase() === "eu" ? "https://api.eu.mailgun.net" : "https://api.mailgun.net";
+      const form = new URLSearchParams();
+      form.set("from", String(process.env.MAILGUN_FROM || `BattrickIQ <reports@${domain}>`));
+      form.set("to", addr);
+      form.set("subject", subj);
+      if (text) form.set("text", String(text).slice(0, 100_000));
+      if (html) form.set("html", String(html).slice(0, 200_000));
+      const mg = await fetch(`${base}/v3/${encodeURIComponent(domain)}/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: "Basic " + Buffer.from(`api:${apiKey}`).toString("base64"),
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: form.toString(),
+        signal: AbortSignal.timeout(20000),
+      });
+      const body: any = await mg.json().catch(() => ({}));
+      if (!mg.ok) {
+        res.status(502).json({ success: false, error: `Mailgun said: ${body?.message || `HTTP ${mg.status}`}` });
+        return;
+      }
+      res.json({ success: true, id: body?.id });
+    } catch (err: any) {
+      console.error("send-report-email error", err);
+      if (!res.headersSent) res.status(500).json({ success: false, error: err?.message || "Server error" });
+    }
+  });
+
   const bookmarkletCache = new Map<string, { url: string; html: string; timestamp: number }>();
   app.post("/api/sync-bookmarklet", (req, res) => {
     const code = String(req.query.code || "").toUpperCase();
