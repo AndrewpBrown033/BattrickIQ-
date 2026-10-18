@@ -1,3 +1,4 @@
+import { getPlayerGrade } from '../utils/playerGrade';
 import React, { useState, useEffect } from 'react';
 import { BattrickPlayer, SKILL_LEVELS, STAMINA_LEVELS, getSkillLabel } from '../types';
 import { 
@@ -271,7 +272,8 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
     updatePlayerAndSave({ ...player, role: newRole, roleManuallySet: true });
   };
 
-  const pScore = getPlayerWeightedScore(player);
+  const grade = getPlayerGrade(player);
+  const pScore = grade.selection;
   const trade = getTradeAction(player);
   const changes = getWeeklyChanges(player);
 
@@ -435,7 +437,13 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
             Rating: {player.btRating.toLocaleString()} BTR
           </span>
           <span className="px-2.5 py-1 bg-emerald-50 border border-emerald-100 text-emerald-700 text-[11px] font-bold rounded-lg font-mono shadow-sm">
-            IQ Index: {pScore}
+            Quality: {grade.quality}
+          </span>
+          <span
+            title={`Quality adjusted for ${grade.formUsed.kind} form (${grade.formUsed.value}/10) and fitness (${grade.fitness}/10). Estimate - Battrick does not publish its formula.`}
+            className="px-2.5 py-1 bg-indigo-50 border border-indigo-100 text-indigo-700 text-[11px] font-bold rounded-lg font-mono shadow-sm"
+          >
+            Selection: {pScore}
           </span>
           <div className="relative inline-flex items-center">
             <select

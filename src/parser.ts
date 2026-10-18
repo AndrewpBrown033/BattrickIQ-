@@ -1,4 +1,5 @@
 import { parseFinanceTransactions, deriveInterestModel } from './utils/financeHistory';
+import { gradePlayerSelection } from './utils/playerGrade';
 import { 
   BattrickPlayer, 
   ClubFinances, 
@@ -1936,30 +1937,8 @@ export function getFieldingPopWeeks(playerAge: number, netsCount: number = 1, is
 
 // Weighted squad player score calculation matching popup.js criteria
 export function getPlayerWeightedScore(player: BattrickPlayer): number {
-  const { batting, bowling, keeping, stamina, experience, concentration, consistency } = player.skills;
-
-  let score = 0;
-  switch (player.role) {
-    case 'Batter':
-      score = batting * 1.0 + concentration * 0.35 + consistency * 0.25 + stamina * 0.15 + experience * 0.15;
-      break;
-    case 'Bowler':
-      score = bowling * 1.0 + consistency * 0.35 + concentration * 0.15 + stamina * 0.20 + experience * 0.15;
-      break;
-    case 'Keeper':
-      score = keeping * 1.0 + batting * 0.40 + concentration * 0.20 + stamina * 0.15 + experience * 0.15;
-      break;
-    case 'All-rounder':
-      score = batting * 0.70 + bowling * 0.70 + consistency * 0.20 + concentration * 0.20 + stamina * 0.15 + experience * 0.15;
-      break;
-    default:
-      score = Math.max(batting, bowling, keeping) * 1.0 + stamina * 0.20 + experience * 0.10;
-  }
-
-  const formMultiplier = 0.7 + (player.form * 0.05);
-  const fitnessMultiplier = 0.7 + (player.fitness * 0.05);
-
-  return parseFloat((score * formMultiplier * fitnessMultiplier).toFixed(1));
+  // Selection score (role-aware, split batting/bowling form, fitness). See utils/playerGrade.ts.
+  return gradePlayerSelection(player);
 }
 
 // Battrick squad trade/planning advice formulas (from HOLD/DEVELOP/TRADE decisions)

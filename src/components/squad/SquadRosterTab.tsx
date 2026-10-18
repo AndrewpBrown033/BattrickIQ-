@@ -1,3 +1,4 @@
+import { getPlayerGrade } from '../../utils/playerGrade';
 import React from 'react';
 import type { BattrickPlayer } from '../../types';
 import { getSkillLabel } from '../../types';
@@ -67,7 +68,7 @@ export default function SquadRosterTab({
           </select>
           <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}
             className="text-xs border border-slate-200 rounded-lg px-2 py-1.5">
-            <option value="score">IQ score</option>
+            <option value="score">Selection score</option>
             <option value="btRating">BTR</option>
             <option value="wage">Wage</option>
             <option value="age">Age</option>
@@ -88,7 +89,8 @@ export default function SquadRosterTab({
       ) : (
         <div className={viewMode === 'cards' ? 'grid grid-cols-1 md:grid-cols-2 gap-3' : 'divide-y border border-slate-200 rounded-xl'}>
           {filtered.map((p) => {
-            const score = getPlayerWeightedScore(p);
+            const gradeInfo = getPlayerGrade(p);
+            const score = gradeInfo.selection;
             const changes = getWeeklyChanges(p);
             const hasPop = !!(changes?.skillPops && changes.skillPops.length > 0);
             const trade = getTradeAction(p);
@@ -119,7 +121,9 @@ export default function SquadRosterTab({
                       trade.action === 'KEEP' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
                       'bg-amber-50 text-amber-800 border-amber-200'
                     }`}>{trade.action}</span>
-                    <div className="font-mono font-black text-indigo-700 text-sm">IQ {score}</div>
+                    <div className="font-mono font-black text-indigo-700 text-sm" title={`Quality ${gradeInfo.quality} (skills only) · Selection ${score} (adjusted for ${gradeInfo.formUsed.kind} form ${gradeInfo.formUsed.value}/10 and fitness ${gradeInfo.fitness}/10)`}>
+                      Sel {score} <span className="text-slate-400 font-semibold text-[10px]">Q {gradeInfo.quality}</span>
+                    </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-5 gap-1 mt-2 pt-2 border-t border-slate-100 text-center font-mono">

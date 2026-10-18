@@ -1,3 +1,4 @@
+import { battingForm, bowlingForm } from '../utils/playerGrade';
 import React, { useState, useEffect } from 'react';
 import { SKILL_LEVELS, LineupPlayer, BattrickPlayer } from '../types';
 import { Users, Shield, Copy, Check, Info, ChevronDown, ChevronUp, RefreshCw, UserCheck, Sparkles } from 'lucide-react';
@@ -137,6 +138,8 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
         concentration: p.skills.concentration,
         consistency: p.skills.consistency,
         form: p.form,
+        batForm: battingForm(p),
+        bowlForm: bowlingForm(p),
         fitness: p.fitness,
         bowlingType: p.bowlingType,
         order: i + 1,
@@ -161,6 +164,8 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
       concentration: b1.skills.concentration,
       consistency: b1.skills.consistency,
       form: b1.form,
+      batForm: battingForm(b1),
+      bowlForm: bowlingForm(b1),
       fitness: b1.fitness,
       bowlingType: b1.bowlingType,
       order: 6,
@@ -182,6 +187,8 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
     concentration: keeper.skills.concentration,
     consistency: keeper.skills.consistency,
     form: keeper.form,
+    batForm: battingForm(keeper),
+    bowlForm: bowlingForm(keeper),
     fitness: keeper.fitness,
     bowlingType: keeper.bowlingType,
     order: 7,
@@ -205,6 +212,8 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
         concentration: p6.skills.concentration,
         consistency: p6.skills.consistency,
         form: p6.form,
+        batForm: battingForm(p6),
+        bowlForm: bowlingForm(p6),
         fitness: p6.fitness,
         bowlingType: p6.bowlingType,
         order: 6,
@@ -226,6 +235,8 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
         concentration: p8.skills.concentration,
         consistency: p8.skills.consistency,
         form: p8.form,
+        batForm: battingForm(p8),
+        bowlForm: bowlingForm(p8),
         fitness: p8.fitness,
         bowlingType: p8.bowlingType,
         order: 8,
@@ -248,6 +259,8 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
           concentration: b.skills.concentration,
           consistency: b.skills.consistency,
           form: b.form,
+          batForm: battingForm(b),
+          bowlForm: bowlingForm(b),
           fitness: b.fitness,
           bowlingType: b.bowlingType,
           order: i + 9,
@@ -272,6 +285,8 @@ function generateLineupForStrategy(strategyName: string, players: BattrickPlayer
           concentration: b.skills.concentration,
           consistency: b.skills.consistency,
           form: b.form,
+          batForm: battingForm(b),
+          bowlForm: bowlingForm(b),
           fitness: b.fitness,
           bowlingType: b.bowlingType,
           order: i + 7,
@@ -409,6 +424,8 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
           concentration: selected.skills.concentration,
           consistency: selected.skills.consistency,
           form: selected.form,
+          batForm: battingForm(selected),
+          bowlForm: bowlingForm(selected),
           fitness: selected.fitness,
           bowlingType: selected.bowlingType,
         };
@@ -476,6 +493,8 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
       concentration: primaryKeeper.skills.concentration,
       consistency: primaryKeeper.skills.consistency,
       form: primaryKeeper.form,
+      batForm: battingForm(primaryKeeper),
+      bowlForm: bowlingForm(primaryKeeper),
       fitness: primaryKeeper.fitness,
       bowlingType: primaryKeeper.bowlingType,
       order: 7,
@@ -507,6 +526,8 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
           concentration: bPlayer.skills.concentration,
           consistency: bPlayer.skills.consistency,
           form: bPlayer.form,
+          batForm: battingForm(bPlayer),
+          bowlForm: bowlingForm(bPlayer),
           fitness: bPlayer.fitness,
           bowlingType: bPlayer.bowlingType,
           order: spotNum,
@@ -560,7 +581,10 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
   // Bowling Value = Bowling Skill + 0.25 x Consistency
   const bowlingValue = (p: LineupPlayer) => p.bowling + 0.25 * (p.consistency ?? 10);
   // Form: Sublime (10) = 100%, Woeful (0) = up to a 20% penalty
-  const formModifier = (p: LineupPlayer) => 0.80 + (Math.min(10, Math.max(0, p.form ?? 8)) / 10) * 0.20;
+  const formModifier = (p: LineupPlayer, kind: 'bat' | 'bowl' | 'any' = 'any') => {
+    const f = kind === 'bat' ? (p.batForm ?? p.form) : kind === 'bowl' ? (p.bowlForm ?? p.form) : p.form;
+    return 0.80 + (Math.min(10, Math.max(0, f ?? 8)) / 10) * 0.20;
+  };
   // Fitness (PFL): Saturated (10) = 100%, Shattered (0) = less than half
   const fitnessModifier = (p: LineupPlayer) => 0.45 + (Math.min(10, Math.max(0, p.fitness ?? 10)) / 10) * 0.55;
 
@@ -571,7 +595,7 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
   const weightedSector = (weights: [LineupPlayer | undefined, number][]) => {
     const totalWeight = weights.reduce((acc, [, w]) => acc + w, 0) || 1;
     const base = weights.reduce((acc, [p, w]) => acc + (p ? battingValue(p) * w : 0), 0);
-    const form = weights.reduce((acc, [p, w]) => acc + (p ? formModifier(p) * w : formModifier({} as LineupPlayer) * w), 0) / totalWeight;
+    const form = weights.reduce((acc, [p, w]) => acc + (p ? formModifier(p, 'bat') * w : formModifier({} as LineupPlayer) * w), 0) / totalWeight;
     const fitness = weights.reduce((acc, [p, w]) => acc + (p ? fitnessModifier(p) * w : fitnessModifier({} as LineupPlayer) * w), 0) / totalWeight;
     return { base, form, fitness };
   };
@@ -603,7 +627,7 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
     if (seamBowlers.length > 0) {
       const avgSeam = seamBowlers.reduce((acc, curr) => acc + bowlingValue(curr), 0) / seamBowlers.length;
       seamBowlingRaw = avgSeam + (Math.min(3, seamBowlers.length) * 0.45);
-      seamForm = seamBowlers.reduce((acc, curr) => acc + formModifier(curr), 0) / seamBowlers.length;
+      seamForm = seamBowlers.reduce((acc, curr) => acc + formModifier(curr, 'bowl'), 0) / seamBowlers.length;
       seamFitness = seamBowlers.reduce((acc, curr) => acc + fitnessModifier(curr), 0) / seamBowlers.length;
     }
 
@@ -612,13 +636,13 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
     if (spinBowlers.length > 0) {
       const avgSpin = spinBowlers.reduce((acc, curr) => acc + bowlingValue(curr), 0) / spinBowlers.length;
       spinBowlingRaw = avgSpin + (Math.min(2, spinBowlers.length) * 0.55);
-      spinForm = spinBowlers.reduce((acc, curr) => acc + formModifier(curr), 0) / spinBowlers.length;
+      spinForm = spinBowlers.reduce((acc, curr) => acc + formModifier(curr, 'bowl'), 0) / spinBowlers.length;
       spinFitness = spinBowlers.reduce((acc, curr) => acc + fitnessModifier(curr), 0) / spinBowlers.length;
     }
 
     const keeper = lineup.find(pl => pl.role === 'Keeper') || lineup[6];
     const keepingRaw = keeper ? (keeper.keeping + (keeper.experience * 0.16)) : 0;
-    const keeperForm = keeper ? formModifier(keeper) : 1;
+    const keeperForm = keeper ? formModifier(keeper, 'bowl') : 1; // keeping is affected by bowling form
     const keeperFitness = keeper ? fitnessModifier(keeper) : 1;
 
     const avgExperience = lineup.length ? lineup.reduce((acc, curr) => acc + curr.experience, 0) / lineup.length : 0;

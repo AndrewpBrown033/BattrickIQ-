@@ -356,6 +356,9 @@ export interface LineupPlayer {
   consistency?: number;
   /** Current form, 0-10 (Battrick convention). 10 = Sublime, 0 = Woeful. */
   form?: number;
+  /** Batting / bowling form, 0-10, tracked separately by Battrick. Fall back to `form` when absent. */
+  batForm?: number;
+  bowlForm?: number;
   /** Current PFL / fitness, 0-10 (Battrick convention). 10 = Saturated, 0 = Shattered. */
   fitness?: number;
   btRating?: number;
