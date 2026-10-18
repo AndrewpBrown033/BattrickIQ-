@@ -414,6 +414,51 @@ async function startServer() {
     }
   });
 
+  app.post("/api/sync-battrick-match", async (req, res) => {
+    try {
+      const { username, password, sessionToken } = req.body || {};
+      const matchId = String(req.body?.matchId || "").replace(/\D/g, "");
+      if (!matchId) {
+        res.status(400).json({ error: "matchId required" });
+        return;
+      }
+      let active = sessionToken ? sessions.get(sessionToken) : undefined;
+      let newToken: string | undefined;
+      if (!active && username && password) {
+        const auth = await authenticate(String(username).trim(), String(password));
+        if (!auth.success) {
+          res.status(401).json({ error: auth.error || "Login failed", isAuthFailure: true });
+          return;
+        }
+        newToken = auth.sessionToken;
+        active = sessions.get(auth.sessionToken!);
+      }
+      if (!active) {
+        res.status(401).json({ error: "No session — login first", isAuthFailure: true });
+        return;
+      }
+      const base = `https://www.battrick.org/nl/matchinfo.asp?matchID=${matchId}`;
+      const match = await fetchPage(active.cookieMap, base);
+      if (!match.success) {
+        res.status(match.status >= 400 ? match.status : 502).json({ error: match.error || `Failed to fetch match ${matchId}` });
+        return;
+      }
+      await spaceOut();
+      const summary = await fetchPage(active.cookieMap, `${base}&action=summary`);
+      active.timestamp = Date.now();
+      res.json({
+        success: true,
+        matchId,
+        matchHtml: match.html,
+        summaryHtml: summary.success ? summary.html : "",
+        sessionToken: newToken || sessionToken || undefined,
+      });
+    } catch (err: any) {
+      console.error("sync-battrick-match error", err);
+      if (!res.headersSent) res.status(500).json({ error: err?.message || "Server error" });
+    }
+  });
+
   const bookmarkletCache = new Map<string, { url: string; html: string; timestamp: number }>();
   app.post("/api/sync-bookmarklet", (req, res) => {
     const code = String(req.query.code || "").toUpperCase();
