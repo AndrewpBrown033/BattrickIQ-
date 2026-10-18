@@ -215,6 +215,14 @@ export default function TransferWatchPage() {
     }
   };
 
+  // Nudge the max bid up or down; applies straight away (the bot's next check uses the new max).
+  const nudgeMax = (w: WatchEntry, delta: number, currentDraft: string) => {
+    const base = Math.round(Number(String(currentDraft).replace(/[^0-9]/g, '')) || w.maxBid || 0);
+    const next = Math.max(1000, base + delta);
+    setMaxDraft((d) => ({ ...d, [w.playerId]: String(next) }));
+    setList(setMaxBid(w.playerId, next));
+  };
+
   const onArm = (w: WatchEntry) => {
     const raw = maxDraft[w.playerId] ?? String(w.maxBid || nextExpectedBid(w.lastCurrentBid, w.lastAskingPrice) || 50000);
     const max = Math.round(Number(String(raw).replace(/[^0-9]/g, '')) || 0);
@@ -335,6 +343,22 @@ export default function TransferWatchPage() {
                     className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm w-32"
                   />
                 </label>
+                <div className="flex flex-wrap gap-1 w-full sm:w-auto" aria-label="Adjust max bid">
+                  {[-100_000, -50_000, -10_000, 10_000, 50_000, 100_000].map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => nudgeMax(w, d, draft)}
+                      className={`px-2 py-1.5 rounded-lg border text-[11px] font-bold ${
+                        d < 0
+                          ? 'border-rose-200 bg-rose-50 text-rose-800'
+                          : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      }`}
+                    >
+                      {d > 0 ? '+' : '−'}£{Math.abs(d) / 1000}k
+                    </button>
+                  ))}
+                </div>
                 {!w.botEnabled ? (
                   <button
                     type="button"
