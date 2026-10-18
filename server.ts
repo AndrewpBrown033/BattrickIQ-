@@ -459,6 +459,96 @@ async function startServer() {
     }
   });
 
+  // Place a bid on a transfer-listed player. Battrick's player page has a `makeBid` form with a
+  // `bidValue` field (see playerdetails.asp verifyForm). We load the page, copy that form exactly
+  // (hidden fields included), set bidValue, and submit it; then confirm from the page that comes back.
+  app.post("/api/battrick-place-bid", async (req, res) => {
+    try {
+      const { playerId, bidValue, username, password, sessionToken } = req.body || {};
+      const pid = String(playerId || "");
+      const bid = Math.round(Number(bidValue));
+      if (!/^\d{3,12}$/.test(pid)) {
+        res.status(400).json({ success: false, error: "Invalid playerId" });
+        return;
+      }
+      if (!Number.isFinite(bid) || bid < 1000 || bid > 2_000_000_000) {
+        res.status(400).json({ success: false, error: "Invalid bid value" });
+        return;
+      }
+
+      let active = sessionToken ? sessions.get(String(sessionToken)) : undefined;
+      if (!active && username && password) {
+        const auth = await authenticate(String(username).trim(), String(password));
+        if (!auth.success) {
+          res.status(401).json({ success: false, error: auth.error || "Login failed", isAuthFailure: true });
+          return;
+        }
+        active = sessions.get(auth.sessionToken!);
+      }
+      if (!active) {
+        res.status(401).json({ success: false, error: "No session — login first", isAuthFailure: true });
+        return;
+      }
+
+      const playerUrl = `https://www.battrick.org/nl/playerdetails.asp?playerID=${pid}`;
+      const page = await fetchPage(active.cookieMap, playerUrl);
+      if (!page.success || !page.html) {
+        res.status(502).json({ success: false, error: "Could not load the player page" });
+        return;
+      }
+
+      const forms = [...page.html.matchAll(/<form([^>]*)>([\s\S]*?)<\/form>/gi)];
+      const bidForm = forms.find((m) => /name=["']makeBid["']/i.test(m[1]) || /name=["']bidValue["']/i.test(m[2]));
+      if (!bidForm) {
+        res.status(409).json({
+          success: false,
+          error: "No bid form on this player's page — the listing has ended, or he is your own player.",
+        });
+        return;
+      }
+
+      const params = new URLSearchParams();
+      for (const im of bidForm[2].matchAll(/<input([^>]*)>/gi)) {
+        const tag = im[1];
+        const name = (tag.match(/name=["']([^"']+)["']/i) || [])[1];
+        if (!name) continue;
+        const type = ((tag.match(/type=["']([^"']+)["']/i) || [])[1] || "text").toLowerCase();
+        if ((type === "checkbox" || type === "radio") && !/\schecked\b/i.test(tag)) continue;
+        params.set(name, (tag.match(/value=["']([^"']*)["']/i) || [])[1] ?? "");
+      }
+      params.set("bidValue", String(bid));
+
+      const action = (bidForm[1].match(/action=["']([^"']*)["']/i) || [])[1] || `playerdetails.asp?playerID=${pid}`;
+      let submitUrl = playerUrl;
+      try { submitUrl = new URL(action.replace(/&amp;/g, "&"), playerUrl).toString(); } catch {}
+      if (!submitUrl.startsWith("https://www.battrick.org/")) submitUrl = playerUrl;
+
+      const posted = await fetchPage(active.cookieMap, submitUrl, params.toString());
+      if (!posted.success || !posted.html) {
+        res.status(502).json({ success: false, error: `Battrick rejected the bid request (HTTP ${posted.status})` });
+        return;
+      }
+
+      // Confirm from the returned page rather than assuming success.
+      const text = posted.html.replace(/&nbsp;/gi, " ").replace(/&#163;|&pound;/gi, "£").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+      const shown = Number(((text.match(/Current\s*Bid:\s*£?\s*([\d,]+)/i) || [])[1] || "").replace(/,/g, ""));
+      if (shown === bid) {
+        res.json({ success: true, currentBid: shown, playerId: pid, sessionToken: sessionToken || undefined });
+        return;
+      }
+      const reason = (text.match(/(?:must|cannot|can't|unable|not enough|insufficient|too low|too late|already)[^.!]{0,140}[.!]?/i) || [])[0];
+      res.status(409).json({
+        success: false,
+        error: reason
+          ? `Battrick did not accept the bid: ${reason.trim()}`
+          : `Battrick did not confirm the bid (current bid shown: ${shown ? "£" + shown.toLocaleString() : "unknown"})`,
+      });
+    } catch (err: any) {
+      console.error("battrick-place-bid error", err);
+      if (!res.headersSent) res.status(500).json({ success: false, error: err?.message || "Server error" });
+    }
+  });
+
   const bookmarkletCache = new Map<string, { url: string; html: string; timestamp: number }>();
   app.post("/api/sync-bookmarklet", (req, res) => {
     const code = String(req.query.code || "").toUpperCase();
