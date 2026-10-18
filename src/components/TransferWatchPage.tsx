@@ -3,6 +3,7 @@ import { Eye, Bot, StopCircle, RefreshCw, ExternalLink, AlertTriangle } from 'lu
 import { useBattrickAuth } from '../lib/battrickAuthContext';
 import {
   loadWatchlist,
+  addToWatchlist,
   removeFromWatchlist,
   type WatchEntry,
 } from '../utils/transferWatchlist';
@@ -24,6 +25,8 @@ export default function TransferWatchPage() {
   const [list, setList] = useState<WatchEntry[]>(() => loadWatchlist());
   const [busyId, setBusyId] = useState<string | null>(null);
   const [globalMsg, setGlobalMsg] = useState<string | null>(null);
+  const [addInput, setAddInput] = useState('');
+  const [adding, setAdding] = useState(false);
   const [maxDraft, setMaxDraft] = useState<Record<string, string>>({});
   // One check at a time per player: a slow check overlapping the next 1-minute tick could post a double bid.
   const inFlight = useRef<Set<string>>(new Set());
@@ -159,6 +162,42 @@ export default function TransferWatchPage() {
     return () => window.clearInterval(id);
   }, [list.map((w) => `${w.playerId}:${w.botEnabled}:${w.maxBid}`).join('|')]);
 
+  // Watch any player by Battrick player ID (or a pasted playerdetails.asp link), listed or not yet.
+  const onAddById = async () => {
+    const ids: string[] = Array.from(new Set<string>((addInput.match(/\d{5,}/g) || []).map(String)));
+    if (!ids.length) {
+      setGlobalMsg('Enter a Battrick player ID (e.g. 12345678) or paste a player page link');
+      return;
+    }
+    setAdding(true);
+    try {
+      const added: string[] = [];
+      for (const id of ids) {
+        let panel: Awaited<ReturnType<typeof fetchPanel>> | null = null;
+        try {
+          panel = await fetchPanel(id);
+        } catch {
+          // Still watch the ID; details fill in on the next scan or bot check.
+        }
+        addToWatchlist({
+          playerId: id,
+          name: panel?.name || `Player #${id}`,
+          reason: 'Added by player ID',
+          playerUrl: `https://www.battrick.org/nl/playerdetails.asp?playerID=${id}`,
+          lastAskingPrice: panel?.askingPrice,
+          lastCurrentBid: panel?.currentBid,
+          lastDeadline: panel?.deadline,
+        } as any);
+        added.push(panel?.name || id);
+      }
+      setAddInput('');
+      reload();
+      setGlobalMsg(`Watching ${added.join(', ')}`);
+    } finally {
+      setAdding(false);
+    }
+  };
+
   const onArm = (w: WatchEntry) => {
     const raw = maxDraft[w.playerId] ?? String(w.maxBid || nextExpectedBid(w.lastCurrentBid, w.lastAskingPrice) || 50000);
     const max = Math.round(Number(String(raw).replace(/[^0-9]/g, '')) || 0);
@@ -192,6 +231,28 @@ export default function TransferWatchPage() {
           Battrick may extend deadlines in the last 3 minutes. Use at your own risk.
         </div>
       </div>
+
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void onAddById();
+        }}
+      >
+        <input
+          value={addInput}
+          onChange={(e) => setAddInput(e.target.value)}
+          placeholder="Add by player ID or player page link (several allowed)"
+          className="flex-1 min-w-0 text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white"
+        />
+        <button
+          type="submit"
+          disabled={adding}
+          className="text-xs font-bold px-3 py-2 rounded-lg bg-amber-600 text-white disabled:opacity-50"
+        >
+          {adding ? 'Adding…' : 'Watch'}
+        </button>
+      </form>
 
       {globalMsg && (
         <div className="text-xs font-semibold text-slate-700 bg-slate-100 rounded-lg px-3 py-2">{globalMsg}</div>
