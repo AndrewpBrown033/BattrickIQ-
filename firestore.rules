@@ -41,7 +41,7 @@ service cloud.firestore {
 
     // 1. Users collection: Core Battrick manager rosters, finances, fixtures, and settings
     match /users/{userId} {
-      allow read, write: if true;
+      allow get, list, create, update, delete: if true; // list: used by the Admin dashboard
 
       // Sub-collection for persistent Coach Jarvis chat history
       match /chats/{chatId} {
@@ -50,7 +50,10 @@ service cloud.firestore {
 
       // Jarvis OpenRouter key + model (and future per-user settings)
       match /settings/{settingId} {
-        allow read, write: if true;
+        // get only: the Jarvis key can't be listed/enumerated, only fetched by someone who already
+        // knows the exact path. Real protection needs Firebase Authentication (see README note).
+        allow get, create, update, delete: if true;
+        allow list: if false;
       }
     }
 
@@ -59,15 +62,17 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // 2. Users Auth credentials: Secure credentials database for custom session authentication
+    // 2. Users Auth credentials (custom login). The app only ever GETs one account (login)
+    // and CREATEs a new one (sign-up), so that is all that is allowed: no listing, no updates
+    // (nobody can overwrite another account's password or uid), no deletes, and sign-up cannot
+    // replace an existing account.
     match /users_auth/{email} {
-      // Allows getting individual document for password validation, but completely blocks list/scanning queries
       allow get: if true;
       allow list: if false;
-
-      allow create, update: if isValidAuth(request.resource.data);
-
-      allow delete: if true;
+      allow create: if isValidAuth(request.resource.data)
+                    && request.resource.data.email == email
+                    && !exists(/databases/$(database)/documents/users_auth/$(email));
+      allow update, delete: if false;
     }
   }
 }

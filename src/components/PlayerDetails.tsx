@@ -1,4 +1,5 @@
 import { getPlayerGrade } from '../utils/playerGrade';
+import { fitBtrModel, btrGainForLevelUp, wageDeltaForPop, SKILL_NAME_TO_KEY, type BtrSkill } from '../utils/btrModel';
 import React, { useState, useEffect } from 'react';
 import { BattrickPlayer, SKILL_LEVELS, STAMINA_LEVELS, getSkillLabel } from '../types';
 import { 
@@ -194,7 +195,9 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
     
     const isSquadPop = (chosenSkillKey === 'stamina' && squadTrainingStamina && plannerNets.stamina === 0) ||
                        (chosenSkillKey === 'fielding' && squadTrainingFielding && plannerNets.fielding === 0);
-    const btrGain = Math.round(1600 + (plannerNets[chosenSkillKey] || (isSquadPop ? 1 : 0)) * 400);
+    // Fitted from real squad + transfer-market players; falls back to a rough constant only with too little data.
+    const fitted = btrGainForLevelUp(fitBtrModel(), player, chosenSkillKey as BtrSkill);
+    const btrGain = fitted ?? Math.round(1600 + (plannerNets[chosenSkillKey] || (isSquadPop ? 1 : 0)) * 400);
     const nextBtr = player.btRating + btrGain;
     
     let nextWage = player.wage;
@@ -237,14 +240,9 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
       nextSeason += 1;
     }
     
-    const btrGain = 275;
-    const nextBtr = player.btRating + btrGain;
-    
-    let nextWage = player.wage;
-    if (nextWeek === 1) {
-      const isYoung = player.age <= 21;
-      nextWage = Math.round((player.wage * (isYoung ? 1.15 : 1.05)) / 100) * 100;
-    }
+    // A snapshot records what is true now: no invented BTR growth or wage rises.
+    const nextBtr = player.btRating;
+    const nextWage = player.wage;
     
     const newHistoryEntry = {
       season: nextSeason,
@@ -360,9 +358,17 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
       }
     });
 
+    // BTR and wage effect of each forecast pop: BTR from the fitted model (fallback constants only
+    // when there is too little data), wage from the documented wage formulas.
+    const btrFit = fitBtrModel();
     let btrGain = 0;
+    let wageGain = 0;
     forecasts.forEach(f => {
-      if (f.skillName === 'Batting' || f.skillName === 'Bowling' || f.skillName === 'Wicket Keeping') {
+      const key = SKILL_NAME_TO_KEY[f.skillName];
+      const fitted = key ? btrGainForLevelUp(btrFit, player, key) : null;
+      if (fitted != null) {
+        btrGain += fitted;
+      } else if (f.skillName === 'Batting' || f.skillName === 'Bowling' || f.skillName === 'Wicket Keeping') {
         btrGain += 1800;
       } else if (f.skillName === 'Concentration' || f.skillName === 'Consistency') {
         btrGain += 1200;
@@ -371,12 +377,10 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
       } else if (f.skillName === 'Stamina' || f.skillName === 'Stamina (Squad)') {
         btrGain += 400;
       }
+      if (key) wageGain += wageDeltaForPop(key, f.currentLevel, f.targetLevel);
     });
     const projectedBtr = player.btRating + btrGain;
-    const isYoung = player.age <= 21;
-    const projectedWage = btrGain > 0
-      ? Math.round((player.wage * (isYoung ? 1.15 : 1.05) + (btrGain * 0.12)) / 50) * 50
-      : player.wage;
+    const projectedWage = player.wage + wageGain;
 
     // Furthest-out target week among all forecast skills, used to label the
     // projected bar/point on the growth chart.
