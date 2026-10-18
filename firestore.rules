@@ -59,6 +59,16 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // 1c. Outgoing email queue read by the Firebase "Trigger Email from Firestore" extension.
+    // Create-only from the app; the extension (admin) reads and updates delivery status.
+    match /mail/{mailId} {
+      allow create: if request.resource.data.to is list
+                    && request.resource.data.to.size() == 1
+                    && request.resource.data.message.subject is string
+                    && request.resource.data.message.subject.matches('BattrickIQ report.*');
+      allow read, update, delete: if false;
+    }
+
     // 2. Users Auth credentials: Secure credentials database for custom session authentication
     match /users_auth/{email} {
       // Allows getting individual document for password validation, but completely blocks list/scanning queries

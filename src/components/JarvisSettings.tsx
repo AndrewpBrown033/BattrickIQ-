@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Cpu, ShieldCheck, Eye, EyeOff, Check, ExternalLink, Bot, Cloud, Loader2 } from 'lucide-react';
+import EmailReportPanel from './EmailReportPanel';
 import {
   loadJarvisSettingsFromCloud,
   saveJarvisSettingsToCloud,
@@ -256,6 +257,7 @@ export default function JarvisSettings() {
           )}
         </div>
       </section>
+      <EmailReportPanel />
     </div>
   );
 }
