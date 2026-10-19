@@ -39,40 +39,69 @@ service cloud.firestore {
              data.updatedAt is string;
     }
 
-    // 1. Users collection: Core Battrick manager rosters, finances, fixtures, and settings
-    match /users/{userId} {
-      allow get, list, create, update, delete: if true; // list: used by the Admin dashboard
+    // ---- Access model -------------------------------------------------------------------
+    // Callers sign in with Firebase Authentication (email + password). Each account has a mapping
+    // document users_auth/{email} -> { uid } where uid is the id its data is stored under
+    // (legacy ids like bt_andrew_admin are preserved, so no data had to move).
+    // A caller may touch users/{uid} and users_data/{uid} only if THEIR mapping points at that uid.
+    function signedIn() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+    function emailKey() {
+      return request.auth.token.email.lower();
+    }
+    function ownsUid(userId) {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/users_auth/$(emailKey())) &&
+        get(/databases/$(database)/documents/users_auth/$(emailKey())).data.uid == userId;
+    }
+    function isAdminUser() {
+      return signedIn() && emailKey() == 'andrewpbrown33@gmail.com';
+    }
 
-      // Sub-collection for persistent Coach Jarvis chat history
+    // 1. Users collection: rosters, finances, fixtures, settings
+    match /users/{userId} {
+      allow get, create, update, delete: if ownsUid(userId);
+      allow list: if isAdminUser(); // Admin dashboard
+
       match /chats/{chatId} {
-        allow read, write: if true;
+        allow read, write: if ownsUid(userId);
       }
 
-      // Jarvis OpenRouter key + model (and future per-user settings)
+      // Jarvis OpenRouter key + model, per-user settings
       match /settings/{settingId} {
-        // get only: the Jarvis key can't be listed/enumerated, only fetched by someone who already
-        // knows the exact path. Real protection needs Firebase Authentication (see README note).
-        allow get, create, update, delete: if true;
-        allow list: if false;
+        allow read, write: if ownsUid(userId);
       }
     }
 
     // 1b. Per-user app data mirror (match archive, scouted opponent squads, etc.)
     match /users_data/{userId}/{document=**} {
-      allow read, write: if true;
+      allow read, write: if ownsUid(userId);
     }
 
-    // 2. Users Auth credentials (custom login). The app only ever GETs one account (login)
-    // and CREATEs a new one (sign-up), so that is all that is allowed: no listing, no updates
-    // (nobody can overwrite another account's password or uid), no deletes, and sign-up cannot
-    // replace an existing account.
+    // 2. Account mapping (and, until a legacy account is migrated, its old password field).
     match /users_auth/{email} {
-      allow get: if true;
+      // Legacy documents that still hold a password stay readable so the old password can be
+      // verified once at first login; migrated documents (no password) are owner-only.
+      allow get: if (signedIn() && emailKey() == email) ||
+                    (resource != null && resource.data.keys().hasAny(['password']));
       allow list: if false;
-      allow create: if isValidAuth(request.resource.data)
-                    && request.resource.data.email == email
-                    && !exists(/databases/$(database)/documents/users_auth/$(email));
-      allow update, delete: if false;
+      allow create: if signedIn() && emailKey() == email &&
+                    request.resource.data.email == email &&
+                    request.resource.data.uid is string && request.resource.data.uid.size() <= 128 &&
+                    request.resource.data.role in ['admin', 'manager'] &&
+                    (request.resource.data.role == 'manager' || email == 'andrewpbrown33@gmail.com') &&
+                    !('password' in request.resource.data) &&
+                    !exists(/databases/$(database)/documents/users_auth/$(email));
+      // Owner may update their mapping (this is how a legacy password gets stripped) but never
+      // change the uid it points at, and never re-add a password.
+      allow update: if signedIn() && emailKey() == email &&
+                    request.resource.data.uid == resource.data.uid &&
+                    request.resource.data.email == email &&
+                    request.resource.data.role in ['admin', 'manager'] &&
+                    (request.resource.data.role == 'manager' || email == 'andrewpbrown33@gmail.com') &&
+                    !('password' in request.resource.data);
+      allow delete: if false;
     }
   }
 }

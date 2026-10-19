@@ -21,7 +21,7 @@ import AdminDashboard from './components/AdminDashboard';
 import PlayerDetails from './components/PlayerDetails';
 import LoginPage from './components/LoginPage';
 import BattrickAuthBar from './components/BattrickAuthBar';
-import { onCustomAuthStateChanged, getCustomUser, CustomUser } from './lib/customAuth';
+import { onCustomAuthStateChanged, getCustomUser, isAuthReady, CustomUser } from './lib/customAuth';
 import { parseHash, navigateTo, type AppTab } from './lib/navigation';
 import { loadJarvisSettingsFromCloud } from './utils/jarvisSettingsStore';
 import { hydrateWatchlistFromCloud } from './utils/transferWatchlist';
@@ -75,12 +75,16 @@ function isPrimaryTab(tab: string) {
 export default function AppShell() {
   const initial = parseHash();
   const [user, setUser] = useState<CustomUser | null>(() => getCustomUser());
+  const [authReady, setAuthReady] = useState<boolean>(() => isAuthReady());
   const [activeTab, setActiveTabState] = useState<TabType>((initial.tab as TabType) || 'summary');
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(initial.playerId || null);
   const [showMobileMore, setShowMobileMore] = useState(false);
 
   useEffect(() => {
-    return onCustomAuthStateChanged((u) => setUser(u));
+    return onCustomAuthStateChanged((u) => {
+      setUser(u);
+      setAuthReady(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -114,6 +118,9 @@ export default function AppShell() {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
+  if (!authReady) {
+    return <div className="min-h-screen flex items-center justify-center text-sm text-slate-500">Signing you in…</div>;
+  }
   if (!user) return <LoginPage />;
 
   const crumbs = [

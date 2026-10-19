@@ -1,5 +1,6 @@
 {
   "firestore": {
+    "database": "ai-studio-battrickiq-dd7e77b4-4c9e-44eb-b3f1-e7ef8edd6f4a",
     "rules": "firestore.rules"
   },
   "hosting": {
