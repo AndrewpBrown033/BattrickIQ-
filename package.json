@@ -6,8 +6,9 @@
   "scripts": {
     "restore-server": "node scripts/restore-server.cjs",
     "patch-secondary": "node scripts/patch-secondary-skills.cjs",
-    "dev": "node scripts/restore-server.cjs && node scripts/patch-secondary-skills.cjs && tsx server.ts",
-    "build": "node scripts/restore-server.cjs && node scripts/patch-secondary-skills.cjs && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "patch-watch-ack": "node scripts/patch-watch-ack.cjs",
+    "dev": "node scripts/restore-server.cjs && node scripts/patch-secondary-skills.cjs && node scripts/patch-watch-ack.cjs && tsx server.ts",
+    "build": "node scripts/restore-server.cjs && node scripts/patch-secondary-skills.cjs && node scripts/patch-watch-ack.cjs && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
