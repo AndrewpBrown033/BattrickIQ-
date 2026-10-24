@@ -1,5 +1,17 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Eye, Bot, StopCircle, RefreshCw, ExternalLink, AlertTriangle } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Eye,
+  Bot,
+  StopCircle,
+  RefreshCw,
+  ExternalLink,
+  AlertTriangle,
+  Search,
+  UserPlus,
+  Check,
+  X,
+  Link2,
+} from 'lucide-react';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
 import {
   loadWatchlist,
@@ -21,23 +33,52 @@ import {
   planBotBid,
   updateWatchAfterBotTick,
 } from '../utils/bidBot';
-import { navigateTo } from '../lib/navigation';
 
 const POLL_MS = 60_000;
+const PLAYER_URL = (id: string) =>
+  `https://www.battrick.org/nl/playerdetails.asp?playerID=${id}`;
+
+/** Accept raw ID, full playerdetails URL, or any string containing a 5+ digit ID. */
+function extractPlayerId(raw: string): string | null {
+  const s = raw.trim();
+  if (!s) return null;
+  const fromQuery = s.match(/playerID=(\d{5,})/i);
+  if (fromQuery) return fromQuery[1];
+  const digits = s.match(/(\d{5,})/);
+  if (digits) return digits[1];
+  return null;
+}
+
+type PanelPreview = ReturnType<typeof parseTransferPanelFromHtml> & {
+  playerId: string;
+  playerUrl: string;
+};
 
 export default function TransferWatchPage() {
   const { requireAuth, username, password } = useBattrickAuth();
   const [list, setList] = useState<WatchEntry[]>(() => loadWatchlist());
   const [busyId, setBusyId] = useState<string | null>(null);
   const [globalMsg, setGlobalMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [addInput, setAddInput] = useState('');
-  const [adding, setAdding] = useState(false);
+  const [addNote, setAddNote] = useState('');
+  const [lookingUp, setLookingUp] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [preview, setPreview] = useState<PanelPreview | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
   const [maxDraft, setMaxDraft] = useState<Record<string, string>>({});
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const inFlight = useRef<Set<string>>(new Set());
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const reload = useCallback(() => setList(loadWatchlist()), []);
+
+  const detectedId = useMemo(() => extractPlayerId(addInput), [addInput]);
+  const alreadyWatching = useMemo(() => {
+    if (!detectedId) return null;
+    return list.find((w) => w.playerId === detectedId) || null;
+  }, [detectedId, list]);
 
   useEffect(() => {
     const onChange = () => reload();
@@ -49,7 +90,6 @@ export default function TransferWatchPage() {
     };
   }, [reload]);
 
-  // Pull shared watchlist when this page opens
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -59,7 +99,9 @@ export default function TransferWatchPage() {
         if (!cancelled) {
           setList(next);
           const u = getCustomUser();
-          setSyncMsg(u?.uid ? 'Synced across your devices' : 'Local only — sign in to BattrickIQ to share');
+          setSyncMsg(
+            u?.uid ? 'Synced across your devices' : 'Local only — sign in to BattrickIQ to share'
+          );
         }
       } catch {
         if (!cancelled) setSyncMsg('Cloud sync unavailable — using this device only');
@@ -72,7 +114,6 @@ export default function TransferWatchPage() {
     };
   }, []);
 
-  // Live updates while Watch is open
   useEffect(() => {
     const u = getCustomUser();
     if (!u?.uid) return;
@@ -82,10 +123,9 @@ export default function TransferWatchPage() {
       (snap) => {
         if (!snap.exists()) return;
         const data = snap.data() as { items?: WatchEntry[]; updatedAt?: string };
-        const items = data.items;
-        if (!Array.isArray(items)) return;
+        if (!Array.isArray(data.items)) return;
         try {
-          localStorage.setItem('bt_transfer_watchlist', JSON.stringify(items));
+          localStorage.setItem('bt_transfer_watchlist', JSON.stringify(data.items));
           const at = data.updatedAt || new Date().toISOString();
           localStorage.setItem('bt_transfer_watchlist_meta', JSON.stringify({ updatedAt: at }));
           window.dispatchEvent(new Event('bt_transfer_watchlist_changed'));
@@ -111,7 +151,7 @@ export default function TransferWatchPage() {
   const callBattrick = async (path: string, payload: Record<string, unknown>) => {
     if (!password || !username) {
       requireAuth();
-      throw new Error('Battrick session expired — sign in again (bot paused until you do)');
+      throw new Error('Sign in to Battrick first (top bar) so we can look players up');
     }
     const attempt = async (token: string) => {
       const ctl = new AbortController();
@@ -132,7 +172,7 @@ export default function TransferWatchPage() {
         return { res, data };
       } catch (e: any) {
         if (e?.name === 'AbortError') {
-          throw new Error('Battrick took too long to answer (timed out) — will retry next check');
+          throw new Error('Battrick took too long — try again');
         }
         throw e;
       } finally {
@@ -147,7 +187,7 @@ export default function TransferWatchPage() {
       ({ res, data } = await attempt(''));
       if (res.status === 401 || data?.isAuthFailure) {
         requireAuth();
-        throw new Error(`${data?.error || 'Battrick login failed'} — re-enter your password (bot paused)`);
+        throw new Error(`${data?.error || 'Battrick login failed'} — re-enter your password`);
       }
     }
     if (data.sessionToken) localStorage.setItem('bt_sync_session', data.sessionToken);
@@ -160,6 +200,9 @@ export default function TransferWatchPage() {
       playerId,
     });
     const html = data.html || data.content || '';
+    if (!html || html.length < 200) {
+      throw new Error('No player page returned — check the ID and that you are signed in to Battrick');
+    }
     return parseTransferPanelFromHtml(html);
   };
 
@@ -171,20 +214,27 @@ export default function TransferWatchPage() {
     try {
       const panel = await fetchPanel(entry.playerId);
       const plan = planBotBid(entry, panel);
-      if (plan.action === 'bid' && plan.bidValue) {
+      if ((plan as any).action === 'bid' && (plan as any).bidValue) {
         await callBattrick('/api/place-bid', {
           playerId: entry.playerId,
-          bidValue: plan.bidValue,
+          bidValue: (plan as any).bidValue,
         });
-        updateWatchAfterBotTick(entry.playerId, { ...plan, placed: true });
+        updateWatchAfterBotTick(entry.playerId, {
+          botStatus: 'bidding',
+          lastBotAction: `Bid £${Number((plan as any).bidValue).toLocaleString()} placed`,
+          expectedBid: (plan as any).bidValue,
+        });
       } else {
-        updateWatchAfterBotTick(entry.playerId, plan);
+        updateWatchAfterBotTick(entry.playerId, {
+          botStatus: (plan as any).botStatus || 'idle',
+          lastBotAction: (plan as any).message || (plan as any).lastBotAction || 'Checked',
+        });
       }
       reload();
     } catch (e: any) {
       updateWatchAfterBotTick(entry.playerId, {
-        action: 'error',
-        message: e?.message || 'Bot tick failed',
+        botStatus: 'error',
+        lastBotAction: e?.message || 'Bot tick failed',
       });
       setGlobalMsg(e?.message || 'Bot tick failed');
       reload();
@@ -196,42 +246,84 @@ export default function TransferWatchPage() {
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      const current = loadWatchlist();
-      for (const w of current) {
-        if (w.botEnabled && w.maxBid && w.status === 'listed') {
-          void runBotTick(w);
-        }
+      for (const w of loadWatchlist()) {
+        if (w.botEnabled && w.maxBid && w.status === 'listed') void runBotTick(w);
       }
     }, POLL_MS);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username, password]);
 
-  const onAddById = async () => {
-    const raw = addInput.trim();
-    if (!raw) return;
-    setAdding(true);
+  const clearPreview = () => {
+    setPreview(null);
+    setLookupError(null);
+  };
+
+  /** Step 1: look up player and show a confirm card */
+  const onLookUp = async () => {
+    setLookupError(null);
+    setSuccessMsg(null);
     setGlobalMsg(null);
+    clearPreview();
+
+    const playerId = extractPlayerId(addInput);
+    if (!playerId) {
+      setLookupError('Paste a Battrick player URL or type a player ID (5+ digits)');
+      inputRef.current?.focus();
+      return;
+    }
+
+    setLookingUp(true);
     try {
-      const idMatch = raw.match(/(\d{5,})/);
-      const playerId = idMatch ? idMatch[1] : raw;
       const panel = await fetchPanel(playerId);
-      addToWatchlist({
-        playerId,
-        name: panel.name || `Player ${playerId}`,
-        reason: 'Manual watch',
-        lastAskingPrice: panel.askingPrice,
-        lastCurrentBid: panel.currentBid,
-        lastCost: panel.currentBid || panel.askingPrice || 0,
-        lastDeadline: panel.deadline,
-        playerUrl: panel.playerUrl,
+      const name = panel.name || `Player ${playerId}`;
+      if (!panel.name && !panel.isTransferListed && panel.askingPrice == null) {
+        setLookupError(
+          `Could not read player #${playerId}. Open the player on Battrick and paste the full URL from the address bar.`
+        );
+        return;
+      }
+      setPreview({
+        ...panel,
+        playerId: panel.playerId || playerId,
+        playerUrl: PLAYER_URL(playerId),
+        name,
       });
-      setAddInput('');
-      reload();
     } catch (e: any) {
-      setGlobalMsg(e?.message || 'Could not add player');
+      setLookupError(e?.message || 'Could not look up that player');
     } finally {
-      setAdding(false);
+      setLookingUp(false);
+    }
+  };
+
+  /** Step 2: confirm → add to watchlist */
+  const onConfirmAdd = async () => {
+    if (!preview) return;
+    setConfirming(true);
+    setLookupError(null);
+    try {
+      const id = String(preview.playerId);
+      const cost = preview.currentBid || preview.askingPrice || 0;
+      addToWatchlist({
+        playerId: id,
+        name: preview.name || `Player ${id}`,
+        reason: addNote.trim() || 'Manual watch',
+        lastAskingPrice: preview.askingPrice,
+        lastCurrentBid: preview.currentBid,
+        lastCost: cost,
+        lastDeadline: preview.deadline,
+        playerUrl: preview.playerUrl || PLAYER_URL(id),
+      });
+      setSuccessMsg(`Watching ${preview.name || id}`);
+      setAddInput('');
+      setAddNote('');
+      clearPreview();
+      reload();
+      window.setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (e: any) {
+      setLookupError(e?.message || 'Could not add player');
+    } finally {
+      setConfirming(false);
     }
   };
 
@@ -258,8 +350,11 @@ export default function TransferWatchPage() {
     reload();
   };
 
+  const money = (n?: number | null) =>
+    n != null && n > 0 ? `£${Number(n).toLocaleString()}` : '—';
+
   return (
-    <div className="flex flex-col gap-4 w-full max-w-3xl mx-auto">
+    <div className="flex flex-col gap-4 w-full max-w-3xl mx-auto px-1">
       <div className="flex items-start gap-3">
         <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
           <Eye className="w-5 h-5" />
@@ -267,8 +362,7 @@ export default function TransferWatchPage() {
         <div className="flex-1 min-w-0">
           <h2 className="text-lg font-black text-slate-900">Transfer Watch</h2>
           <p className="text-xs text-slate-600 mt-0.5">
-            Watched players and optional bot bidder. Shared across your devices when signed in.
-            Next expected bid: max(asking, current + £1,000, current × 1.02).
+            Track transfer targets and optional bot bids. Shared across your devices when signed in.
           </p>
         </div>
         <button
@@ -300,49 +394,201 @@ export default function TransferWatchPage() {
         <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
         <div>
           <strong>You are responsible for bids the bot places.</strong> Keep this app open while the
-          bot is armed. Battrick may extend deadlines in the last 3 minutes. Use at your own risk.
+          bot is armed. Use at your own risk.
         </div>
       </div>
 
       {globalMsg && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
           {globalMsg}
+          <button
+            type="button"
+            className="ml-2 underline font-bold"
+            onClick={() => setGlobalMsg(null)}
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void onAddById();
-        }}
-      >
-        <input
-          value={addInput}
-          onChange={(e) => setAddInput(e.target.value)}
-          placeholder="Player ID or playerdetails URL"
-          className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2"
-        />
-        <button
-          type="submit"
-          disabled={adding}
-          className="text-xs font-bold px-3 py-2 rounded-lg bg-amber-600 text-white disabled:opacity-50"
-        >
-          {adding ? 'Adding…' : 'Watch'}
-        </button>
-      </form>
+      {successMsg && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 flex items-center gap-2">
+          <Check className="w-4 h-4 shrink-0" />
+          {successMsg}
+        </div>
+      )}
+
+      {/* —— Add player (look up → confirm) —— */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
+            <UserPlus className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-slate-900">Add a player</h3>
+            <p className="text-[11px] text-slate-500">
+              On Battrick, open the player → copy the address bar → paste below
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex-1 relative">
+            <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              ref={inputRef}
+              value={addInput}
+              onChange={(e) => {
+                setAddInput(e.target.value);
+                if (preview) clearPreview();
+                setLookupError(null);
+              }}
+              onPaste={(e) => {
+                // Let paste land, then we show detected ID on next render via detectedId
+                const text = e.clipboardData?.getData('text') || '';
+                if (extractPlayerId(text)) setLookupError(null);
+              }}
+              placeholder="Paste player URL or type ID…"
+              inputMode="url"
+              autoComplete="off"
+              className="w-full text-sm border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => void onLookUp()}
+            disabled={lookingUp || !addInput.trim()}
+            className="inline-flex items-center justify-center gap-1.5 text-sm font-bold px-4 py-2.5 rounded-xl bg-slate-900 text-white disabled:opacity-50 shrink-0"
+          >
+            <Search className={`w-4 h-4 ${lookingUp ? 'animate-pulse' : ''}`} />
+            {lookingUp ? 'Looking up…' : 'Look up'}
+          </button>
+        </div>
+
+        {detectedId && !preview && (
+          <p className="text-[11px] font-mono text-slate-500">
+            Detected ID <span className="font-bold text-slate-800">#{detectedId}</span>
+            {alreadyWatching && (
+              <span className="text-amber-700"> · already on your watch list</span>
+            )}
+          </p>
+        )}
+
+        {lookupError && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
+            {lookupError}
+          </div>
+        )}
+
+        {preview && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 flex flex-col gap-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="text-sm font-black text-slate-900">{preview.name}</div>
+                <div className="text-[11px] font-mono text-slate-500">#{preview.playerId}</div>
+              </div>
+              <a
+                href={preview.playerUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600"
+                title="Open on Battrick"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+              <div className="rounded-lg bg-white border border-slate-100 px-2 py-1.5">
+                <div className="text-slate-400 font-mono">Asking</div>
+                <div className="font-bold text-slate-800">{money(preview.askingPrice)}</div>
+              </div>
+              <div className="rounded-lg bg-white border border-slate-100 px-2 py-1.5">
+                <div className="text-slate-400 font-mono">Current bid</div>
+                <div className="font-bold text-slate-800">{money(preview.currentBid)}</div>
+              </div>
+              <div className="rounded-lg bg-white border border-slate-100 px-2 py-1.5">
+                <div className="text-slate-400 font-mono">Next bid ~</div>
+                <div className="font-bold text-slate-800">
+                  {money(nextExpectedBid(preview.currentBid, preview.askingPrice))}
+                </div>
+              </div>
+              <div className="rounded-lg bg-white border border-slate-100 px-2 py-1.5">
+                <div className="text-slate-400 font-mono">Deadline</div>
+                <div className="font-bold text-slate-800 text-[10px] leading-snug">
+                  {preview.deadline || '—'}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 text-[11px]">
+              {preview.isTransferListed ? (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
+                  On transfer list
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-bold">
+                  Not listed (you can still watch)
+                </span>
+              )}
+              {preview.bidderTeam && (
+                <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-600">
+                  Bid by {preview.bidderTeam}
+                </span>
+              )}
+              {alreadyWatching && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold">
+                  Already watching — confirm to refresh details
+                </span>
+              )}
+            </div>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-mono text-slate-500">Note (optional)</span>
+              <input
+                value={addNote}
+                onChange={(e) => setAddNote(e.target.value)}
+                placeholder="e.g. Middle order gap · under 25"
+                className="text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white"
+              />
+            </label>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void onConfirmAdd()}
+                disabled={confirming}
+                className="inline-flex items-center gap-1.5 text-sm font-bold px-4 py-2 rounded-xl bg-amber-600 text-white disabled:opacity-50"
+              >
+                <Check className="w-4 h-4" />
+                {confirming
+                  ? 'Adding…'
+                  : alreadyWatching
+                    ? 'Update watch'
+                    : 'Add to watch'}
+              </button>
+              <button
+                type="button"
+                onClick={clearPreview}
+                className="inline-flex items-center gap-1.5 text-sm font-bold px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700"
+              >
+                <X className="w-4 h-4" />
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
 
       <div className="flex flex-col gap-3">
-        {list.length === 0 && (
-          <p className="text-sm text-slate-500 text-center py-8">
-            No watched players yet. Add from Estimator or by player ID above.
+        {list.length === 0 && !preview && (
+          <p className="text-sm text-slate-500 text-center py-8 px-4">
+            No watched players yet. Paste a Battrick player link above, or add from Squad → Estimator
+            shortlist.
           </p>
         )}
         {list.map((w) => {
-          const expected = nextExpectedBid({
-            askingPrice: w.lastAskingPrice,
-            currentBid: w.lastCurrentBid,
-          });
+          const expected = nextExpectedBid(w.lastCurrentBid, w.lastAskingPrice);
           return (
             <div
               key={w.playerId}
@@ -359,16 +605,14 @@ export default function TransferWatchPage() {
                   {w.reason && <div className="text-[11px] text-slate-600 mt-0.5">{w.reason}</div>}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {w.playerUrl && (
-                    <a
-                      href={w.playerUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="p-1.5 rounded-lg border border-slate-200 text-slate-600"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  )}
+                  <a
+                    href={w.playerUrl || PLAYER_URL(w.playerId)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
                   <button
                     type="button"
                     onClick={() => onRemove(w.playerId)}
@@ -381,7 +625,7 @@ export default function TransferWatchPage() {
 
               <div className="text-[11px] font-mono text-slate-600 flex flex-wrap gap-x-3 gap-y-1">
                 <span>Cost £{(w.lastCost || 0).toLocaleString()}</span>
-                {expected != null && <span>Next bid ~£{expected.toLocaleString()}</span>}
+                {expected > 0 && <span>Next bid ~£{expected.toLocaleString()}</span>}
                 {w.bidHintText && <span>{w.bidHintText}</span>}
                 {w.botStatus && <span className="text-amber-800">Bot: {w.botStatus}</span>}
               </div>
