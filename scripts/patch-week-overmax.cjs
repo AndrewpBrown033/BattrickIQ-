@@ -1,6 +1,5 @@
 /**
  * Ensure ThisWeekUpdatesCard flags over-max bids and fires browser alert/notification.
- * Idempotent surgical patch if full card already has older version.
  */
 const fs = require('fs');
 const path = require('path');
@@ -10,10 +9,6 @@ if (!fs.existsSync(file)) {
   process.exit(0);
 }
 let t = fs.readFileSync(file, 'utf8');
-if (t.includes('notifyBidOverMax') && t.includes('overmax-')) {
-  console.log('[patch-week-overmax] already present');
-  process.exit(0);
-}
 
 if (!t.includes("from '../utils/bidBot'")) {
   if (t.includes("from '../lib/navigation';")) {
@@ -21,6 +16,7 @@ if (!t.includes("from '../utils/bidBot'")) {
       "import { navigateTo } from '../lib/navigation';",
       "import { navigateTo } from '../lib/navigation';\nimport { nextExpectedBid } from '../utils/bidBot';"
     );
+    console.log('[patch-week-overmax] bidBot import');
   }
 }
 
@@ -62,14 +58,28 @@ async function notifyBidOverMax(w: WatchEntry, next: number, max: number) {
   if (loadNotifiedIds().has(id)) return;
   markNotified(id);
   const title = 'Transfer Watch — over max';
-  const body = w.name + ': next bid £' + next.toLocaleString() + ' exceeds your max £' + max.toLocaleString();
+  const body =
+    w.name +
+    ': next bid £' +
+    next.toLocaleString() +
+    ' exceeds your max £' +
+    max.toLocaleString();
   try {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       let perm = Notification.permission;
       if (perm === 'default') perm = await Notification.requestPermission();
       if (perm === 'granted') {
-        const n = new Notification(title, { body, tag: 'bt-overmax-' + id, requireInteraction: true });
-        n.onclick = () => { try { window.focus(); } catch {} n.close(); };
+        const n = new Notification(title, {
+          body,
+          tag: 'bt-overmax-' + id,
+          requireInteraction: true,
+        });
+        n.onclick = () => {
+          try {
+            window.focus();
+          } catch {}
+          n.close();
+        };
       }
     }
   } catch {}
@@ -87,48 +97,57 @@ if (!t.includes('function isOverMax')) {
   }
 }
 
-if (!t.includes('overmax-')) {
-  const loop = "for (const w of watchlist) {\n      if (w.status === 'sold') continue;\n      const cd = getDeadlineCountdown";
-  const block = `for (const w of watchlist) {
-      if (w.status === 'sold') continue;
-      const om = isOverMax(w);
-      if (om.over) {
-        out.push({
-          id: 'overmax-' + w.playerId,
-          kind: 'alert',
-          title: w.name + ': over max bid',
-          detail: 'Next expected £' + om.next.toLocaleString() + ' exceeds max £' + om.max.toLocaleString(),
-          tone: 'critical',
-          tab: 'watch',
-        });
-      }
-    }
+if (!t.includes("id: 'overmax-") && !t.includes('id: `overmax-') && !t.includes("id: 'overmax-' +")) {
+  const marker = 'const out: WeekItem[] = [];';
+  const block = `const out: WeekItem[] = [];
 
+    // Bid over max — show on home urgently
     for (const w of watchlist) {
       if (w.status === 'sold') continue;
-      const cd = getDeadlineCountdown`;
-  if (t.includes(loop)) {
-    t = t.replace(loop, block);
+      const om = isOverMax(w);
+      if (!om.over) continue;
+      out.push({
+        id: 'overmax-' + w.playerId,
+        kind: 'alert',
+        title: w.name + ': over max bid',
+        detail:
+          'Next expected £' +
+          om.next.toLocaleString() +
+          ' exceeds max £' +
+          om.max.toLocaleString(),
+        tone: 'critical',
+        tab: 'watch',
+      });
+    }
+`;
+  if (t.includes(marker)) {
+    t = t.replace(marker, block);
     console.log('[patch-week-overmax] list items');
+  } else {
+    console.warn('[patch-week-overmax] items marker missing');
   }
 }
 
 if (!t.includes('void notifyBidOverMax')) {
-  const marker = `  useEffect(() => {
-    reload();
-    const on = () => reload();
-    window.addEventListener('storage', on);
-    window.addEventListener('bt_transfer_watchlist_changed', on);
-    window.addEventListener('bt_transfer_alerts_changed', on);
-    const tick = window.setInterval(() => setNowMs(Date.now()), 30_000);
-    return () => {
-      window.removeEventListener('storage', on);
-      window.removeEventListener('bt_transfer_watchlist_changed', on);
-      window.removeEventListener('bt_transfer_alerts_changed', on);
-      window.clearInterval(tick);
-    };
-  }, []);`;
-  const effect = marker + `
+  const needle = '  }, []);\n\n  const items = useMemo';
+  const effect = `  }, []);
+
+  useEffect(() => {
+    for (const w of watchlist) {
+      if (w.status === 'sold') continue;
+      const { over, next, max } = isOverMax(w);
+      if (over && next > 0) void notifyBidOverMax(w, next, max);
+    }
+  }, [watchlist]);
+
+  const items = useMemo`;
+  if (t.includes(needle)) {
+    t = t.replace(needle, effect);
+    console.log('[patch-week-overmax] notify effect');
+  } else {
+    const idx = t.indexOf('  }, []);');
+    if (idx > 0 && !t.includes('void notifyBidOverMax')) {
+      const insert = `  }, []);
 
   useEffect(() => {
     for (const w of watchlist) {
@@ -138,10 +157,18 @@ if (!t.includes('void notifyBidOverMax')) {
     }
   }, [watchlist]);
 `;
-  if (t.includes(marker)) {
-    t = t.replace(marker, effect);
-    console.log('[patch-week-overmax] notify effect');
+      t = t.slice(0, idx) + insert + t.slice(idx + '  }, []);'.length);
+      console.log('[patch-week-overmax] notify effect (fallback)');
+    }
   }
+}
+
+if (!t.includes('overMax:') && t.includes("games: items.filter((i) => i.kind === 'game').length,")) {
+  t = t.replace(
+    "games: items.filter((i) => i.kind === 'game').length,",
+    "games: items.filter((i) => i.kind === 'game').length,\n      overMax: items.filter((i) => String(i.id).startsWith('overmax-')).length,"
+  );
+  console.log('[patch-week-overmax] counts');
 }
 
 fs.writeFileSync(file, t);
