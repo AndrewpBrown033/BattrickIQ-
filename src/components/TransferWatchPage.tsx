@@ -38,15 +38,15 @@ const POLL_MS = 60_000;
 const PLAYER_URL = (id: string) =>
   `https://www.battrick.org/nl/playerdetails.asp?playerID=${id}`;
 
-/** Accept raw ID, full playerdetails URL, or any string containing a 5+ digit ID. */
+/** Accept raw ID (e.g. 5705334) or full playerdetails URL. */
 function extractPlayerId(raw: string): string | null {
   const s = raw.trim();
   if (!s) return null;
-  const fromQuery = s.match(/playerID=(\d{5,})/i);
+  const fromQuery = s.match(/[?&#]playerid=(\d{4,12})/i) || s.match(/playerid=(\d{4,12})/i);
   if (fromQuery) return fromQuery[1];
-  const digits = s.match(/(\d{5,})/);
-  if (digits) return digits[1];
-  return null;
+  if (/^\d{4,12}$/.test(s)) return s;
+  const digits = s.match(/(\d{4,12})/);
+  return digits ? digits[1] : null;
 }
 
 type PanelPreview = ReturnType<typeof parseTransferPanelFromHtml> & {
@@ -195,15 +195,34 @@ export default function TransferWatchPage() {
   };
 
   const fetchPanel = async (playerId: string) => {
+    const pageUrl = PLAYER_URL(playerId);
     const data = await callBattrick('/api/sync-battrick-step', {
-      step: 'playerdetails',
+      pageName: 'playerdetails.asp',
+      pageUrl,
       playerId,
     });
+    if (data?.error && !data?.html && !data?.content) {
+      throw new Error(String(data.error));
+    }
     const html = data.html || data.content || '';
     if (!html || html.length < 200) {
-      throw new Error('No player page returned — check the ID and that you are signed in to Battrick');
+      throw new Error(
+        data?.error ||
+          'No player page returned — sign in to Battrick (top bar), then try again with the ID or full URL'
+      );
     }
-    return parseTransferPanelFromHtml(html);
+    const lower = html.toLowerCase();
+    if (
+      lower.includes('name="password"') &&
+      lower.includes('name="username"') &&
+      !lower.includes('playerdetails')
+    ) {
+      requireAuth();
+      throw new Error('Battrick session expired — sign in again, then Look up');
+    }
+    const panel = parseTransferPanelFromHtml(html);
+    if (!panel.playerId) panel.playerId = playerId;
+    return panel;
   };
 
   const runBotTick = async (entry: WatchEntry) => {
@@ -214,20 +233,32 @@ export default function TransferWatchPage() {
     try {
       const panel = await fetchPanel(entry.playerId);
       const plan = planBotBid(entry, panel);
-      if ((plan as any).action === 'bid' && (plan as any).bidValue) {
-        await callBattrick('/api/place-bid', {
+      if (plan.action === 'bid_placed' && plan.nextBid != null) {
+        await callBattrick('/api/battrick-place-bid', {
           playerId: entry.playerId,
-          bidValue: (plan as any).bidValue,
+          bidValue: plan.nextBid,
         });
         updateWatchAfterBotTick(entry.playerId, {
           botStatus: 'bidding',
-          lastBotAction: `Bid £${Number((plan as any).bidValue).toLocaleString()} placed`,
-          expectedBid: (plan as any).bidValue,
+          lastBotAction: `Bid £${Number(plan.nextBid).toLocaleString()} placed`,
+          expectedBid: plan.nextBid,
+          lastCurrentBid: plan.currentBid,
+          lastCost: plan.nextBid,
         });
       } else {
+        const status =
+          plan.action === 'already_leading'
+            ? 'leading'
+            : plan.action === 'not_listed'
+              ? 'sold'
+              : plan.action === 'at_max' || plan.action === 'outbid_over_max'
+                ? 'maxed'
+                : 'idle';
         updateWatchAfterBotTick(entry.playerId, {
-          botStatus: (plan as any).botStatus || 'idle',
-          lastBotAction: (plan as any).message || (plan as any).lastBotAction || 'Checked',
+          botStatus: status as WatchEntry['botStatus'],
+          lastBotAction: plan.message || 'Checked',
+          lastCurrentBid: plan.currentBid,
+          expectedBid: plan.nextBid,
         });
       }
       reload();
@@ -259,7 +290,6 @@ export default function TransferWatchPage() {
     setLookupError(null);
   };
 
-  /** Step 1: look up player and show a confirm card */
   const onLookUp = async () => {
     setLookupError(null);
     setSuccessMsg(null);
@@ -268,7 +298,7 @@ export default function TransferWatchPage() {
 
     const playerId = extractPlayerId(addInput);
     if (!playerId) {
-      setLookupError('Paste a Battrick player URL or type a player ID (5+ digits)');
+      setLookupError('Enter a player ID (e.g. 5705334) or paste the full playerdetails URL');
       inputRef.current?.focus();
       return;
     }
@@ -276,19 +306,18 @@ export default function TransferWatchPage() {
     setLookingUp(true);
     try {
       const panel = await fetchPanel(playerId);
-      const name = panel.name || `Player ${playerId}`;
-      if (!panel.name && !panel.isTransferListed && panel.askingPrice == null) {
-        setLookupError(
-          `Could not read player #${playerId}. Open the player on Battrick and paste the full URL from the address bar.`
-        );
-        return;
-      }
+      const name = (panel.name || '').trim() || `Player ${playerId}`;
       setPreview({
         ...panel,
         playerId: panel.playerId || playerId,
         playerUrl: PLAYER_URL(playerId),
         name,
       });
+      if (!panel.name) {
+        setLookupError(
+          `Loaded #${playerId} but could not read the name from Battrick. You can still add them to Watch.`
+        );
+      }
     } catch (e: any) {
       setLookupError(e?.message || 'Could not look up that player');
     } finally {
@@ -296,7 +325,6 @@ export default function TransferWatchPage() {
     }
   };
 
-  /** Step 2: confirm → add to watchlist */
   const onConfirmAdd = async () => {
     if (!preview) return;
     setConfirming(true);
@@ -401,11 +429,7 @@ export default function TransferWatchPage() {
       {globalMsg && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
           {globalMsg}
-          <button
-            type="button"
-            className="ml-2 underline font-bold"
-            onClick={() => setGlobalMsg(null)}
-          >
+          <button type="button" className="ml-2 underline font-bold" onClick={() => setGlobalMsg(null)}>
             Dismiss
           </button>
         </div>
@@ -418,7 +442,6 @@ export default function TransferWatchPage() {
         </div>
       )}
 
-      {/* —— Add player (look up → confirm) —— */}
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs flex flex-col gap-3">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
@@ -427,7 +450,7 @@ export default function TransferWatchPage() {
           <div>
             <h3 className="text-sm font-black text-slate-900">Add a player</h3>
             <p className="text-[11px] text-slate-500">
-              On Battrick, open the player → copy the address bar → paste below
+              Paste a player URL or just the ID (e.g. 5705334)
             </p>
           </div>
         </div>
@@ -443,13 +466,14 @@ export default function TransferWatchPage() {
                 if (preview) clearPreview();
                 setLookupError(null);
               }}
-              onPaste={(e) => {
-                // Let paste land, then we show detected ID on next render via detectedId
-                const text = e.clipboardData?.getData('text') || '';
-                if (extractPlayerId(text)) setLookupError(null);
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void onLookUp();
+                }
               }}
-              placeholder="Paste player URL or type ID…"
-              inputMode="url"
+              placeholder="5705334  or  paste playerdetails URL…"
+              inputMode="text"
               autoComplete="off"
               className="w-full text-sm border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-amber-300 focus:border-amber-400"
             />
@@ -561,11 +585,7 @@ export default function TransferWatchPage() {
                 className="inline-flex items-center gap-1.5 text-sm font-bold px-4 py-2 rounded-xl bg-amber-600 text-white disabled:opacity-50"
               >
                 <Check className="w-4 h-4" />
-                {confirming
-                  ? 'Adding…'
-                  : alreadyWatching
-                    ? 'Update watch'
-                    : 'Add to watch'}
+                {confirming ? 'Adding…' : alreadyWatching ? 'Update watch' : 'Add to watch'}
               </button>
               <button
                 type="button"
@@ -583,8 +603,8 @@ export default function TransferWatchPage() {
       <div className="flex flex-col gap-3">
         {list.length === 0 && !preview && (
           <p className="text-sm text-slate-500 text-center py-8 px-4">
-            No watched players yet. Paste a Battrick player link above, or add from Squad → Estimator
-            shortlist.
+            No watched players yet. Type an ID like 5705334, or paste a Battrick player URL, then Look
+            up.
           </p>
         )}
         {list.map((w) => {
