@@ -1,20 +1,21 @@
 /**
  * Battrick secondary skills: Concentration & Consistency.
  *
- * Official mechanics (rules + keggut helpfile):
- * - Needs Sports Psychologists (assumed present unless callers pass hasSportsPsych=false).
- * - Concentration from batting OR keeping OR fielding nets.
- * - Consistency from bowling OR keeping OR fielding nets.
- * - Psychologists only attend the first net of each TYPE per day, so extra nets of the
- *   same type do not stack for secondaries.
- * - Combining different qualifying types speeds pops (BA+F ≈ half of single; BA+WK+F best).
- * - Age works OPPOSITE to technical skills: older players train secondaries faster.
+ * Official mechanics (rules + keggut / Battrick helpfile):
+ * - Needs Sports Psychologists.
+ * - Concentration: batting OR keeping OR fielding nets.
+ * - Consistency: bowling OR keeping OR fielding nets.
+ * - Psychologists attend the first net of each TYPE only — same-type multi-nets do not stack.
+ * - Combining different qualifying types speeds pops.
+ * - Age is inverted vs technical skills: older players train secondaries faster.
  *
- * Single-type weeks-to-pop (helpfile):
- *   17→14.2 … −0.6/yr … 34+→4.0
+ * Helpfile weeks-to-pop (single qualifying type):
+ *   age 17 → 14.2 … −0.6/yr … age 34+ → 4.0
+ * Dual (e.g. BA+F / BO+F): ~half of single, floor 4.0
+ * Triple (BA+WK+F / BO+WK+F): 5.2 @17 → 4.0 from ~21
  */
 
-/** Weeks to next secondary pop for one qualifying net type, by integer age 17–35. */
+/** Single net-type weeks by age 17–35 (helpfile). */
 export const SECONDARY_SINGLE_WEEKS_BY_AGE: Record<number, number> = {
   17: 14.2,
   18: 13.6,
@@ -37,7 +38,53 @@ export const SECONDARY_SINGLE_WEEKS_BY_AGE: Record<number, number> = {
   35: 4.0,
 };
 
-/** @deprecated Kept for import compatibility; secondaries are not a fraction of primary speed. */
+/** Dual types (BA+F, BO+F, …) — helpfile ~half single, floor 4.0. */
+export const SECONDARY_DUAL_WEEKS_BY_AGE: Record<number, number> = {
+  17: 7.1,
+  18: 6.8,
+  19: 6.5,
+  20: 6.2,
+  21: 5.9,
+  22: 5.6,
+  23: 5.3,
+  24: 5.0,
+  25: 4.7,
+  26: 4.3,
+  27: 4.0,
+  28: 4.0,
+  29: 4.0,
+  30: 4.0,
+  31: 4.0,
+  32: 4.0,
+  33: 4.0,
+  34: 4.0,
+  35: 4.0,
+};
+
+/** Triple types (BA+WK+F / BO+WK+F) — helpfile. */
+export const SECONDARY_TRIPLE_WEEKS_BY_AGE: Record<number, number> = {
+  17: 5.2,
+  18: 4.9,
+  19: 4.6,
+  20: 4.3,
+  21: 4.0,
+  22: 4.0,
+  23: 4.0,
+  24: 4.0,
+  25: 4.0,
+  26: 4.0,
+  27: 4.0,
+  28: 4.0,
+  29: 4.0,
+  30: 4.0,
+  31: 4.0,
+  32: 4.0,
+  33: 4.0,
+  34: 4.0,
+  35: 4.0,
+};
+
+/** @deprecated Secondaries are not a fraction of primary skill speed. */
 export const SECONDARY_TRAINING_SYNERGY = 0.25;
 
 export type SecondarySkill = 'concentration' | 'consistency';
@@ -58,10 +105,7 @@ export function secondaryBaseWeeks(playerAge: number): number {
   return SECONDARY_SINGLE_WEEKS_BY_AGE[a] ?? 4.0;
 }
 
-/**
- * Count distinct qualifying net TYPES for a secondary skill.
- * Same-type multi-nets do not stack (psychologists once per type).
- */
+/** Count distinct qualifying net TYPES (same-type multi-nets do not stack). */
 export function countQualifyingNetTypes(
   skill: SecondarySkill,
   nets: SecondaryNets
@@ -78,10 +122,7 @@ export function countQualifyingNetTypes(
 
 /**
  * Weeks to the next concentration or consistency pop.
- * Uses helpfile combo multipliers:
- *   1 type → single table
- *   2 types → ~0.5× (e.g. BA+F, BO+F)
- *   3 types → ~5.2/14.2 at 17 (BA+WK+F / BO+WK+F), floor 4.0
+ * Tables from Battrick helpfile Training page.
  */
 export function weeksToSecondaryPop(
   skill: SecondarySkill,
@@ -96,21 +137,21 @@ export function weeksToSecondaryPop(
   const types = countQualifyingNetTypes(skill, nets);
   if (types <= 0) return Infinity;
 
-  let weeks = secondaryBaseWeeks(playerAge);
+  const a = clampAge(playerAge);
+  let weeks: number;
   if (types >= 3) {
-    // Helpfile BA+WK+F / BO+WK+F: 5.2 @17 → 4.0 from ~21
-    weeks = Math.max(4.0, secondaryBaseWeeks(playerAge) * (5.2 / 14.2));
+    weeks = SECONDARY_TRIPLE_WEEKS_BY_AGE[a] ?? 4.0;
   } else if (types === 2) {
-    // Helpfile BA+F / BO+F: ~half of single, floor 4.0
-    weeks = Math.max(4.0, secondaryBaseWeeks(playerAge) * 0.5);
+    weeks = SECONDARY_DUAL_WEEKS_BY_AGE[a] ?? 4.0;
+  } else {
+    weeks = SECONDARY_SINGLE_WEEKS_BY_AGE[a] ?? 4.0;
   }
 
-  return parseFloat(weeks.toFixed(1));
+  return parseFloat(Number(weeks).toFixed(1));
 }
 
 /**
- * Backward-compatible wrapper used by older call sites.
- * primary / primaryNets / coachLevel map onto the new net-type model.
+ * Backward-compatible wrapper for older call sites (parser / PlayerDetails).
  * Prefer weeksToSecondaryPop when full net breakdown is available.
  */
 export function estimateSecondarySkillWeeks(
