@@ -9,8 +9,9 @@
     "patch-watch-ack": "node scripts/patch-watch-ack.cjs",
     "patch-estimator-age": "node scripts/patch-estimator-age.cjs",
     "patch-watch-ui": "node scripts/patch-watch-ui.cjs",
-    "dev": "node scripts/restore-server.cjs && node scripts/patch-secondary-skills.cjs && node scripts/patch-watch-ack.cjs && node scripts/patch-estimator-age.cjs && node scripts/patch-watch-ui.cjs && tsx server.ts",
-    "build": "node scripts/restore-server.cjs && node scripts/patch-secondary-skills.cjs && node scripts/patch-watch-ack.cjs && node scripts/patch-estimator-age.cjs && node scripts/patch-watch-ui.cjs && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "patch-manager-week": "node scripts/patch-manager-week.cjs",
+    "dev": "node scripts/restore-server.cjs && node scripts/patch-secondary-skills.cjs && node scripts/patch-watch-ack.cjs && node scripts/patch-estimator-age.cjs && node scripts/patch-watch-ui.cjs && node scripts/patch-manager-week.cjs && tsx server.ts",
+    "build": "node scripts/restore-server.cjs && node scripts/patch-secondary-skills.cjs && node scripts/patch-watch-ack.cjs && node scripts/patch-estimator-age.cjs && node scripts/patch-watch-ui.cjs && node scripts/patch-manager-week.cjs && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
