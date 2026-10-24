@@ -26,22 +26,7 @@ if (t.includes(oldSig)) {
   console.log('[patch-server-age] signature');
 }
 
-const oldRet =
-  '    for (const r of ranked.slice(0, 2)) {\n' +
-  '      params.set(`SkillType${slot}`, String(r.id));\n' +
-  '      params.set(`SkillMin${slot}`, String(r.level));\n' +
-  '      params.set(`SkillMax${slot}`, "20");\n' +
-  '      slot++;\n' +
-  '    }\n' +
-  '    return params;\n' +
-  '  }';
-const newRet =
-  '    for (const r of ranked.slice(0, 2)) {\n' +
-  '      params.set(`SkillType${slot}`, String(r.id));\n' +
-  '      params.set(`SkillMin${slot}`, String(r.level));\n' +
-  '      params.set(`SkillMax${slot}`, "20");\n' +
-  '      slot++;\n' +
-  '    }\n' +
+const ageBlock =
   '    if (age.minAge != null && Number(age.minAge) > 0) {\n' +
   '      params.set("minAge", String(Math.round(Number(age.minAge))));\n' +
   '    } else {\n' +
@@ -51,13 +36,18 @@ const newRet =
   '      params.set("maxAge", String(Math.round(Number(age.maxAge))));\n' +
   '    } else {\n' +
   '      params.set("maxAge", "");\n' +
-  '    }\n' +
-  '    return params;\n' +
-  '  }';
-if (t.includes(oldRet) && !t.includes('params.set("minAge"')) {
-  t = t.replace(oldRet, newRet);
-  changes++;
-  console.log('[patch-server-age] minAge/maxAge fields');
+  '    }\n';
+
+if (!t.includes('params.set("minAge"')) {
+  // Insert age fields immediately before the main `return params` of buildFormParams
+  const marker = '    return params;\n  }\n\n  app.post("/api/sync-battrick-step"';
+  if (t.includes(marker)) {
+    t = t.replace(marker, ageBlock + marker);
+    changes++;
+    console.log('[patch-server-age] minAge/maxAge fields');
+  } else {
+    console.warn('[patch-server-age] return-params marker not found');
+  }
 }
 
 const oldCall = ': buildFormParams(html0, skillMins);';
