@@ -2,6 +2,8 @@
  * Patch src/parser.ts so secondary skill weeks use helpfile tables
  * from src/utils/secondarySkills.ts (not the old inverted age formula).
  * Runs before vite build / dev.
+ *
+ * Important: never insert inside a multi-line `import { ... } from '...'`.
  */
 const fs = require('fs');
 const path = require('path');
@@ -9,18 +11,73 @@ const path = require('path');
 const parserPath = path.join(__dirname, '..', 'src', 'parser.ts');
 let t = fs.readFileSync(parserPath, 'utf8');
 
+const IMPORT_MARKER = "from './utils/secondarySkills'";
 const importLine =
   "import { weeksToSecondaryPop, estimateSecondarySkillWeeks as estimateSecondarySkillWeeksFromTable, SECONDARY_TRAINING_SYNERGY as SECONDARY_TRAINING_SYNERGY_TABLE } from './utils/secondarySkills';";
 
-if (!t.includes("from './utils/secondarySkills'")) {
-  const lines = t.split('\n');
-  let lastImp = 0;
-  for (let i = 0; i < Math.min(80, lines.length); i++) {
-    if (lines[i].startsWith('import ')) lastImp = i;
+function findEndOfImportBlock(src) {
+  // Walk line-by-line; track brace depth inside import statements.
+  const lines = src.split('\n');
+  let lastCompleteImportLine = -1;
+  let inImport = false;
+  let braceDepth = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (!inImport) {
+      if (trimmed.startsWith('import ')) {
+        inImport = true;
+        braceDepth = 0;
+        for (const ch of line) {
+          if (ch === '{') braceDepth++;
+          if (ch === '}') braceDepth--;
+        }
+        // Single-line import ends when we see from '...' and braceDepth is 0
+        if (braceDepth <= 0 && /\bfrom\s+['"]/.test(line)) {
+          lastCompleteImportLine = i;
+          inImport = false;
+        }
+      } else if (
+        trimmed === '' ||
+        trimmed.startsWith('//') ||
+        trimmed.startsWith('/*') ||
+        trimmed.startsWith('*')
+      ) {
+        // allow comments / blanks between imports
+        continue;
+      } else {
+        // first non-import code
+        break;
+      }
+    } else {
+      for (const ch of line) {
+        if (ch === '{') braceDepth++;
+        if (ch === '}') braceDepth--;
+      }
+      if (braceDepth <= 0 && /\bfrom\s+['"]/.test(line)) {
+        lastCompleteImportLine = i;
+        inImport = false;
+      }
+    }
   }
-  lines.splice(lastImp + 1, 0, importLine);
+  return lastCompleteImportLine;
+}
+
+if (!t.includes(IMPORT_MARKER)) {
+  const lines = t.split('\n');
+  const insertAfter = findEndOfImportBlock(t);
+  if (insertAfter < 0) {
+    lines.unshift(importLine);
+    console.log('[patch-secondary] prepended secondarySkills import');
+  } else {
+    lines.splice(insertAfter + 1, 0, importLine);
+    console.log('[patch-secondary] inserted secondarySkills import after line', insertAfter + 1);
+  }
   t = lines.join('\n');
-  console.log('[patch-secondary] inserted secondarySkills import');
+} else {
+  console.log('[patch-secondary] secondarySkills import already present');
 }
 
 const oldFn = `export const SECONDARY_TRAINING_SYNERGY = 0.25;
