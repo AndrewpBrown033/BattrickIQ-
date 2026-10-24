@@ -1,6 +1,6 @@
 /**
- * Wire EstimatorAgeWageBar + age filter into SquadDashboard.
- * Idempotent — safe every build.
+ * Wire age min/max (+ wage horizon) into Estimator.
+ * Idempotent — safe to run every build/dev.
  */
 const fs = require('fs');
 const path = require('path');
@@ -9,15 +9,14 @@ const file = path.join(__dirname, '..', 'src', 'components', 'SquadDashboard.tsx
 let t = fs.readFileSync(file, 'utf8');
 let changes = 0;
 
-// 1) Imports
-if (!t.includes("EstimatorAgeWageBar")) {
+// --- imports ---
+if (!t.includes("from './squad/EstimatorAgeWageBar'")) {
   const needle =
     "import {\n  Dumbbell, ArrowLeftRight, Target, Clock, Users, RefreshCw, AlertTriangle } from 'lucide-react';";
   const insert =
-    "import {\n  Dumbbell, ArrowLeftRight, Target, Clock, Users, RefreshCw, AlertTriangle } from 'lucide-react';\n" +
-    "import EstimatorAgeWageBar from './squad/EstimatorAgeWageBar';\n" +
-    "import { filterListingsByAge, type WageHorizon } from '../utils/transferCosting';\n" +
-    "import { buildTransferShortlist } from '../utils/buildTransferShortlist';";
+    needle +
+    "\nimport EstimatorAgeWageBar from './squad/EstimatorAgeWageBar';\n" +
+    "import { filterListingsByAge, type WageHorizon } from '../utils/transferCosting';";
   if (t.includes(needle)) {
     t = t.replace(needle, insert);
     changes++;
@@ -27,31 +26,29 @@ if (!t.includes("EstimatorAgeWageBar")) {
   }
 }
 
-// 2) State after watchBusy / watchAck
+// --- state ---
 if (!t.includes('const [minAge, setMinAge]')) {
-  const candidates = [
-    "  const [watchAck, setWatchAck] = useState<string | null>(null);\n",
-    "  const [watchBusy, setWatchBusy] = useState(false);\n",
-  ];
   const block =
-    "  const [minAge, setMinAge] = useState(17);\n" +
-    "  const [maxAge, setMaxAge] = useState(32);\n" +
-    "  const [wageWeeks, setWageWeeks] = useState<WageHorizon>(6);\n";
-  let done = false;
-  for (const c of candidates) {
-    if (t.includes(c)) {
-      t = t.replace(c, c + block);
-      changes++;
-      done = true;
-      console.log('[patch-estimator-age] state');
-      break;
-    }
+    '  const [minAge, setMinAge] = useState(17);\n' +
+    '  const [maxAge, setMaxAge] = useState(32);\n' +
+    '  const [wageWeeks, setWageWeeks] = useState<WageHorizon>(6);\n';
+  const afterWatchAck = '  const [watchAck, setWatchAck] = useState<string | null>(null);\n';
+  const afterWatchBusy = '  const [watchBusy, setWatchBusy] = useState(false);\n';
+  if (t.includes(afterWatchAck)) {
+    t = t.replace(afterWatchAck, afterWatchAck + block);
+    changes++;
+    console.log('[patch-estimator-age] state after watchAck');
+  } else if (t.includes(afterWatchBusy)) {
+    t = t.replace(afterWatchBusy, afterWatchBusy + block);
+    changes++;
+    console.log('[patch-estimator-age] state after watchBusy');
+  } else {
+    console.warn('[patch-estimator-age] state needle missing');
   }
-  if (!done) console.warn('[patch-estimator-age] state needle missing');
 }
 
-// 3) transferScanBody — add minAge/maxAge
-if (!t.includes('minAge,\n    maxAge,') && !t.includes('minAge: minAge')) {
+// --- scan body ---
+if (!t.includes('minAge,\n    maxAge,')) {
   const old =
     "  const transferScanBody = () => ({\n" +
     "    pageName: 'transfers.asp',\n" +
@@ -89,33 +86,55 @@ if (!t.includes('minAge,\n    maxAge,') && !t.includes('minAge: minAge')) {
   }
 }
 
-// 4) After parseTransferList — filter by age before ranking
+// --- filter listings ---
 if (!t.includes('filterListingsByAge(listings')) {
   const old =
     "      const listings = parseTransferList(html, { excludePlayerIds: ownIds });\n" +
     "      try { localStorage.setItem('bt_transfer_listings', JSON.stringify(listings)); } catch {}";
-  // appears twice (scan + refresh) — replace all for scan path carefully
   const neu =
     "      let listings = parseTransferList(html, { excludePlayerIds: ownIds });\n" +
     "      listings = filterListingsByAge(listings, { minAge, maxAge });\n" +
     "      try { localStorage.setItem('bt_transfer_listings', JSON.stringify(listings)); } catch {}";
   if (t.includes(old)) {
+    const n = t.split(old).length - 1;
     t = t.split(old).join(neu);
-    changes++;
-    console.log('[patch-estimator-age] filterListingsByAge');
+    changes += n;
+    console.log('[patch-estimator-age] age filter x', n);
   } else {
     console.warn('[patch-estimator-age] parseTransferList block not found');
   }
 }
 
-// 5) Render EstimatorAgeWageBar after Skills intro paragraph
+// --- UI bar ---
 if (!t.includes('<EstimatorAgeWageBar')) {
   const old =
-    '                  <p className="text-[10px] text-slate-500">Recommended from your rating gaps. Toggle skills and set minimum levels for the transfer scan.</p>\n' +
-    '                </div>';
+    '                <button type="button" className="text-[10px] font-bold text-teal-700 underline shrink-0"\n' +
+    '                  onClick={() => {\n' +
+    '                    const rec = skillRecs.filter((r) => r.recommended).map((r) => r.skill);\n' +
+    '                    setSelectedSkills(rec.length ? rec : SEARCH_SKILLS.map((s) => s.id));\n' +
+    '                    setSkillMins((prev) => {\n' +
+    '                      const next = { ...prev };\n' +
+    '                      for (const r of skillRecs) { if (r.recommended) next[r.skill] = r.minSkill; }\n' +
+    '                      return next;\n' +
+    '                    });\n' +
+    '                  }}>\n' +
+    '                  Reset to recommended\n' +
+    '                </button>\n' +
+    '              </div>\n' +
+    '              <div className="flex flex-wrap gap-2">';
   const neu =
-    '                  <p className="text-[10px] text-slate-500">Recommended from your rating gaps. Toggle skills and set minimum levels for the transfer scan.</p>\n' +
-    '                </div>\n' +
+    '                <button type="button" className="text-[10px] font-bold text-teal-700 underline shrink-0"\n' +
+    '                  onClick={() => {\n' +
+    '                    const rec = skillRecs.filter((r) => r.recommended).map((r) => r.skill);\n' +
+    '                    setSelectedSkills(rec.length ? rec : SEARCH_SKILLS.map((s) => s.id));\n' +
+    '                    setSkillMins((prev) => {\n' +
+    '                      const next = { ...prev };\n' +
+    '                      for (const r of skillRecs) { if (r.recommended) next[r.skill] = r.minSkill; }\n' +
+    '                      return next;\n' +
+    '                    });\n' +
+    '                  }}>\n' +
+    '                  Reset to recommended\n' +
+    '                </button>\n' +
     '              </div>\n' +
     '              <EstimatorAgeWageBar\n' +
     '                minAge={minAge}\n' +
@@ -126,35 +145,15 @@ if (!t.includes('<EstimatorAgeWageBar')) {
     '                onWageWeeks={setWageWeeks}\n' +
     '                factorFinance={factorFinance}\n' +
     '              />\n' +
-    '              <div className="flex items-start justify-between gap-2">\n' +
-    '                <div className="hidden">';
-  // Too risky with broken structure. Simpler insert before "Skills to look for" card content ends differently.
-
-  // Insert right before the skills grid / after the skills header block closes
-  const marker =
-    'Recommended from your rating gaps. Toggle skills and set minimum levels for the transfer scan.</p>';
-  if (t.includes(marker) && !t.includes('<EstimatorAgeWageBar')) {
-    t = t.replace(
-      marker,
-      marker +
-        '\n                </div>\n              </div>\n' +
-        '              <EstimatorAgeWageBar\n' +
-        '                minAge={minAge}\n' +
-        '                maxAge={maxAge}\n' +
-        '                onMinAge={setMinAge}\n' +
-        '                onMaxAge={setMaxAge}\n' +
-        '                wageWeeks={wageWeeks}\n' +
-        '                onWageWeeks={setWageWeeks}\n' +
-        '                factorFinance={factorFinance}\n' +
-        '              />\n' +
-        '              <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-2.5 space-y-2">\n' +
-        '                <div className="flex items-start justify-between gap-2">\n' +
-        '                  <div>\n' +
-        '                    <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Skill filters</div>'
-    );
-    // This may break structure - better use a cleaner approach below
+    '              <div className="flex flex-wrap gap-2">';
+  if (t.includes(old)) {
+    t = t.replace(old, neu);
+    changes++;
+    console.log('[patch-estimator-age] UI bar');
+  } else {
+    console.warn('[patch-estimator-age] skills header UI not found');
   }
 }
 
 fs.writeFileSync(file, t);
-console.log('[patch-estimator-age] wrote changes=', changes);
+console.log('[patch-estimator-age] done changes=', changes);
