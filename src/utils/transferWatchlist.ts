@@ -166,7 +166,6 @@ export async function hydrateWatchlistFromCloud(): Promise<WatchEntry[]> {
     const cloudAt = typeof data.updatedAt === 'string' ? data.updatedAt : '';
     const localAt = localMeta.updatedAt || '';
 
-    // Cloud newer or equal → source of truth (includes removals)
     if (cloudAt && (!localAt || cloudAt >= localAt)) {
       writeJson(WL_KEY, cloudItems);
       setLocalWatchMeta(cloudAt);
@@ -178,14 +177,12 @@ export async function hydrateWatchlistFromCloud(): Promise<WatchEntry[]> {
       return cloudItems;
     }
 
-    // Local newer → push so other devices catch up
     if (local.length > 0 && localAt && (!cloudAt || localAt > cloudAt)) {
       await mirrorWatchlistToCloud(local, localAt);
     }
 
     if (!cloudItems.length) return local;
 
-    // Fallback merge without reliable timestamps
     const byId = new Map<string, WatchEntry>();
     for (const w of cloudItems) byId.set(String(w.playerId), w);
     for (const w of local) {
@@ -359,19 +356,22 @@ export function computeBidHint(
 }
 
 export function addRecommendationToWatchlist(rec: BuyRecommendation, reason?: string): WatchEntry[] {
+  const l = rec.listing;
+  const id = String(l?.playerId || (rec as any).playerId || (rec as any).id || '');
+  if (!id) throw new Error('Missing player id on recommendation');
+  const cost = rec.cost || l?.currentBid || l?.askingPrice || 0;
   return addToWatchlist({
-    playerId: String(rec.playerId || rec.id || ''),
-    name: rec.name || 'Unknown',
-    reason: reason || rec.reason || 'Estimator shortlist',
+    playerId: id,
+    name: l?.name || (rec as any).name || 'Unknown',
+    reason: reason || rec.fitsNeed || (rec.reasons && rec.reasons[0]) || 'Estimator shortlist',
     fitsNeed: rec.fitsNeed,
-    ratingKey: rec.ratingKey,
-    lastAskingPrice: rec.askingPrice,
-    lastCurrentBid: rec.currentBid,
-    lastCost: rec.cost || rec.currentBid || rec.askingPrice || 0,
-    lastDeadline: rec.deadline,
-    playerUrl: rec.playerUrl,
-    age: rec.age,
-    skills: rec.skills,
+    lastAskingPrice: l?.askingPrice,
+    lastCurrentBid: l?.currentBid,
+    lastCost: cost,
+    lastDeadline: l?.deadline,
+    playerUrl: l?.playerUrl || (id ? `https://www.battrick.org/nl/playerdetails.asp?playerID=${id}` : undefined),
+    age: l?.age,
+    skills: l?.skills,
   });
 }
 
@@ -379,7 +379,7 @@ export function refreshWatchlistFromListings(
   listings: TransferListing[],
   cash?: number
 ): { watchlist: WatchEntry[]; alerts: TransferAlert[] } {
-  const byId = new Map(listings.map((l) => [String(l.playerId || l.id), l]));
+  const byId = new Map(listings.map((l) => [String(l.playerId || (l as any).id), l]));
   const newAlerts: TransferAlert[] = [];
   const updated = loadWatchlist().map((w) => {
     const hit = byId.get(String(w.playerId));
