@@ -13,11 +13,13 @@
     "patch-week-overmax": "node scripts/patch-week-overmax.cjs",
     "patch-watch-sync": "node scripts/patch-watch-sync.cjs",
     "patch-watch-auth-hydrate": "node scripts/patch-watch-auth-hydrate.cjs",
-    "dev": "node scripts/restore-server.cjs && node scripts/patch-secondary-skills.cjs && node scripts/patch-watch-ack.cjs && node scripts/patch-estimator-age.cjs && node scripts/patch-watch-ui.cjs && node scripts/patch-manager-week.cjs && node scripts/patch-week-overmax.cjs && node scripts/patch-watch-sync.cjs && node scripts/patch-watch-auth-hydrate.cjs && tsx server.ts",
-    "build": "node scripts/restore-server.cjs && node scripts/patch-secondary-skills.cjs && node scripts/patch-watch-ack.cjs && node scripts/patch-estimator-age.cjs && node scripts/patch-watch-ui.cjs && node scripts/patch-manager-week.cjs && node scripts/patch-week-overmax.cjs && node scripts/patch-watch-sync.cjs && node scripts/patch-watch-auth-hydrate.cjs && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "dev": "node scripts/restore-server.cjs && node scripts/patch-secondary-skills.cjs && node scripts/patch-watch-ack.cjs && node scripts/patch-estimator-age.cjs && node scripts/patch-manager-week.cjs && node scripts/patch-week-overmax.cjs && tsx server.ts",
+    "build": "node scripts/restore-server.cjs && node scripts/patch-secondary-skills.cjs && node scripts/patch-watch-ack.cjs && node scripts/patch-estimator-age.cjs && node scripts/patch-manager-week.cjs && node scripts/patch-week-overmax.cjs && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:watch-merge": "tsx scripts/test-watchlist-merge.ts",
+    "test:watch-sync": "node scripts/test-watch-sync-sim.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",

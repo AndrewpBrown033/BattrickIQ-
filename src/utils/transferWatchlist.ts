@@ -1,17 +1,32 @@
 /**
  * Transfer market watchlist + bid timing + light monitor.
- * Persists in localStorage; Firestore mirror under users/{uid}/settings/transferWatch
- * so the watch list is shared across devices (merged by playerId).
+ *
+ * Persists in localStorage and mirrors to Firestore (users/{uid}/settings/transferWatch) so the watch
+ * list follows you across devices. Every device edits locally first; changes are merged with the cloud
+ * copy by playerId (see watchlistMerge.ts: removals use tombstones, bot settings follow their own clock)
+ * and a live listener (startWatchlistLiveSync, started from AppShell) applies other devices' edits as
+ * they happen.
  */
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { onSnapshot, runTransaction } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { getCustomUser } from '../lib/customAuth';
 import type { TransferListing, BuyRecommendation, TeamRatingKey } from './transferList';
+import {
+  mergeWatchState,
+  sameState,
+  stampLocalChanges,
+  type Tombstones,
+  type WatchState,
+} from './watchlistMerge';
+import { clearBotLeaseState, setBotLeaseFromCloud, watchDocRef } from './watchBotLease';
 
 const WL_KEY = 'bt_transfer_watchlist';
+const REMOVED_KEY = 'bt_transfer_watchlist_removed';
 const SCAN_META_KEY = 'bt_transfer_last_scan';
 const ALERTS_KEY = 'bt_transfer_alerts';
 const LOCAL_META_KEY = 'bt_transfer_watchlist_meta';
+export const WATCH_CHANGED_EVENT = 'bt_transfer_watchlist_changed';
+export const WATCH_SYNC_EVENT = 'bt_watch_sync_status';
 
 export type WatchStatus = 'listed' | 'sold' | 'unknown';
 export type BidHint =
@@ -168,51 +183,23 @@ function newerIso(a?: string, b?: string): string {
   return x >= y ? x : y;
 }
 
+/** Union two watch lists by playerId (newer edit wins). Kept for callers/patch scripts that merge plain lists. */
 export function mergeWatchEntries(a: WatchEntry[], b: WatchEntry[]): WatchEntry[] {
-  const byId = new Map<string, WatchEntry>();
-  for (const list of [a, b]) {
-    for (const w of list || []) {
-      if (!w?.playerId) continue;
-      const id = String(w.playerId);
-      const prev = byId.get(id);
-      if (!prev) {
-        byId.set(id, { ...w, playerId: id });
-        continue;
-      }
-      const prevT = prev.updatedAt || prev.addedAt || '';
-      const curT = w.updatedAt || w.addedAt || '';
-      byId.set(
-        id,
-        curT >= prevT
-          ? {
-              ...prev,
-              ...w,
-              playerId: id,
-              maxBid: w.maxBid ?? prev.maxBid,
-              botEnabled: w.botEnabled ?? prev.botEnabled,
-              botStatus: w.botStatus || prev.botStatus,
-              lastBotAction: w.lastBotAction || prev.lastBotAction,
-              updatedAt: newerIso(prev.updatedAt, w.updatedAt),
-            }
-          : {
-              ...w,
-              ...prev,
-              playerId: id,
-              maxBid: prev.maxBid ?? w.maxBid,
-              botEnabled: prev.botEnabled ?? w.botEnabled,
-              updatedAt: newerIso(prev.updatedAt, w.updatedAt),
-            }
-      );
-    }
-  }
-  return Array.from(byId.values()).sort((x, y) =>
-    (y.updatedAt || y.addedAt || '').localeCompare(x.updatedAt || x.addedAt || '')
-  );
+  return mergeWatchState({ items: a || [], removed: {} }, { items: b || [], removed: {} }).items;
 }
 
 export function loadWatchlist(): WatchEntry[] {
   const list = readJson<WatchEntry[]>(WL_KEY, []);
   return Array.isArray(list) ? list : [];
+}
+
+function loadRemoved(): Tombstones {
+  const raw = readJson<Tombstones>(REMOVED_KEY, {});
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+}
+
+function loadLocalState(): WatchState {
+  return { items: loadWatchlist(), removed: loadRemoved() };
 }
 
 function getLocalWatchMeta(): { updatedAt: string } {
@@ -223,137 +210,210 @@ function setLocalWatchMeta(updatedAt: string) {
   writeJson(LOCAL_META_KEY, { updatedAt });
 }
 
+function notifyChanged() {
+  try {
+    window.dispatchEvent(new Event(WATCH_CHANGED_EVENT));
+  } catch {}
+}
+
+function writeLocalState(s: WatchState, at: string) {
+  writeJson(WL_KEY, s.items);
+  writeJson(REMOVED_KEY, s.removed);
+  setLocalWatchMeta(at);
+  notifyChanged();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Cloud sync status (read by the Watch page)
+// ---------------------------------------------------------------------------------------------
 let lastCloudError: string | null = null;
 let lastCloudOkAt: string | null = null;
+let liveUid: string | null = null;
+
+function setSyncStatus(error: string | null, okAt?: string) {
+  lastCloudError = error;
+  if (!error) lastCloudOkAt = okAt || new Date().toISOString();
+  try {
+    window.dispatchEvent(new Event(WATCH_SYNC_EVENT));
+  } catch {}
+}
 
 export function getWatchCloudStatus() {
   const user = getCustomUser();
   return {
     signedIn: !!user?.uid,
     firebaseSession: !!auth.currentUser,
+    live: !!liveUid && liveUid === user?.uid,
     lastError: lastCloudError,
     lastOkAt: lastCloudOkAt,
     uid: user?.uid || null,
   };
 }
 
-export function applyIncomingCloudWatchlist(cloudItems: WatchEntry[], cloudAt: string): WatchEntry[] {
-  const local = loadWatchlist();
-  const items = Array.isArray(cloudItems) ? cloudItems.filter((w) => w?.playerId) : [];
-  if (!items.length && local.length > 0) {
-    void mirrorWatchlistToCloud(local, getLocalWatchMeta().updatedAt || new Date().toISOString());
-    return local;
+function friendlyCloudError(e: any): string {
+  const msg = String(e?.message || e || 'Cloud save failed');
+  return /permission|insufficient|unauth/i.test(msg)
+    ? 'Cloud permission denied — sign out and back into BattrickIQ, then Sync'
+    : msg.slice(0, 200);
+}
+
+/** Shape a Firestore doc into a WatchState; tolerant of old docs that only have `items`. */
+function parseCloud(data: any): WatchState {
+  const items: WatchEntry[] = Array.isArray(data?.items) ? data.items.filter((w: any) => w?.playerId) : [];
+  const removed: Tombstones = {};
+  if (data?.removed && typeof data.removed === 'object' && !Array.isArray(data.removed)) {
+    for (const [id, at] of Object.entries(data.removed)) {
+      if (typeof at === 'string') removed[id] = at;
+    }
   }
-  const merged = mergeWatchEntries(items, local);
-  const at = cloudAt || getLocalWatchMeta().updatedAt || new Date().toISOString();
-  writeJson(WL_KEY, merged);
-  setLocalWatchMeta(at);
+  return { items, removed };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Pushing: one transaction at a time, always merge-then-write, never blind overwrite
+// ---------------------------------------------------------------------------------------------
+let chain: Promise<unknown> = Promise.resolve();
+function enqueue<T>(fn: () => Promise<T>): Promise<T> {
+  const run = chain.then(fn, fn);
+  chain = run.catch(() => {});
+  return run;
+}
+
+type SyncResult = { ok: boolean; error?: string; count?: number };
+
+/** Merge cloud + local in a Firestore transaction, write back what changed, then update local. */
+async function syncOnce(): Promise<SyncResult> {
+  const user = getCustomUser();
+  if (!user?.uid) {
+    setSyncStatus('Sign in to BattrickIQ to sync Watch across devices');
+    return { ok: false, error: lastCloudError! };
+  }
+  if (!auth.currentUser) {
+    setSyncStatus('Firebase session missing — sign out of BattrickIQ and sign back in');
+    return { ok: false, error: lastCloudError! };
+  }
   try {
-    window.dispatchEvent(new Event('bt_transfer_watchlist_changed'));
-  } catch {}
-  const cloudIds = new Set(items.map((w) => String(w.playerId)));
-  if (local.some((w) => !cloudIds.has(String(w.playerId)))) {
-    void mirrorWatchlistToCloud(merged, at);
+    const ref = watchDocRef(user.uid);
+    const merged = await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      const cloud = snap.exists() ? parseCloud(snap.data()) : { items: [], removed: {} };
+      const next = mergeWatchState(cloud, loadLocalState());
+      if (!snap.exists() || !sameState(cloud, next)) {
+        // JSON round-trip: Firestore rejects `undefined` field values.
+        tx.set(
+          ref,
+          JSON.parse(
+            JSON.stringify({ items: next.items, removed: next.removed, updatedAt: new Date().toISOString() })
+          ),
+          { merge: true }
+        );
+      }
+      return next;
+    });
+
+    // The user may have edited while the transaction was in flight: re-merge with *current* local
+    // so that edit isn't clobbered, and push again if it left something the cloud doesn't have yet.
+    const final = mergeWatchState(merged, loadLocalState());
+    const at = new Date().toISOString();
+    if (!sameState(final, loadLocalState())) writeLocalState(final, at);
+    else setLocalWatchMeta(at);
+    if (!sameState(final, merged)) schedulePush(150);
+    setSyncStatus(null, at);
+    return { ok: true, count: final.items.length };
+  } catch (e: any) {
+    const error = friendlyCloudError(e);
+    setSyncStatus(error);
+    return { ok: false, error };
   }
-  return merged;
+}
+
+let pushTimer: number | null = null;
+/** Coalesce bursts of edits (a bot tick saves several times) into one cloud write. */
+function schedulePush(delayMs = 400) {
+  if (typeof window === 'undefined') return;
+  if (!getCustomUser()?.uid) return;
+  if (pushTimer != null) window.clearTimeout(pushTimer);
+  pushTimer = window.setTimeout(() => {
+    pushTimer = null;
+    void enqueue(syncOnce);
+  }, delayMs);
+}
+
+/** Apply a cloud snapshot to this device (merge, never overwrite). */
+function ingestCloud(cloud: WatchState): WatchEntry[] {
+  const local = loadLocalState();
+  const merged = mergeWatchState(cloud, local);
+  if (!sameState(merged, local)) writeLocalState(merged, new Date().toISOString());
+  // This device knows something the cloud doesn't (offline edit, first sign-in): publish it.
+  if (!sameState(merged, cloud)) schedulePush(150);
+  return merged.items;
+}
+
+/**
+ * Keep this device in step with the account's other devices for as long as the user is signed in.
+ * Started once from AppShell (not from the Watch page), so edits made on another device show up
+ * everywhere in the app and the Home cards, not only while the Watch tab is open.
+ * Returns a stop function.
+ */
+export function startWatchlistLiveSync(uid: string): () => void {
+  liveUid = uid;
+  let stopped = false;
+  const unsub = onSnapshot(
+    watchDocRef(uid),
+    (snap) => {
+      if (stopped || snap.metadata.hasPendingWrites) return;
+      if (snap.exists()) {
+        const data = snap.data();
+        setBotLeaseFromCloud((data as any)?.botLease);
+        ingestCloud(parseCloud(data));
+      } else if (loadWatchlist().length > 0) {
+        schedulePush(0); // first sign-in with data on this device: publish it
+      }
+      setSyncStatus(null);
+    },
+    (err) => setSyncStatus('Live sync paused: ' + friendlyCloudError(err))
+  );
+
+  // Phones suspend tabs and laptops sleep: catch up as soon as the app is back / online.
+  const catchUp = () => {
+    if (!stopped && document.visibilityState !== 'hidden') void enqueue(syncOnce);
+  };
+  document.addEventListener('visibilitychange', catchUp);
+  window.addEventListener('online', catchUp);
+  window.addEventListener('focus', catchUp);
+  void enqueue(syncOnce);
+
+  return () => {
+    stopped = true;
+    if (liveUid === uid) liveUid = null;
+    unsub();
+    document.removeEventListener('visibilitychange', catchUp);
+    window.removeEventListener('online', catchUp);
+    window.removeEventListener('focus', catchUp);
+    clearBotLeaseState();
+  };
+}
+
+/** Compat: apply cloud items to this device (used by older page code). */
+export function applyIncomingCloudWatchlist(cloudItems: WatchEntry[], _cloudAt?: string): WatchEntry[] {
+  return ingestCloud({ items: Array.isArray(cloudItems) ? cloudItems.filter((w) => w?.playerId) : [], removed: {} });
 }
 
 export function saveWatchlist(list: WatchEntry[]) {
   const now = new Date().toISOString();
-  const stamped = (Array.isArray(list) ? list : []).map((w) => ({
-    ...w,
-    playerId: String(w.playerId),
-    updatedAt: w.updatedAt || now,
-  }));
-  writeJson(WL_KEY, stamped);
-  setLocalWatchMeta(now);
-  try {
-    window.dispatchEvent(new Event('bt_transfer_watchlist_changed'));
-  } catch {}
-  void mirrorWatchlistToCloud(stamped, now);
+  const next = stampLocalChanges(loadLocalState(), Array.isArray(list) ? list : [], now);
+  writeLocalState(next, now);
+  schedulePush();
 }
 
-export async function mirrorWatchlistToCloud(
-  list: WatchEntry[],
-  updatedAt: string
-): Promise<{ ok: boolean; error?: string; count?: number }> {
-  const user = getCustomUser();
-  if (!user?.uid) {
-    lastCloudError = 'Sign in to BattrickIQ to sync Watch across devices';
-    return { ok: false, error: lastCloudError };
-  }
-  if (!auth.currentUser) {
-    lastCloudError = 'Firebase session missing — sign out of BattrickIQ and sign back in';
-    return { ok: false, error: lastCloudError };
-  }
-  try {
-    const ref = doc(db, 'users', user.uid, 'settings', 'transferWatch');
-    let merged = (Array.isArray(list) ? list : []).filter((w) => w?.playerId);
-    try {
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const data = snap.data() as { items?: WatchEntry[] };
-        const cloudItems = Array.isArray(data.items) ? data.items.filter((w) => w?.playerId) : [];
-        merged = mergeWatchEntries(cloudItems, merged);
-      }
-    } catch {}
-    const at = updatedAt || new Date().toISOString();
-    await setDoc(ref, { items: merged, updatedAt: at }, { merge: true });
-    writeJson(WL_KEY, merged);
-    setLocalWatchMeta(at);
-    lastCloudError = null;
-    lastCloudOkAt = at;
-    try {
-      window.dispatchEvent(new Event('bt_transfer_watchlist_changed'));
-    } catch {}
-    return { ok: true, count: merged.length };
-  } catch (e: any) {
-    const msg = String(e?.message || e || 'Cloud save failed');
-    lastCloudError = /permission|insufficient|unauth/i.test(msg)
-      ? 'Cloud permission denied — sign out and back into BattrickIQ, then Sync'
-      : msg.slice(0, 200);
-    return { ok: false, error: lastCloudError };
-  }
+/** Compat: push now. Arguments are ignored — the merged local state is what gets published. */
+export async function mirrorWatchlistToCloud(_list?: WatchEntry[], _updatedAt?: string): Promise<SyncResult> {
+  return enqueue(syncOnce);
 }
 
 export async function hydrateWatchlistFromCloud(): Promise<WatchEntry[]> {
-  const local = loadWatchlist();
-  const localMeta = getLocalWatchMeta();
-  const user = getCustomUser();
-  if (!user?.uid || !auth.currentUser) {
-    lastCloudError = !user?.uid
-      ? 'Sign in to BattrickIQ to sync Watch across devices'
-      : 'Firebase session missing — sign in again';
-    return local;
-  }
-  try {
-    const snap = await getDoc(doc(db, 'users', user.uid, 'settings', 'transferWatch'));
-    if (!snap.exists()) {
-      if (local.length > 0) await mirrorWatchlistToCloud(local, localMeta.updatedAt || new Date().toISOString());
-      lastCloudError = null;
-      return loadWatchlist();
-    }
-    const data = snap.data() as { items?: WatchEntry[]; updatedAt?: string };
-    const cloudItems = Array.isArray(data.items) ? data.items.filter((w) => w?.playerId) : [];
-    const cloudAt = typeof data.updatedAt === 'string' ? data.updatedAt : '';
-    const merged = mergeWatchEntries(cloudItems, local);
-    const at = newerIso(cloudAt, localMeta.updatedAt) || new Date().toISOString();
-    writeJson(WL_KEY, merged);
-    setLocalWatchMeta(at);
-    lastCloudError = null;
-    lastCloudOkAt = at;
-    const cloudIds = new Set(cloudItems.map((w) => String(w.playerId)));
-    if (local.some((w) => !cloudIds.has(String(w.playerId))) || merged.length > cloudItems.length) {
-      await mirrorWatchlistToCloud(merged, at);
-    }
-    try {
-      window.dispatchEvent(new Event('bt_transfer_watchlist_changed'));
-    } catch {}
-    return merged;
-  } catch (e: any) {
-    lastCloudError = String(e?.message || e || 'Cloud load failed').slice(0, 200);
-    return local;
-  }
+  await enqueue(syncOnce);
+  return loadWatchlist();
 }
 
 export async function syncWatchlistFromCloud() {
@@ -365,13 +425,11 @@ export async function syncWatchlistFromCloud() {
       error: 'Sign in to BattrickIQ with the same account on every device (app login, not only Battrick)',
     };
   }
-  try {
-    const list = await hydrateWatchlistFromCloud();
-    if (lastCloudError) return { list, source: 'local' as const, error: lastCloudError };
-    return { list, source: 'cloud' as const };
-  } catch (e: any) {
-    return { list: loadWatchlist(), source: 'local' as const, error: e?.message || 'Cloud sync failed' };
-  }
+  const res = await enqueue(syncOnce);
+  const list = loadWatchlist();
+  return res.ok
+    ? { list, source: 'cloud' as const, error: undefined as string | undefined }
+    : { list, source: 'local' as const, error: res.error };
 }
 
 export function addToWatchlist(
@@ -390,22 +448,21 @@ export function addToWatchlist(
     lastCost: entry.lastCost ?? entry.lastCurrentBid ?? entry.lastAskingPrice ?? 0,
   });
   saveWatchlist(next);
-  return next;
+  return loadWatchlist();
 }
 
 export function removeFromWatchlist(playerId: string): WatchEntry[] {
   const next = loadWatchlist().filter((w) => w.playerId !== String(playerId));
   saveWatchlist(next);
-  return next;
+  return loadWatchlist();
 }
 
 export function acknowledgeWatch(playerId: string): WatchEntry[] {
-  const now = new Date().toISOString();
   const next = loadWatchlist().map((w) =>
-    w.playerId === String(playerId) ? { ...w, acknowledged: true, updatedAt: now } : w
+    w.playerId === String(playerId) ? { ...w, acknowledged: true } : w
   );
   saveWatchlist(next);
-  return next;
+  return loadWatchlist();
 }
 
 export function recordTransferScan(

@@ -24,7 +24,7 @@ import BattrickAuthBar from './components/BattrickAuthBar';
 import { onCustomAuthStateChanged, getCustomUser, isAuthReady, customSignOut, type CustomUser } from './lib/customAuth';
 import { parseHash, navigateTo, type AppTab } from './lib/navigation';
 import { loadJarvisSettingsFromCloud } from './utils/jarvisSettingsStore';
-import { hydrateWatchlistFromCloud } from './utils/transferWatchlist';
+import { startWatchlistLiveSync } from './utils/transferWatchlist';
 
 type TabType = AppTab | string;
 
@@ -90,7 +90,13 @@ export default function AppShell() {
   useEffect(() => {
     if (!user) return;
     loadJarvisSettingsFromCloud().catch(() => {});
-    hydrateWatchlistFromCloud().catch(() => {});
+  }, [user?.uid]);
+
+  // Keep the Watch list in step with this account's other devices for as long as we're signed in
+  // (works from any tab of the app, not only while the Watch page is open).
+  useEffect(() => {
+    if (!user?.uid) return;
+    return startWatchlistLiveSync(user.uid);
   }, [user?.uid]);
 
   const setActiveTab = (tab: TabType | string, opts?: { playerId?: string | null }) => {
@@ -199,6 +205,7 @@ export default function AppShell() {
                       'bt_is_demo',
                       'bt_transfer_watchlist',
                       'bt_transfer_watchlist_meta',
+                      'bt_transfer_watchlist_removed',
                       'bt_transfer_alerts',
                       'bt_sync_session',
                     ].forEach((k) => {
