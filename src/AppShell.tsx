@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutGrid, Users, Calendar, Swords, Trophy, Calculator, Building2, Bot, Settings, BookOpen, RefreshCw, Shield, MoreHorizontal, X, Eye } from 'lucide-react';
+import { LayoutGrid, Users, Calendar, Swords, Trophy, Calculator, Building2, Bot, Settings, BookOpen, RefreshCw, Shield, MoreHorizontal, X, Eye, LogOut } from 'lucide-react';
 import TransferWatchPage from './components/TransferWatchPage';
 import ManagerDesk from './components/ManagerDesk';
 import SquadDashboard from './components/SquadDashboard';
@@ -21,7 +21,7 @@ import AdminDashboard from './components/AdminDashboard';
 import PlayerDetails from './components/PlayerDetails';
 import LoginPage from './components/LoginPage';
 import BattrickAuthBar from './components/BattrickAuthBar';
-import { onCustomAuthStateChanged, getCustomUser, isAuthReady, CustomUser } from './lib/customAuth';
+import { onCustomAuthStateChanged, getCustomUser, isAuthReady, customSignOut, type CustomUser } from './lib/customAuth';
 import { parseHash, navigateTo, type AppTab } from './lib/navigation';
 import { loadJarvisSettingsFromCloud } from './utils/jarvisSettingsStore';
 import { hydrateWatchlistFromCloud } from './utils/transferWatchlist';
@@ -139,6 +139,11 @@ export default function AppShell() {
               <div className="font-display font-extrabold text-slate-900 text-sm sm:text-base tracking-tight truncate">
                 BattrickIQ
               </div>
+              {user?.email && (
+                <div className="text-[10px] text-slate-500 truncate max-w-[11rem] sm:max-w-xs" title={user.email}>
+                  {user.email}
+                </div>
+              )}
               <nav className="flex items-center gap-1 text-[10px] sm:text-[11px] text-slate-500 font-medium overflow-x-auto">
                 {crumbs.map((c, idx) => (
                   <React.Fragment key={idx}>
@@ -160,24 +165,68 @@ export default function AppShell() {
                 ))}
               </nav>
             </div>
-            <button
-              type="button"
-              onClick={() => setActiveTab('jarvis-settings')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-indigo-50 border border-indigo-200 bg-indigo-50/50 text-xs font-bold shrink-0"
-              title="Jarvis Settings - API key & model"
-              aria-label="Jarvis Settings"
-            >
-              <Settings className="w-4 h-4 text-indigo-600" />
-              <span>Settings</span>
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setActiveTab('jarvis-settings')}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-indigo-50 border border-indigo-200 bg-indigo-50/50 text-xs font-bold"
+                title="Jarvis Settings - API key & model"
+                aria-label="Jarvis Settings"
+              >
+                <Settings className="w-4 h-4 text-indigo-600" />
+                <span className="hidden xs:inline sm:inline">Settings</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      'Sign out of BattrickIQ? Cloud data stays safe. This device will stop syncing Watch until you sign in again.'
+                    )
+                  ) {
+                    return;
+                  }
+                  try {
+                    customSignOut();
+                    [
+                      'bt_squad',
+                      'bt_finances',
+                      'bt_stadium',
+                      'bt_fixtures',
+                      'bt_pavilion',
+                      'bt_team_name',
+                      'bt_has_ever_synced',
+                      'bt_is_demo',
+                      'bt_transfer_watchlist',
+                      'bt_transfer_watchlist_meta',
+                      'bt_transfer_alerts',
+                      'bt_sync_session',
+                    ].forEach((k) => {
+                      try {
+                        localStorage.removeItem(k);
+                      } catch {}
+                    });
+                    window.dispatchEvent(new Event('storage'));
+                    window.dispatchEvent(new Event('bt_transfer_watchlist_changed'));
+                  } catch (e) {
+                    console.error(e);
+                  }
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-rose-800 hover:bg-rose-50 border border-rose-200 bg-rose-50/40 text-xs font-bold"
+                title={user?.email ? `Sign out (${user.email})` : 'Sign out of BattrickIQ'}
+                aria-label="Sign out of BattrickIQ"
+              >
+                <LogOut className="w-4 h-4" />
+                <span className="hidden sm:inline">Sign out</span>
+              </button>
+            </div>
             <div className="hidden sm:flex items-center gap-1 flex-wrap justify-end">
               {[...PRIMARY_TABS, ...MORE_TABS.filter((t) => ['coach', 'jarvis-settings', 'watch', 'scout', 'wage', 'sync'].includes(t.id))].map((t) => (
                 <button
                   key={t.id}
                   type="button"
                   onClick={() => setActiveTab(t.id)}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    activeTab === t.id || (t.id === 'squad' && activeTab === 'player-details')
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${\n                    activeTab === t.id || (t.id === 'squad' && activeTab === 'player-details')
                       ? 'bg-slate-900 text-white'
                       : 'text-slate-600 hover:bg-slate-100'
                   }`}
@@ -250,8 +299,7 @@ export default function AppShell() {
                 key={t.id}
                 type="button"
                 onClick={() => setActiveTab(t.id)}
-                className={`flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] text-[10px] font-bold ${
-                  active ? 'text-indigo-700' : 'text-slate-500'
+                className={`flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] text-[10px] font-bold ${\n                  active ? 'text-indigo-700' : 'text-slate-500'
                 }`}
               >
                 <span className={`p-1.5 rounded-lg ${active ? t.iconBg : ''}`}>{t.icon}</span>
@@ -262,8 +310,7 @@ export default function AppShell() {
           <button
             type="button"
             onClick={() => setShowMobileMore((v) => !v)}
-            className={`flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] text-[10px] font-bold ${
-              moreActive ? 'text-indigo-700' : 'text-slate-500'
+            className={`flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] text-[10px] font-bold ${\n              moreActive ? 'text-indigo-700' : 'text-slate-500'
             }`}
           >
             <span className={`p-1.5 rounded-lg ${moreActive ? 'bg-indigo-100' : ''}`}>
@@ -290,8 +337,7 @@ export default function AppShell() {
                     key={t.id}
                     type="button"
                     onClick={() => setActiveTab(t.id)}
-                    className={`text-left p-3 rounded-xl border transition ${
-                      active ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 bg-white'
+                    className={`text-left p-3 rounded-xl border transition ${\n                      active ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 bg-white'
                     }`}
                   >
                     <div className="flex items-center gap-2">
