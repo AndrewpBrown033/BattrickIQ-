@@ -1,30 +1,64 @@
 /**
- * Auction deadline parsing: listing times are GMT; display end in Sydney + countdown.
+ * Auction deadline parsing for Battrick Transfer Watch.
+ *
+ * Battrick application / listing times are Battrick Time (GMT/UTC wall-clock).
+ * We parse the deadline as GMT, then show:
+ *   - End time in Australia/Sydney
+ *   - End time in GMT
+ *   - Live countdown until that moment
  */
+
 export const DEADLINE_TZ = 'Australia/Sydney';
 
 function parseDeadlineParts(deadline?: string | null): {
-  d: number; mo: number; y: number; h: number; mi: number; s: number;
+  d: number;
+  mo: number;
+  y: number;
+  h: number;
+  mi: number;
+  s: number;
 } | null {
   if (!deadline) return null;
-  const s = String(deadline).trim();
-  const iso = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/);
-  if (iso) {
-    return { y: +iso[1], mo: +iso[2], d: +iso[3], h: +iso[4], mi: +iso[5], s: iso[6] ? +iso[6] : 0 };
+  // Strip common suffixes and labels: "GMT", "UTC", "BT", "Deadline:"
+  let s = String(deadline)
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\u00a0/g, ' ')
+    .replace(/Deadline\s*:?\s*/i, '')
+    .replace(/\b(GMT|UTC|BT(?:\s*time)?)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // DD/MM/YYYY HH:mm[:ss]
+  let m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (m) {
+    return { d: +m[1], mo: +m[2], y: +m[3], h: +m[4], mi: +m[5], s: m[6] ? +m[6] : 0 };
   }
-  const m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
-  if (!m) return null;
-  return { d: +m[1], mo: +m[2], y: +m[3], h: +m[4], mi: +m[5], s: m[6] ? +m[6] : 0 };
+
+  // YYYY-MM-DD[ T]HH:mm[:ss]
+  m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (m) {
+    return { y: +m[1], mo: +m[2], d: +m[3], h: +m[4], mi: +m[5], s: m[6] ? +m[6] : 0 };
+  }
+
+  // DD-MM-YYYY HH:mm
+  m = s.match(/(\d{1,2})-(\d{1,2})-(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (m) {
+    return { d: +m[1], mo: +m[2], y: +m[3], h: +m[4], mi: +m[5], s: m[6] ? +m[6] : 0 };
+  }
+
+  return null;
 }
 
-/** Epoch ms treating the deadline wall-clock as GMT/UTC. */
+/** Epoch ms treating the deadline wall-clock as GMT/UTC (Battrick Time). */
 export function parseDeadlineGmtMs(deadline?: string | null): number | null {
   const p = parseDeadlineParts(deadline);
   if (!p) return null;
+  if (p.mo < 1 || p.mo > 12 || p.d < 1 || p.d > 31 || p.h > 23 || p.mi > 59) return null;
   const ms = Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s || 0);
   return Number.isFinite(ms) ? ms : null;
 }
 
+/** @deprecated Prefer parseDeadlineGmtMs — deadlines are GMT wall-clock. */
 export function parseDeadlineSydneyMs(deadline?: string | null): number | null {
   return parseDeadlineGmtMs(deadline);
 }
@@ -32,7 +66,7 @@ export function parseDeadlineSydneyMs(deadline?: string | null): number | null {
 export function hoursUntilDeadline(deadline?: string | null): number | null {
   const ms = parseDeadlineGmtMs(deadline);
   if (ms == null) return null;
-  return (ms - Date.now()) / 3600000;
+  return (ms - Date.now()) / 3_600_000;
 }
 
 function formatInTz(ms: number, timeZone: string): string {
@@ -62,6 +96,10 @@ function formatCountdown(msLeft: number): string {
   return `${mins}m ${pad(secs)}s`;
 }
 
+/**
+ * Live countdown for a Watch auction.
+ * Deadline string is Battrick Time (GMT); end labels shown in Sydney + GMT.
+ */
 export function getDeadlineCountdown(
   deadline?: string | null,
   nowMs: number = Date.now()
@@ -69,7 +107,9 @@ export function getDeadlineCountdown(
   msLeft: number;
   ended: boolean;
   label: string;
+  /** Auction end in Australia/Sydney */
   sydneyEndLabel: string;
+  /** Same moment labelled as GMT */
   gmtEndLabel: string;
   endsAtMs: number;
 } | null {
@@ -77,9 +117,18 @@ export function getDeadlineCountdown(
   if (end == null) return null;
   const msLeft = end - nowMs;
   const sydneyEndLabel = formatInTz(end, DEADLINE_TZ);
-  const gmtEndLabel = formatInTz(end, 'UTC').replace(/\s*GMT$/i, '').trim() + ' GMT';
+  // Always label as GMT explicitly (Intl may say "UTC" or omit zone)
+  const gmtCore = formatInTz(end, 'UTC').replace(/\s*(GMT|UTC)\s*$/i, '').trim();
+  const gmtEndLabel = `${gmtCore} GMT`;
   if (msLeft <= 0) {
-    return { msLeft: 0, ended: true, label: 'Ended', sydneyEndLabel, gmtEndLabel, endsAtMs: end };
+    return {
+      msLeft: 0,
+      ended: true,
+      label: 'Ended',
+      sydneyEndLabel,
+      gmtEndLabel,
+      endsAtMs: end,
+    };
   }
   return {
     msLeft,
