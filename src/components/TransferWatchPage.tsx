@@ -134,6 +134,14 @@ export default function TransferWatchPage() {
     return data;
   };
 
+  const myTeamName = () => {
+    try {
+      return (localStorage.getItem('bt_team_name') || '').trim();
+    } catch {
+      return '';
+    }
+  };
+
   const tickOne = async (entry: WatchEntry) => {
     if (!entry.botEnabled || !entry.maxBid) return;
     if (inFlight.current.has(entry.playerId)) return;
@@ -155,6 +163,7 @@ export default function TransferWatchPage() {
         lastCost: panel.currentBid || panel.askingPrice || entry.lastCost,
         lastDeadline: panel.deadline || entry.lastDeadline,
         expectedBid: plan.nextBid ?? panel.suggestedBid,
+        lastBidderTeam: panel.bidderTeam ?? entry.lastBidderTeam,
         status: panel.isTransferListed ? 'listed' : 'sold',
         botStatus:
           plan.action === 'already_leading'
@@ -191,6 +200,7 @@ export default function TransferWatchPage() {
           botStatus: 'leading',
           lastCurrentBid: plan.nextBid,
           lastCost: plan.nextBid,
+          lastBidderTeam: myTeamName() || panel.bidderTeam || entry.lastBidderTeam,
           expectedBid: nextExpectedBid(plan.nextBid, panel.askingPrice),
           lastBotAction: `Bid placed £${plan.nextBid.toLocaleString()} — recheck in 1 min`,
         });
@@ -250,6 +260,7 @@ export default function TransferWatchPage() {
           lastAskingPrice: panel?.askingPrice,
           lastCurrentBid: panel?.currentBid,
           lastDeadline: panel?.deadline,
+          lastBidderTeam: panel?.bidderTeam,
         } as any);
         added.push(panel?.name || id);
       }
@@ -281,6 +292,31 @@ export default function TransferWatchPage() {
     void tickOne({ ...w, botEnabled: true, maxBid: max });
   };
 
+  const leadState = (w: WatchEntry): 'leading' | 'outbid' | 'none' | 'unknown' => {
+    if (w.status === 'sold') return 'none';
+    if (w.botStatus === 'leading') return 'leading';
+    const team = myTeamName().toLowerCase();
+    const bidder = (w.lastBidderTeam || '').trim();
+    if (team && bidder) {
+      return bidder.toLowerCase().includes(team) || team.includes(bidder.toLowerCase())
+        ? 'leading'
+        : 'outbid';
+    }
+    if (w.lastCurrentBid && w.botStatus === 'armed') return 'unknown';
+    if (!w.lastCurrentBid) return 'none';
+    return 'unknown';
+  };
+
+  const sortedList = [...list].sort((a, b) => {
+    const ca = getDeadlineCountdown(a.lastDeadline, nowMs);
+    const cb = getDeadlineCountdown(b.lastDeadline, nowMs);
+    const ea = ca?.endsAtMs ?? Number.POSITIVE_INFINITY;
+    const eb = cb?.endsAtMs ?? Number.POSITIVE_INFINITY;
+    if (ea !== eb) return ea - eb;
+    // Stable tie-break so names don't jump around
+    return String(a.playerId).localeCompare(String(b.playerId));
+  });
+
   return (
     <div className="flex flex-col gap-4 w-full max-w-3xl mx-auto">
       <div className="flex items-start gap-3">
@@ -290,8 +326,8 @@ export default function TransferWatchPage() {
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-black text-slate-900">Transfer Watch</h2>
           <p className="text-xs text-slate-600 mt-0.5">
-            Watched players and optional bot bidder. Next expected bid follows Battrick rules:
-            max(asking, current + £1,000, current × 1.02).
+            Sorted by soonest auction end (#1 = closest deadline). Green = you are high bidder;
+            amber = outbid. Next expected bid: max(asking, current + £1,000, current × 1.02).
           </p>
         </div>
       </div>
@@ -336,16 +372,40 @@ export default function TransferWatchPage() {
         {list.length === 0 && (
           <div className="text-center text-sm text-slate-500 py-8">No players on watch yet.</div>
         )}
-        {list.map((w) => {
+        {sortedList.map((w, index) => {
           const expected = nextExpectedBid(w.lastCurrentBid, w.lastAskingPrice);
           const draft = maxDraft[w.playerId] ?? String(w.maxBid || expected || '');
+          const lead = leadState(w);
+          const cardBorder =
+            lead === 'leading'
+              ? 'border-emerald-300 ring-1 ring-emerald-200'
+              : lead === 'outbid'
+                ? 'border-amber-300 ring-1 ring-amber-100'
+                : 'border-slate-200';
           return (
-            <div key={w.playerId} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div key={w.playerId} className={`rounded-2xl border bg-white p-4 shadow-sm ${cardBorder}`}>
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="font-bold text-slate-900">{w.name}</div>
-                  <div className="text-[10px] text-slate-500 font-mono">ID {w.playerId}</div>
-                  {w.reason && <div className="text-[11px] text-slate-600 mt-1">{w.reason}</div>}
+                <div className="min-w-0 flex items-start gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-slate-900 text-white text-xs font-black flex items-center justify-center shrink-0 tabular-nums">
+                    {index + 1}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-slate-900">{w.name}</div>
+                    <div className="text-[10px] text-slate-500 font-mono">ID {w.playerId}</div>
+                    {w.reason && <div className="text-[11px] text-slate-600 mt-1">{w.reason}</div>}
+                    {lead === 'leading' && (
+                      <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-black uppercase tracking-wide">
+                        You are leading
+                        {w.lastCurrentBid ? ` · £${w.lastCurrentBid.toLocaleString()}` : ''}
+                      </div>
+                    )}
+                    {lead === 'outbid' && (
+                      <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[11px] font-black uppercase tracking-wide">
+                        Outbid{w.lastBidderTeam ? ` by ${w.lastBidderTeam}` : ''}
+                        {w.lastCurrentBid ? ` · £${w.lastCurrentBid.toLocaleString()}` : ''}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="text-right text-[11px] text-slate-600">
                   <div>
@@ -360,6 +420,11 @@ export default function TransferWatchPage() {
                       {w.lastCurrentBid ? `£${w.lastCurrentBid.toLocaleString()}` : '—'}
                     </span>
                   </div>
+                  {w.lastBidderTeam && (
+                    <div className={lead === 'leading' ? 'text-emerald-700 font-bold' : 'text-amber-800 font-semibold'}>
+                      {lead === 'leading' ? 'High bidder: you' : `High bidder: ${w.lastBidderTeam}`}
+                    </div>
+                  )}
                   <div>
                     Next expected bid:{' '}
                     <span className="font-black text-indigo-700">
@@ -438,7 +503,7 @@ export default function TransferWatchPage() {
                     void tickOne({
                       ...w,
                       maxBid: max >= 1000 ? max : w.maxBid,
-                      botEnabled: w.botEnabled,
+                      botEnabled: true,
                     });
                   }}
                   className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-700"
@@ -469,6 +534,16 @@ export default function TransferWatchPage() {
                 </button>
               </div>
               <div className="mt-2 flex flex-wrap gap-2 text-[10px]">
+                {lead === 'leading' && (
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white font-black uppercase tracking-wide">
+                    Leading
+                  </span>
+                )}
+                {lead === 'outbid' && (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white font-black uppercase tracking-wide">
+                    Outbid
+                  </span>
+                )}
                 {w.botEnabled && (
                   <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-bold uppercase tracking-wide">
                     Bot {w.botStatus || 'armed'}
