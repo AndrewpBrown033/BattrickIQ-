@@ -33,11 +33,11 @@ export default function TransferWatchPage() {
   const [adding, setAdding] = useState(false);
   const [maxDraft, setMaxDraft] = useState<Record<string, string>>({});
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const inFlight = useRef<Set<string>>(new Set());
   const [cloud, setCloud] = useState(() => getWatchCloudStatus());
   const [lease, setLease] = useState(() => getBotLeaseState());
   const [syncing, setSyncing] = useState(false);
   const [syncNote, setSyncNote] = useState<string | null>(null);
+  const inFlight = useRef<Set<string>>(new Set());
 
   const reload = useCallback(() => setList(loadWatchlist()), []);
 
@@ -69,20 +69,10 @@ export default function TransferWatchPage() {
     return () => window.clearInterval(id);
   }, []);
 
-  const onSyncNow = async () => {
-    setSyncing(true);
-    setSyncNote(null);
-    const res = await syncWatchlistFromCloud();
-    setList(res.list);
-    setSyncNote(res.error || null);
-    setCloud(getWatchCloudStatus());
-    setSyncing(false);
-  };
-
   const callBattrick = async (path: string, payload: Record<string, unknown>) => {
     if (!password || !username) {
       requireAuth();
-      throw new Error('Battrick session expired — sign in again');
+      throw new Error('Battrick session expired — sign in again (bot paused until you do)');
     }
     const attempt = async (token: string) => {
       const ctl = new AbortController();
@@ -98,9 +88,12 @@ export default function TransferWatchPage() {
         try {
           data = await res.json();
         } catch {
-          data = { error: `HTTP ${res.status}` };
+          data = { error: `Server returned HTTP ${res.status}` };
         }
         return { res, data };
+      } catch (e: any) {
+        if (e?.name === 'AbortError') throw new Error('Battrick took too long to answer (timed out)');
+        throw e;
       } finally {
         window.clearTimeout(timer);
       }
@@ -108,9 +101,17 @@ export default function TransferWatchPage() {
     let { res, data } = await attempt(localStorage.getItem('bt_sync_session') || '');
     if (data.sessionToken) localStorage.setItem('bt_sync_session', data.sessionToken);
     if (res.status === 401 || data?.isAuthFailure) {
-      requireAuth();
-      throw new Error(data?.error || 'Battrick login failed');
+      try {
+        localStorage.removeItem('bt_sync_session');
+      } catch {}
+      ({ res, data } = await attempt(''));
+      if (data.sessionToken) localStorage.setItem('bt_sync_session', data.sessionToken);
+      if (res.status === 401 || data?.isAuthFailure) {
+        requireAuth();
+        throw new Error(`${data?.error || 'Battrick login failed'} — re-enter your password`);
+      }
     }
+    if (!res.ok && data?.error) throw new Error(data.error);
     return data;
   };
 
@@ -121,13 +122,20 @@ export default function TransferWatchPage() {
       playerId,
     });
     const html = data.html || data.content || '';
-    if (!html || html.length < 200) throw new Error(data?.error || 'No player page');
+    if (!html || html.length < 200) throw new Error(data?.error || 'No player page returned');
     const panel = parseTransferPanelFromHtml(html);
     if (!panel.playerId) panel.playerId = playerId;
     return panel;
   };
 
+  const placeBid = async (playerId: string, bidValue: number) => {
+    const data = await callBattrick('/api/battrick-place-bid', { playerId, bidValue });
+    if (data?.error) throw new Error(data.error);
+    return data;
+  };
+
   const tickOne = async (entry: WatchEntry) => {
+    if (!entry.botEnabled || !entry.maxBid) return;
     if (inFlight.current.has(entry.playerId)) return;
     inFlight.current.add(entry.playerId);
     setBusyId(entry.playerId);
@@ -138,42 +146,63 @@ export default function TransferWatchPage() {
         return;
       }
       const panel = await fetchPanel(entry.playerId);
-      const plan = planBotBid(entry, panel);
+      const teamName = localStorage.getItem('bt_team_name') || '';
+      const plan = planBotBid(entry, panel, { myTeamName: teamName });
+
       updateWatchAfterBotTick(entry.playerId, {
-        lastCurrentBid: panel.currentBid,
-        lastAskingPrice: panel.askingPrice,
+        lastAskingPrice: panel.askingPrice ?? entry.lastAskingPrice,
+        lastCurrentBid: panel.currentBid ?? entry.lastCurrentBid,
+        lastCost: panel.currentBid || panel.askingPrice || entry.lastCost,
         lastDeadline: panel.deadline || entry.lastDeadline,
-        lastBidderTeam: panel.bidderTeam,
-        lastBotAction: plan.message,
+        expectedBid: plan.nextBid ?? panel.suggestedBid,
+        status: panel.isTransferListed ? 'listed' : 'sold',
         botStatus:
-          plan.action === 'bid_placed'
-            ? 'bidding'
-            : plan.action === 'already_leading'
-              ? 'leading'
-              : plan.action === 'outbid_over_max' || plan.action === 'at_max'
-                ? 'maxed'
-                : plan.action === 'not_listed'
-                  ? 'sold'
-                  : entry.botStatus,
-        status: plan.action === 'not_listed' ? 'sold' : entry.status,
+          plan.action === 'already_leading'
+            ? 'leading'
+            : plan.action === 'outbid_over_max' || plan.action === 'at_max'
+              ? 'maxed'
+              : plan.action === 'not_listed'
+                ? 'sold'
+                : 'armed',
+        lastBotAction: plan.message,
       });
-      if (plan.action === 'bid_placed' && plan.nextBid && entry.botEnabled) {
-        await callBattrick('/api/place-bid', {
-          playerId: entry.playerId,
-          bidValue: plan.nextBid,
-        });
+
+      let cash: number | undefined;
+      try {
+        cash = JSON.parse(localStorage.getItem('bt_finances') || 'null')?.cash;
+      } catch {}
+      if (plan.action === 'bid_placed' && plan.nextBid != null && cash != null && plan.nextBid > cash) {
         updateWatchAfterBotTick(entry.playerId, {
-          lastBotAction: `Bid placed £${plan.nextBid.toLocaleString()}`,
+          botStatus: 'maxed',
+          lastBotAction: `Next bid £${plan.nextBid.toLocaleString()} is more than your cash £${cash.toLocaleString()} — not bidding`,
+        });
+        setGlobalMsg(`${entry.name}: next bid exceeds your available cash`);
+        reload();
+        return;
+      }
+
+      if (plan.action === 'bid_placed' && plan.nextBid != null) {
+        updateWatchAfterBotTick(entry.playerId, {
+          botStatus: 'bidding',
+          lastBotAction: `Posting £${plan.nextBid.toLocaleString()}…`,
+        });
+        await placeBid(entry.playerId, plan.nextBid);
+        updateWatchAfterBotTick(entry.playerId, {
           botStatus: 'leading',
           lastCurrentBid: plan.nextBid,
+          lastCost: plan.nextBid,
+          expectedBid: nextExpectedBid(plan.nextBid, panel.askingPrice),
+          lastBotAction: `Bid placed £${plan.nextBid.toLocaleString()} — recheck in 1 min`,
         });
+        setGlobalMsg(`Bid £${plan.nextBid.toLocaleString()} on ${entry.name}`);
+      } else if (plan.action === 'outbid_over_max' || plan.action === 'at_max') {
+        setGlobalMsg(`${entry.name}: ${plan.message}`);
       }
       reload();
     } catch (e: any) {
-      setGlobalMsg(e?.message || 'Check failed');
       updateWatchAfterBotTick(entry.playerId, {
-        lastBotAction: e?.message || 'error',
         botStatus: 'error',
+        lastBotAction: e?.message || 'Bot error',
       });
       reload();
     } finally {
@@ -184,8 +213,8 @@ export default function TransferWatchPage() {
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      const armed = loadWatchlist().filter((w) => w.botEnabled && w.maxBid && w.status !== 'sold');
-      for (const w of armed) void tickOne(w);
+      const current = loadWatchlist().filter((w) => w.botEnabled && w.maxBid && w.status !== 'sold');
+      current.forEach((w) => void tickOne(w));
     }, POLL_MS);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -252,9 +281,6 @@ export default function TransferWatchPage() {
     void tickOne({ ...w, botEnabled: true, maxBid: max });
   };
 
-  const money = (n?: number | null) =>
-    n != null && n > 0 ? `£${Number(n).toLocaleString()}` : '—';
-
   return (
     <div className="flex flex-col gap-4 w-full max-w-3xl mx-auto">
       <div className="flex items-start gap-3">
@@ -268,65 +294,7 @@ export default function TransferWatchPage() {
             max(asking, current + £1,000, current × 1.02).
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void onSyncNow()}
-          disabled={syncing}
-          className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 disabled:opacity-50"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
-          {syncing ? 'Syncing…' : 'Sync'}
-        </button>
       </div>
-
-      {(() => {
-        const err = syncNote || (cloud.signedIn ? cloud.lastError : null);
-        let text: string;
-        let tone: 'ok' | 'warn' | 'idle';
-        if (!cloud.signedIn) {
-          text =
-            'This device only — sign in to BattrickIQ (same account everywhere) to carry your watch list across devices';
-          tone = 'idle';
-        } else if (err) {
-          text = err;
-          tone = 'warn';
-        } else if (cloud.live) {
-          text = `Synced across your devices · ${list.length} player${list.length === 1 ? '' : 's'}`;
-          tone = 'ok';
-        } else {
-          text = 'Connecting to your other devices…';
-          tone = 'idle';
-        }
-        return (
-          <div
-            className={
-              'rounded-xl border px-3 py-2 text-[11px] font-mono ' +
-              (tone === 'ok'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-                : tone === 'warn'
-                  ? 'border-amber-200 bg-amber-50 text-amber-950'
-                  : 'border-slate-200 bg-slate-50 text-slate-700')
-            }
-          >
-            {text}
-          </div>
-        );
-      })()}
-
-      {lease.active && !lease.mine && (
-        <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-950 flex flex-wrap items-center gap-2">
-          <span>
-            Bot is running on <strong>{lease.holderLabel || 'another device'}</strong>
-          </span>
-          <button
-            type="button"
-            className="text-[11px] font-bold px-2 py-1 rounded-lg bg-indigo-600 text-white"
-            onClick={() => void claimBotLease({ force: true }).then(() => setLease(getBotLeaseState()))}
-          >
-            Take over here
-          </button>
-        </div>
-      )}
 
       {globalMsg && (
         <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 flex items-start gap-2">
@@ -368,86 +336,56 @@ export default function TransferWatchPage() {
         {list.length === 0 && (
           <div className="text-center text-sm text-slate-500 py-8">No players on watch yet.</div>
         )}
-        {list.map((w, idx) => {
+        {list.map((w) => {
           const expected = nextExpectedBid(w.lastCurrentBid, w.lastAskingPrice);
           const draft = maxDraft[w.playerId] ?? String(w.maxBid || expected || '');
           return (
             <div key={w.playerId} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="text-sm font-black text-slate-900">
-                    <span className="text-slate-400 font-mono mr-1">{idx + 1}.</span>
-                    {w.name}
-                    {w.botEnabled && (
-                      <span className="ml-2 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800">
-                        Bot {w.botStatus || 'armed'}
-                      </span>
-                    )}
-                    {w.status === 'sold' && (
-                      <span className="ml-2 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                        Sold
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[11px] text-slate-500 font-mono">#{w.playerId}</div>
-                  {w.reason && <div className="text-[11px] text-slate-600 mt-0.5">{w.reason}</div>}
-                  <div className="mt-1 text-[11px] text-slate-700 space-y-0.5">
-                    <div>
-                      Asking {money(w.lastAskingPrice)} · Current {money(w.lastCurrentBid)}
-                    </div>
-                    <div>
-                      Next expected bid:{' '}
-                      <span className="font-bold">{money(expected)}</span>
-                    </div>
-                    {(w as any).lastBidderTeam && (
-                      <div>
-                        High bidder:{' '}
-                        <span className="font-semibold text-slate-800">{(w as any).lastBidderTeam}</span>
-                      </div>
-                    )}
-                    {(() => {
-                      const cd = getDeadlineCountdown(w.lastDeadline, nowMs);
-                      if (!cd && !w.lastDeadline) return null;
-                      if (!cd)
-                        return (
-                          <div className="text-slate-500">Deadline: {w.lastDeadline}</div>
-                        );
-                      return (
-                        <div className="flex flex-col gap-0.5 text-[11px] mt-1 rounded-lg border border-slate-100 bg-slate-50/80 px-2 py-1.5">
-                          <div>
-                            <span className="font-semibold text-slate-500">Ends (Sydney)</span>{' '}
-                            <span className="font-mono font-bold text-slate-900">{cd.sydneyEndLabel}</span>
-                          </div>
-                          <div>
-                            <span className="font-semibold text-slate-500">Ends (GMT)</span>{' '}
-                            <span className="font-mono">{cd.gmtEndLabel}</span>
-                          </div>
-                          {cd.ended ? (
-                            <div className="font-semibold text-slate-500">Auction ended</div>
-                          ) : (
-                            <div
-                              className={
-                                'font-black tabular-nums text-sm ' +
-                                (cd.msLeft <= 10 * 60 * 1000 ? 'text-amber-700' : 'text-indigo-700')
-                              }
-                            >
-                              {cd.label}
-                              <span className="font-semibold text-[10px] ml-1 opacity-80">remaining</span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
+                  <div className="font-bold text-slate-900">{w.name}</div>
+                  <div className="text-[10px] text-slate-500 font-mono">ID {w.playerId}</div>
+                  {w.reason && <div className="text-[11px] text-slate-600 mt-1">{w.reason}</div>}
                 </div>
-                <a
-                  href={w.playerUrl || `https://www.battrick.org/nl/playerdetails.asp?playerID=${w.playerId}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="p-1.5 rounded-lg border border-slate-200 text-slate-600 shrink-0"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+                <div className="text-right text-[11px] text-slate-600">
+                  <div>
+                    Asking{' '}
+                    <span className="font-bold text-slate-900">
+                      {w.lastAskingPrice ? `£${w.lastAskingPrice.toLocaleString()}` : '—'}
+                    </span>
+                  </div>
+                  <div>
+                    Current{' '}
+                    <span className="font-semibold">
+                      {w.lastCurrentBid ? `£${w.lastCurrentBid.toLocaleString()}` : '—'}
+                    </span>
+                  </div>
+                  <div>
+                    Next expected bid:{' '}
+                    <span className="font-black text-indigo-700">
+                      {expected ? `£${expected.toLocaleString()}` : '—'}
+                    </span>
+                  </div>
+                  {(() => {
+                    const cd = getDeadlineCountdown(w.lastDeadline, nowMs);
+                    if (!cd && !w.lastDeadline) return null;
+                    if (!cd) return <div>Deadline: {w.lastDeadline}</div>;
+                    if (cd.ended) return <div className="font-semibold text-slate-500">Auction ended</div>;
+                    return (
+                      <div>
+                        <div className="text-[10px] text-slate-500">Ends Sydney {cd.sydneyEndLabel}</div>
+                        <div
+                          className={
+                            'font-black tabular-nums ' +
+                            (cd.msLeft <= 10 * 60 * 1000 ? 'text-amber-700' : 'text-indigo-700')
+                          }
+                        >
+                          {cd.label} left
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
 
               <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
@@ -456,62 +394,93 @@ export default function TransferWatchPage() {
                   <input
                     value={draft}
                     onChange={(e) => setMaxDraft((d) => ({ ...d, [w.playerId]: e.target.value }))}
-                    className="w-28 text-sm border rounded-lg px-2 py-1"
+                    className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm w-32"
                   />
                 </label>
-                <div className="flex flex-wrap gap-1" aria-label="Adjust max bid">
+                <div className="flex flex-wrap gap-1 w-full sm:w-auto" aria-label="Adjust max bid">
                   {[-100_000, -50_000, -10_000, 10_000, 50_000, 100_000].map((d) => (
                     <button
                       key={d}
                       type="button"
                       onClick={() => nudgeMax(w, d, draft)}
-                      className="text-[10px] font-mono font-bold px-1.5 py-1 rounded border border-slate-200 bg-slate-50 text-slate-700"
+                      className={`px-2 py-1.5 rounded-lg border text-[11px] font-bold ${
+                        d < 0
+                          ? 'border-slate-200 bg-slate-50 text-slate-700'
+                          : 'border-indigo-200 bg-indigo-50 text-indigo-800'
+                      }`}
                     >
                       {d > 0 ? `+${d / 1000}k` : `${d / 1000}k`}
                     </button>
                   ))}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onArm(w)}
-                  className="text-xs font-bold px-2.5 py-1.5 rounded-lg bg-indigo-600 text-white inline-flex items-center gap-1"
-                >
-                  <Bot className="w-3.5 h-3.5" /> Arm bot
-                </button>
-                {w.botEnabled && (
+                {!w.botEnabled ? (
                   <button
                     type="button"
-                    onClick={() => {
-                      setList(disableBotBid(w.playerId));
-                    }}
-                    className="text-xs font-bold px-2.5 py-1.5 rounded-lg border border-rose-200 text-rose-800 inline-flex items-center gap-1"
+                    onClick={() => onArm(w)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold"
+                  >
+                    <Bot className="w-3.5 h-3.5" /> Arm bot
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setList(disableBotBid(w.playerId))}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-rose-100 text-rose-800 text-xs font-bold border border-rose-200"
                   >
                     <StopCircle className="w-3.5 h-3.5" /> Stop bot
                   </button>
                 )}
                 <button
                   type="button"
-                  onClick={() => void tickOne(w)}
                   disabled={busyId === w.playerId}
-                  className="text-xs font-bold px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 inline-flex items-center gap-1"
+                  onClick={() => {
+                    const max = Math.round(Number(String(draft).replace(/[^0-9]/g, '')) || 0);
+                    void tickOne({
+                      ...w,
+                      maxBid: max >= 1000 ? max : w.maxBid,
+                      botEnabled: w.botEnabled,
+                    });
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-700"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${busyId === w.playerId ? 'animate-spin' : ''}`} />{' '}
-                  Check now
+                  <RefreshCw className={`w-3.5 h-3.5 ${busyId === w.playerId ? 'animate-spin' : ''}`} /> Check
+                  now
                 </button>
+                <a
+                  href={
+                    w.playerUrl ||
+                    `https://www.battrick.org/nl/playerdetails.asp?playerID=${w.playerId}`
+                  }
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-700"
+                >
+                  <ExternalLink className="w-3 h-3" /> Battrick
+                </a>
                 <button
                   type="button"
                   onClick={() => {
                     removeFromWatchlist(w.playerId);
                     reload();
                   }}
-                  className="text-xs font-bold px-2.5 py-1.5 rounded-lg border text-slate-600 ml-auto"
+                  className="text-[11px] text-slate-500 underline ml-auto"
                 >
                   Remove
                 </button>
               </div>
-              {w.lastBotAction && (
-                <div className="mt-2 text-[11px] text-slate-600 font-mono">{w.lastBotAction}</div>
-              )}
+              <div className="mt-2 flex flex-wrap gap-2 text-[10px]">
+                {w.botEnabled && (
+                  <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-bold uppercase tracking-wide">
+                    Bot {w.botStatus || 'armed'}
+                  </span>
+                )}
+                {w.status === 'sold' && (
+                  <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold">
+                    Sold
+                  </span>
+                )}
+                {w.lastBotAction && <span className="text-slate-600">{w.lastBotAction}</span>}
+              </div>
             </div>
           );
         })}
