@@ -28,6 +28,8 @@ export interface SuggestedLineup {
   effort: 'TIE' | 'PAN' | 'GFI';
   reason: string;
   xi: LineupSlot[];
+  /** Bowling order derived from the XI — strongest bowling first */
+  bowlingOrder: LineupSlot[];
   match?: {
     opponent: string;
     type: string;
@@ -211,13 +213,23 @@ export function suggestStartingXI(
   }
 
   xi.sort((a, b) => a.order - b.order);
+  const xiFinal = xi.slice(0, 11);
+
+  const bowlingOrder = [...xiFinal]
+    .filter((s) => {
+      const type = (s.bowlingType || '').trim();
+      return type && type.toLowerCase() !== 'none' && (s.bowling || 0) > 0;
+    })
+    .sort((a, b) => b.bowling - a.bowling || a.order - b.order)
+    .map((s, i) => ({ ...s, order: i + 1 }));
 
   return {
     format,
     strategy,
     effort,
     reason,
-    xi: xi.slice(0, 11),
+    xi: xiFinal,
+    bowlingOrder,
     match: match
       ? {
           opponent: match.opponent || 'TBD',

@@ -104,10 +104,11 @@ export default function NextMatchLineupCard({ setActiveTab }: Props) {
         </span>
       </p>
 
-      <ol className="grid grid-cols-1 sm:grid-cols-2 gap-1 mb-3 max-h-48 overflow-y-auto">
+      <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Batting order</div>
+      <ol className="grid grid-cols-1 sm:grid-cols-2 gap-1 mb-3 max-h-40 overflow-y-auto">
         {suggestion.xi.map((s) => (
           <li
-            key={`${s.order}-${s.playerId}`}
+            key={`bat-${s.order}-${s.playerId}`}
             className="text-[11px] flex items-baseline gap-1.5 px-2 py-1 rounded-lg bg-slate-50 border border-slate-100"
           >
             <span className="font-mono font-bold text-slate-400 w-4 shrink-0">{s.order}</span>
@@ -116,6 +117,26 @@ export default function NextMatchLineupCard({ setActiveTab }: Props) {
           </li>
         ))}
       </ol>
+
+      {(suggestion.bowlingOrder?.length ?? 0) > 0 && (
+        <>
+          <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-rose-700">Bowling order</div>
+          <ol className="grid grid-cols-1 sm:grid-cols-2 gap-1 mb-3 max-h-36 overflow-y-auto">
+            {suggestion.bowlingOrder.map((s) => (
+              <li
+                key={`bowl-${s.order}-${s.playerId}`}
+                className="text-[11px] flex items-baseline gap-1.5 px-2 py-1 rounded-lg bg-rose-50/60 border border-rose-100"
+              >
+                <span className="font-mono font-bold text-rose-700 w-4 shrink-0">{s.order}</span>
+                <span className="font-semibold text-slate-800 truncate">{s.name}</span>
+                <span className="text-rose-600/80 ml-auto shrink-0 text-[10px]">
+                  {s.bowlingType || 'Bowl'} · {s.bowling}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
 
       <button
         type="button"
