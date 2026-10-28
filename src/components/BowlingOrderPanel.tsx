@@ -23,14 +23,14 @@ interface Props {
 }
 
 export default function BowlingOrderPanel({ lineup }: Props) {
-  const bowlingOrder = rankBowlingOrder(lineup);
+  const bowlingOrder = rankBowlingOrder(lineup).slice(0, 5);
 
   return (
     <div className="mt-4 flex flex-col gap-2">
       <h4 className="font-display font-semibold text-xs text-slate-500 uppercase tracking-wider mb-0.5 flex items-center justify-between">
         <span>Bowling order</span>
         <span className="text-[10px] lowercase text-slate-400 font-normal">
-          Suggested from this XI · strongest bowling first
+          Top 5 from this XI · strongest bowling first
         </span>
       </h4>
       {bowlingOrder.length === 0 ? (
@@ -57,14 +57,9 @@ export default function BowlingOrderPanel({ lineup }: Props) {
                   </div>
                 </div>
               </div>
-              <div className="text-right shrink-0 font-mono text-[10px]">
-                <div>
-                  <span className="text-slate-400 uppercase mr-1">bwl</span>
-                  <span className="text-rose-700 font-bold">{player.bowling}</span>
-                </div>
-                {player.consistency != null && (
-                  <div className="text-slate-400">cons {player.consistency}</div>
-                )}
+              <div className="text-right shrink-0">
+                <div className="text-xs font-black text-rose-800 tabular-nums">{player.bowling}</div>
+                <div className="text-[9px] text-slate-400">bowl</div>
               </div>
             </div>
           ))}
