@@ -8,8 +8,12 @@ import {
   getWatchCloudStatus,
   getDeadlineCountdown,
   WATCH_SYNC_EVENT,
+  hydrateWatchlistFromCloud,
+  syncWatchlistFromCloud,
+  startWatchlistLiveSync,
   type WatchEntry,
 } from '../utils/transferWatchlist';
+import { getCustomUser, onCustomAuthStateChanged } from '../lib/customAuth';
 import { claimBotLease, getBotLeaseState, LEASE_EVENT } from '../utils/watchBotLease';
 import {
   enableBotBid,
@@ -35,6 +39,8 @@ export default function TransferWatchPage() {
   const [adding, setAdding] = useState(false);
   const [maxDraft, setMaxDraft] = useState<Record<string, string>>({});
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const inFlight = useRef<Set<string>>(new Set());
 
   const reload = useCallback(() => setList(loadWatchlist()), []);
@@ -57,6 +63,70 @@ export default function TransferWatchPage() {
     const id = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  // Cross-device: hydrate when BattrickIQ auth is ready, then live-listen
+  useEffect(() => {
+    let cancelled = false;
+    const unsubAuth = onCustomAuthStateChanged((user) => {
+      if (cancelled) return;
+      if (!user?.uid) {
+        setSyncMsg('Local only — sign in to BattrickIQ with the same account on every device');
+        setSyncing(false);
+        return;
+      }
+      setSyncing(true);
+      hydrateWatchlistFromCloud()
+        .then((next) => {
+          if (cancelled) return;
+          setList(next);
+          const st = getWatchCloudStatus();
+          if (st.lastError) setSyncMsg(st.lastError);
+          else setSyncMsg('Cloud sync OK · ' + next.length + ' player' + (next.length === 1 ? '' : 's'));
+        })
+        .catch((e: any) => {
+          if (!cancelled) setSyncMsg(String(e?.message || e || 'Cloud hydrate failed'));
+        })
+        .finally(() => {
+          if (!cancelled) setSyncing(false);
+        });
+    });
+    return () => {
+      cancelled = true;
+      unsubAuth();
+    };
+  }, []);
+
+  // Live Firestore listener — re-attaches when auth user is available
+  useEffect(() => {
+    let unsubLive: (() => void) | undefined;
+    const unsubAuth = onCustomAuthStateChanged((user) => {
+      if (unsubLive) {
+        unsubLive();
+        unsubLive = undefined;
+      }
+      if (!user?.uid) return;
+      unsubLive = startWatchlistLiveSync(user.uid);
+    });
+    return () => {
+      unsubAuth();
+      if (unsubLive) unsubLive();
+    };
+  }, []);
+
+  const onSyncNow = async () => {
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const res = await syncWatchlistFromCloud();
+      setList(res.list || loadWatchlist());
+      if (res.error) setSyncMsg(res.error);
+      else setSyncMsg('Synced · ' + (res.list?.length ?? loadWatchlist().length) + ' players');
+    } catch (e: any) {
+      setSyncMsg(String(e?.message || e || 'Sync failed'));
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const myTeamName = () => {
     try {
@@ -115,19 +185,18 @@ export default function TransferWatchPage() {
       skills: p.skills || {},
       bowlingType: p.bowlingType,
     }));
-    const candidate = {
-      name: panel.name || 'Player',
-      age: panel.age || 0,
-      wage: panel.wage,
-      role: panel.role,
-      bowlingType: panel.bowlingType,
-      skills: panel.skills || {},
-    };
-    return evaluateScoutBuyFit(candidate, squad, {
-      cash: loadCash(),
-      ratingTargets: loadRatingTargets() as any,
-      factorFinance: true,
-    });
+    return evaluateScoutBuyFit(
+      {
+        name: panel.name || 'Player',
+        age: panel.age || 0,
+        wage: panel.wage,
+        role: panel.role,
+        bowlingType: panel.bowlingType,
+        skills: panel.skills || {},
+      },
+      squad,
+      { cash: loadCash(), ratingTargets: loadRatingTargets() as any, factorFinance: true }
+    );
   };
 
   const callBattrick = async (path: string, payload: Record<string, unknown>) => {
@@ -145,8 +214,6 @@ export default function TransferWatchPage() {
         requireAuth();
         throw new Error('Battrick session expired — sign in again (bot paused until you do)');
       }
-      user = username || user;
-      pass = password || pass;
       try {
         user = user || localStorage.getItem('bt_battrick_username') || '';
         pass = pass || localStorage.getItem('bt_direct_pass_persist') || sessionStorage.getItem('bt_direct_pass') || '';
@@ -227,7 +294,6 @@ export default function TransferWatchPage() {
       const panel = await fetchPanel(entry.playerId);
       const teamName = myTeamName();
       const plan = planBotBid(entry, panel, { myTeamName: teamName });
-
       const fit = panel.skills
         ? computeBuyFit({
             name: panel.name || entry.name,
@@ -462,7 +528,19 @@ export default function TransferWatchPage() {
           <p className="text-xs text-slate-600 mt-0.5">
             Skills and Jarvis buy-fit update when you Check now. Sorted by soonest auction end.
           </p>
+          {(syncMsg || syncing) && (
+            <p className="text-[11px] text-slate-500 mt-1">{syncing ? 'Syncing across devices…' : syncMsg}</p>
+          )}
         </div>
+        <button
+          type="button"
+          onClick={() => void onSyncNow()}
+          disabled={syncing}
+          className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+          Sync
+        </button>
       </div>
 
       {globalMsg && (
@@ -487,7 +565,7 @@ export default function TransferWatchPage() {
                 void onAdd();
               }
             }}
-            placeholder="Player ID or playerdetails URL (comma-separated ok)"
+            placeholder="Player ID or playerdetails URL"
             className="flex-1 text-sm border border-slate-200 rounded-xl px-3 py-2.5"
           />
           <button
@@ -525,31 +603,6 @@ export default function TransferWatchPage() {
                   <div className="min-w-0">
                     <div className="font-bold text-slate-900">{w.name}</div>
                     <div className="text-[10px] text-slate-500 font-mono">ID {w.playerId}</div>
-                    {w.reason && <div className="text-[11px] text-slate-600 mt-1">{w.reason}</div>}
-                    {lead === 'leading' && (
-                      <div className="mt-1.5 inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-black uppercase tracking-wide">
-                        You are leading
-                        {w.lastCurrentBid ? ` · £${w.lastCurrentBid.toLocaleString()}` : ''}
-                      </div>
-                    )}
-                    {lead === 'outbid' && (
-                      <div className="mt-1.5 inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[11px] font-black uppercase tracking-wide">
-                        Outbid{w.lastBidderTeam ? ` by ${w.lastBidderTeam}` : ''}
-                        {w.lastCurrentBid ? ` · £${w.lastCurrentBid.toLocaleString()}` : ''}
-                      </div>
-                    )}
-                    {(w.age != null || w.wage != null || w.role) && (
-                      <div className="mt-1.5 text-[10px] text-slate-600">
-                        {[
-                          w.role,
-                          w.age != null ? `${w.age}y` : null,
-                          w.wage != null ? `£${w.wage.toLocaleString()}/wk` : null,
-                          w.bowlingType && w.bowlingType !== 'None' ? w.bowlingType : null,
-                        ]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </div>
-                    )}
                     {w.skills && (
                       <div className="mt-1.5 flex flex-wrap gap-1">
                         {(
@@ -586,7 +639,6 @@ export default function TransferWatchPage() {
                       >
                         <span className="font-black uppercase tracking-wide">
                           Jarvis fit: {w.buyFit.verdict} · {w.buyFit.score}/100
-                          {!w.buyFit.affordable ? ' · tight budget' : ''}
                         </span>
                         <span className="font-medium leading-snug">{w.buyFit.summary}</span>
                       </div>
@@ -606,12 +658,6 @@ export default function TransferWatchPage() {
                       {w.lastCurrentBid ? `£${w.lastCurrentBid.toLocaleString()}` : '—'}
                     </span>
                   </div>
-                  <div>
-                    Next bid:{' '}
-                    <span className="font-black text-indigo-700">
-                      {expected ? `£${expected.toLocaleString()}` : '—'}
-                    </span>
-                  </div>
                   {(() => {
                     const cd = getDeadlineCountdown(w.lastDeadline, nowMs);
                     if (!cd && !w.lastDeadline) return null;
@@ -620,12 +666,7 @@ export default function TransferWatchPage() {
                     return (
                       <div>
                         <div className="text-[10px] text-slate-500">Ends Sydney {cd.sydneyEndLabel}</div>
-                        <div
-                          className={
-                            'font-black tabular-nums ' +
-                            (cd.msLeft <= 10 * 60 * 1000 ? 'text-amber-700' : 'text-indigo-700')
-                          }
-                        >
+                        <div className={'font-black tabular-nums ' + (cd.msLeft <= 10 * 60 * 1000 ? 'text-amber-700' : 'text-indigo-700')}>
                           {cd.label} left
                         </div>
                       </div>
@@ -643,36 +684,12 @@ export default function TransferWatchPage() {
                     className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm w-32"
                   />
                 </label>
-                <div className="flex flex-wrap gap-1" aria-label="Adjust max bid">
-                  {[-100_000, -50_000, -10_000, 10_000, 50_000, 100_000].map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => nudgeMax(w, d, draft)}
-                      className={`px-2 py-1.5 rounded-lg border text-[11px] font-bold ${
-                        d < 0
-                          ? 'border-slate-200 bg-slate-50 text-slate-700'
-                          : 'border-indigo-200 bg-indigo-50 text-indigo-800'
-                      }`}
-                    >
-                      {d > 0 ? `+${d / 1000}k` : `${d / 1000}k`}
-                    </button>
-                  ))}
-                </div>
                 {!w.botEnabled ? (
-                  <button
-                    type="button"
-                    onClick={() => onArm(w)}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold"
-                  >
+                  <button type="button" onClick={() => onArm(w)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold">
                     <Bot className="w-3.5 h-3.5" /> Arm bot
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => setList(disableBotBid(w.playerId))}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-rose-100 text-rose-800 text-xs font-bold border border-rose-200"
-                  >
+                  <button type="button" onClick={() => setList(disableBotBid(w.playerId))} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-rose-100 text-rose-800 text-xs font-bold border border-rose-200">
                     <StopCircle className="w-3.5 h-3.5" /> Stop bot
                   </button>
                 )}
@@ -684,28 +701,11 @@ export default function TransferWatchPage() {
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${busyId === w.playerId ? 'animate-spin' : ''}`} /> Check now
                 </button>
-                <a
-                  href={w.playerUrl || `https://www.battrick.org/nl/playerdetails.asp?playerID=${w.playerId}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-700"
-                >
-                  <ExternalLink className="w-3 h-3" /> Battrick
-                </a>
-                <button
-                  type="button"
-                  onClick={() => {
-                    removeFromWatchlist(w.playerId);
-                    reload();
-                  }}
-                  className="text-[11px] text-slate-500 underline ml-auto"
-                >
+                <button type="button" onClick={() => { removeFromWatchlist(w.playerId); reload(); }} className="text-[11px] text-slate-500 underline ml-auto">
                   Remove
                 </button>
               </div>
-              {w.lastBotAction && (
-                <div className="mt-2 text-[10px] text-slate-600">{w.lastBotAction}</div>
-              )}
+              {w.lastBotAction && <div className="mt-2 text-[10px] text-slate-600">{w.lastBotAction}</div>}
             </div>
           );
         })}
