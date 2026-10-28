@@ -66,14 +66,17 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
       className="min-h-screen w-full bg-[#f8fafc] bg-blueprint-grid flex flex-col items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative selection:bg-blue-500/10 selection:text-blue-800"
       id="login-page"
     >
+      {/* Background ambient blur elements */}
       <div className="absolute top-10 left-10 w-72 h-72 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-10 right-10 w-80 h-80 bg-blue-600/5 rounded-full blur-3xl pointer-events-none" />
 
       <div className="max-w-5xl w-full mx-auto bg-white border border-slate-200/80 rounded-2xl shadow-xl overflow-hidden grid grid-cols-1 md:grid-cols-12 relative z-10">
+        
+        {/* Left Branding Panel */}
         <div className="md:col-span-6 bg-[#001c40] p-8 sm:p-12 text-white flex flex-col justify-between relative overflow-hidden border-r border-slate-200">
           <div className="absolute inset-0 bg-blueprint-dots opacity-40 pointer-events-none" />
           <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-bl from-blue-600/10 to-transparent pointer-events-none" />
-
+          
           <div className="relative z-10">
             <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/10 border border-white/15 text-[10px] font-bold uppercase tracking-wider mb-6">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
@@ -107,6 +110,7 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
           </div>
         </div>
 
+        {/* Right form panel */}
         <div className="md:col-span-6 p-8 sm:p-12 flex flex-col justify-center bg-white">
           <div className="mb-6">
             <h2 className="text-xl font-black text-slate-900">
