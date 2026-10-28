@@ -592,7 +592,22 @@ export default function TransferWatchPage() {
                     {index + 1}
                   </div>
                   <div className="min-w-0">
-                    <div className="font-bold text-slate-900">{w.name}</div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <div className="font-bold text-slate-900 truncate">{w.name}</div>
+                      <a
+                        href={
+                          w.playerUrl ||
+                          `https://www.battrick.org/nl/playerdetails.asp?playerID=${w.playerId}`
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                        className="shrink-0 text-indigo-600 hover:text-indigo-800"
+                        title="Open on Battrick"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
                     <div className="text-[10px] text-slate-500 font-mono">ID {w.playerId}</div>
                     {w.skills && (
                       <div className="mt-1.5 flex flex-wrap gap-1">
