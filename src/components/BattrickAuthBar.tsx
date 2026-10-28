@@ -13,7 +13,7 @@ export default function BattrickAuthBar() {
     closePrompt,
     authenticate,
     logout,
-    rememberUsername
+    rememberUsername,
   } = useBattrickAuth();
 
   const [formUsername, setFormUsername] = useState<string>(username);
@@ -31,15 +31,13 @@ export default function BattrickAuthBar() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formUsername.trim() || !formPassword) return;
     await authenticate(formUsername, formPassword, formRemember);
   };
 
   return (
     <>
-      {/* Always-visible session status bar, sits above every tab */}
       <div
-        className={`w-full px-4 sm:px-6 lg:px-8 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] sm:text-xs font-mono border-b ${
+        className={`w-full border-b px-3 py-2 text-[11px] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 ${
           isAuthenticated
             ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
             : 'bg-amber-50 border-amber-200 text-amber-800'
@@ -53,7 +51,7 @@ export default function BattrickAuthBar() {
           )}
           {isAuthenticated ? (
             <span className="truncate">
-              <strong>Connected to Battrick</strong> as {username} &mdash; sync buttons across the app are ready to use for this session.
+              <strong>Connected to Battrick</strong> as {username} &mdash; sync and the transfer bot are ready. Stay signed in keeps the bot working after you close the tab.
             </span>
           ) : (
             <span className="truncate">
@@ -82,7 +80,6 @@ export default function BattrickAuthBar() {
         )}
       </div>
 
-      {/* Login modal */}
       {isPromptOpen && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
@@ -98,81 +95,61 @@ export default function BattrickAuthBar() {
                 onClick={closePrompt}
                 className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed mb-4">
-              Authenticate once and every sync button across BattrickIQ &mdash; Roster Sync, Opponent Scout, and League Standings &mdash; will reuse this session automatically.
-            </p>
-
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <div>
-                <label className="text-[11px] font-mono font-bold uppercase text-slate-600 block mb-1">
-                  Battrick Username
-                </label>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+              <label className="flex flex-col gap-1 text-xs font-semibold text-slate-700">
+                Username
                 <input
                   type="text"
                   value={formUsername}
                   onChange={(e) => setFormUsername(e.target.value)}
                   placeholder="Your Battrick username"
                   autoComplete="username"
+                  className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-normal"
                   required
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-mono font-bold uppercase text-slate-600 block mb-1">
-                  Battrick Password
-                </label>
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-semibold text-slate-700">
+                Password
                 <input
                   type="password"
                   value={formPassword}
                   onChange={(e) => setFormPassword(e.target.value)}
                   placeholder="Your Battrick password"
                   autoComplete="current-password"
+                  className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-normal"
                   required
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-              </div>
+              </label>
 
-              <label className="flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
+              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={formRemember}
                   onChange={(e) => setFormRemember(e.target.checked)}
+                  className="rounded border-slate-300"
                 />
-                Remember username on this device
+                Stay signed in (for transfer bot) on this device
               </label>
 
               {error && (
-                <div className="bg-rose-50 border border-rose-200 text-rose-700 text-[11px] rounded-lg p-2">
-                  {error}
-                </div>
+                <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{error}</div>
               )}
 
-              <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 text-[10px] font-mono text-slate-500">
-                Your password is held only in this browser tab's session memory and is cleared automatically on log out or inactivity timeout &mdash; it is never stored permanently.
+              <div className="text-[10px] text-slate-500 leading-relaxed">
+                Tick Stay signed in so the transfer bot can refresh and bid after you close the tab. Password stays in this browser only until you Disconnect.
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={closePrompt}
-                  className="px-3.5 py-2 text-xs font-mono font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isAuthenticating}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-mono font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
-                >
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>{isAuthenticating ? 'Connecting…' : 'Connect & Save for Session'}</span>
-                </button>
-              </div>
+              <button
+                type="submit"
+                disabled={isAuthenticating || !formUsername.trim() || !formPassword}
+                className="mt-1 w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold disabled:opacity-50"
+              >
+                {isAuthenticating ? 'Connecting…' : 'Connect'}
+              </button>
             </form>
           </div>
         </div>
