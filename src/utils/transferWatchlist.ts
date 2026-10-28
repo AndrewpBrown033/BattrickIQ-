@@ -1,7 +1,9 @@
-/** Transfer watchlist — local + Firestore sync */
+/**
+ * Transfer Watch — localStorage + optional Firestore mirror (users/{uid}/settings/transferWatch).
+ */
+import { getDeadlineCountdown, parseDeadlineGmtMs } from './auctionDeadline';
 
 export type WatchStatus = 'listed' | 'sold' | 'watching' | 'dropped';
-
 export type BidHint = 'under' | 'at' | 'over' | 'unknown';
 
 export interface WatchEntry {
@@ -31,7 +33,6 @@ export interface WatchEntry {
     consistency?: number;
     experience?: number;
   };
-  /** Last scout buy-fit verdict vs your squad (salary, plan, affordability) */
   buyFit?: {
     verdict: 'BUY' | 'MAYBE' | 'PASS';
     score: number;
@@ -56,11 +57,12 @@ export interface WatchEntry {
 
 const WL_KEY = 'bt_transfer_watchlist';
 const REMOVED_KEY = 'bt_transfer_watchlist_removed';
-const LOCAL_META_KEY = 'bt_transfer_watchlist_meta';
 const SCAN_META_KEY = 'bt_transfer_last_scan';
 const ALERTS_KEY = 'bt_transfer_alerts';
 export const WATCH_CHANGED_EVENT = 'bt_transfer_watchlist_changed';
 export const WATCH_SYNC_EVENT = 'bt_watch_sync_status';
+
+export { getDeadlineCountdown, parseDeadlineGmtMs };
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -76,33 +78,9 @@ function writeJson(key: string, value: unknown) {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {}
 }
-
-function notifyWatchChanged() {
+function notify() {
   try {
     window.dispatchEvent(new Event(WATCH_CHANGED_EVENT));
-  } catch {}
-}
-
-export type WatchState = {
-  items: WatchEntry[];
-  removed: Record<string, string>;
-};
-
-export type WatchCloudStatus = {
-  mode: 'local' | 'cloud' | 'syncing' | 'error';
-  message?: string;
-};
-
-let cloudStatus: WatchCloudStatus = { mode: 'local' };
-
-export function getWatchCloudStatus(): WatchCloudStatus {
-  return cloudStatus;
-}
-
-function setCloudStatus(next: WatchCloudStatus) {
-  cloudStatus = next;
-  try {
-    window.dispatchEvent(new CustomEvent(WATCH_SYNC_EVENT, { detail: next }));
   } catch {}
 }
 
@@ -114,12 +92,19 @@ export function mergeWatchEntries(a: WatchEntry[], b: WatchEntry[]): WatchEntry[
       const id = String(w.playerId);
       const prev = map.get(id);
       if (!prev) {
-        map.set(id, w);
+        map.set(id, { ...w, playerId: id });
         continue;
       }
       const prevT = Date.parse(prev.updatedAt || prev.addedAt || '') || 0;
       const nextT = Date.parse(w.updatedAt || w.addedAt || '') || 0;
-      map.set(id, nextT >= prevT ? { ...prev, ...w } : { ...w, ...prev });
+      // last-write-wins by updatedAt, but prefer richer skill data
+      const base = nextT >= prevT ? { ...prev, ...w } : { ...w, ...prev };
+      map.set(id, {
+        ...base,
+        playerId: id,
+        skills: base.skills || prev.skills || w.skills,
+        buyFit: base.buyFit || prev.buyFit || w.buyFit,
+      });
     }
   }
   return Array.from(map.values());
@@ -132,14 +117,11 @@ export function loadWatchlist(): WatchEntry[] {
 
 export function saveWatchlist(list: WatchEntry[]) {
   writeJson(WL_KEY, list);
-  notifyWatchChanged();
-  void mirrorWatchlistToCloud(list);
-}
-
-async function mirrorWatchlistToCloud(_list: WatchEntry[]) {
-  // soft no-op if cloud helper not present; full cloud path lives in other modules
+  notify();
   try {
-    setCloudStatus({ mode: 'local' });
+    // soft cloud mirror if present
+    const g = (window as any).__btMirrorWatchlist;
+    if (typeof g === 'function') void g(list);
   } catch {}
 }
 
@@ -150,17 +132,19 @@ export async function hydrateWatchlistFromCloud(): Promise<WatchEntry[]> {
 export function applyIncomingCloudWatchlist(cloudItems: WatchEntry[]): WatchEntry[] {
   const merged = mergeWatchEntries(loadWatchlist(), cloudItems || []);
   writeJson(WL_KEY, merged);
-  notifyWatchChanged();
+  notify();
   return merged;
 }
 
+export function getWatchCloudStatus(): { mode: string; message?: string } {
+  return { mode: 'local' };
+}
+
 export function addToWatchlist(
-  entry: Omit<WatchEntry, 'addedAt' | 'status' | 'lastCost'> & { lastCost?: number }
+  entry: Omit<WatchEntry, 'addedAt' | 'status' | 'lastCost'> & { lastCost?: number; status?: WatchStatus }
 ): WatchEntry[] {
   const list = loadWatchlist();
-  if (list.some((w) => w.playerId === String(entry.playerId))) {
-    return list;
-  }
+  if (list.some((w) => w.playerId === String(entry.playerId))) return list;
   const next: WatchEntry[] = [
     {
       ...entry,
@@ -225,12 +209,6 @@ export function getTransferAlerts(): { at: string; message: string }[] {
   return readJson(ALERTS_KEY, []);
 }
 
-// Re-export deadline helpers from auctionDeadline when available
-export {
-  getDeadlineCountdown,
-  parseDeadlineGmtMs,
-} from './auctionDeadline';
-
 export function addRecommendationToWatchlist(rec: any, reason?: string): WatchEntry[] {
   if (!rec?.playerId && !rec?.id) return loadWatchlist();
   return addToWatchlist({
@@ -246,4 +224,9 @@ export function addRecommendationToWatchlist(rec: any, reason?: string): WatchEn
     role: rec.role,
     skills: rec.skills,
   });
+}
+
+/** Optional live sync stub — full onSnapshot path restores from scripts when available */
+export function startWatchlistLiveSync(_uid?: string): () => void {
+  return () => {};
 }
