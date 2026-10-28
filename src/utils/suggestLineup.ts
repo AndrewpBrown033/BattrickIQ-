@@ -3,7 +3,9 @@
  */
 import type { BattrickPlayer, BattrickGame } from '../types';
 
-export type LineupFormat = 'FC' | 'OD' | 'BT20' | 'CUP' | 'OTHER';
+export type LineupStrategy = string;
+export type MatchFormat = 'FC' | 'OD' | 'BT20' | 'CUP' | 'OTHER';
+export type LineupFormat = MatchFormat;
 
 export interface LineupSlot {
   order: number;
@@ -17,12 +19,12 @@ export interface LineupSlot {
 }
 
 export interface SuggestedLineup {
-  format: LineupFormat;
+  format: MatchFormat;
   strategy: string;
   effort: string;
   reason: string;
   xi: LineupSlot[];
-  /** Bowling order derived from the XI — strongest bowling first (top 5) */
+  /** Bowling order — strongest first, top 5 only */
   bowlingOrder: LineupSlot[];
   match?: {
     opponent: string;
@@ -32,20 +34,27 @@ export interface SuggestedLineup {
   };
 }
 
+const SEAM = new Set(['Fast', 'Fast Medium', 'Medium', 'Seam']);
+export const LINEUP_CONTEXT_KEY = 'bt_suggested_lineup_context';
+
 function skill(p: BattrickPlayer, key: keyof NonNullable<BattrickPlayer['skills']>): number {
   return Number(p.skills?.[key] ?? 0) || 0;
 }
 
-function detectFormat(match?: BattrickGame | null): LineupFormat {
-  const t = `${match?.type || ''} ${match?.competition || ''}`.toLowerCase();
-  if (/twenty|t20|bt20|super\s*20/.test(t)) return 'BT20';
-  if (/one.?day|limited|50.?over|list\s*a|od/.test(t)) return 'OD';
-  if (/first.?class|fc|championship|4.?day|multi.?day/.test(t)) return 'FC';
-  if (/cup|knockout|final/.test(t)) return 'CUP';
+export function detectMatchFormat(type?: string): MatchFormat {
+  const t = (type || '').toLowerCase();
+  if (/\b(bt20|t20|twenty\s*20|twenty20)\b/.test(t)) return 'BT20';
+  if (/\b(fc|first\s*class|test)\b/.test(t)) return 'FC';
+  if (/\b(od|one\s*day|list\s*a|50)\b/.test(t)) return 'OD';
+  if (/\b(cup|knockout|final)\b/.test(t)) return 'CUP';
   return 'OTHER';
 }
 
-function strategyFor(format: LineupFormat): { strategy: string; effort: string; reason: string } {
+export function strategyForFormat(format: MatchFormat): {
+  strategy: string;
+  effort: string;
+  reason: string;
+} {
   switch (format) {
     case 'BT20':
       return {
@@ -80,16 +89,18 @@ function strategyFor(format: LineupFormat): { strategy: string; effort: string; 
   }
 }
 
-export function suggestLineup(
+export function suggestStartingXI(
   squad: BattrickPlayer[],
   match?: BattrickGame | null
 ): SuggestedLineup | null {
-  if (!squad?.length) return null;
-  const format = detectFormat(match);
-  const { strategy, effort, reason } = strategyFor(format);
+  if (!squad || squad.length < 11) {
+    // still try with whatever we have if >= 1
+    if (!squad?.length) return null;
+  }
 
+  const format = detectMatchFormat(match?.type);
+  const { strategy, effort, reason } = strategyForFormat(format);
   const pool = squad.filter((p) => p && p.id);
-  const SEAM = new Set(['Fast', 'Fast Medium', 'Medium']);
 
   let chosenBowlers: BattrickPlayer[] = [];
   if (format === 'FC') {
@@ -102,7 +113,11 @@ export function suggestLineup(
     chosenBowlers = [...spins, ...others].slice(0, 5);
   } else if (format === 'BT20') {
     chosenBowlers = pool
-      .filter((p) => SEAM.has(p.bowlingType || '') || (p.bowlingType || '').toLowerCase().includes('spin'))
+      .filter(
+        (p) =>
+          SEAM.has(p.bowlingType || '') ||
+          (p.bowlingType || '').toLowerCase().includes('spin')
+      )
       .sort((a, b) => skill(b, 'bowling') - skill(a, 'bowling'))
       .slice(0, 5);
   } else {
@@ -147,11 +162,8 @@ export function suggestLineup(
     });
   };
 
-  // Rough order: openers (bat), middle, AR/bowl, keeper mid-low, tail
-  const openers = batters.slice(0, 2);
-  openers.forEach((p, i) => push(i + 1, p));
-  const middle = batters.slice(2, 5);
-  middle.forEach((p) => push(xi.length + 1, p));
+  batters.slice(0, 2).forEach((p, i) => push(i + 1, p));
+  batters.slice(2, 5).forEach((p) => push(xi.length + 1, p));
   if (keeper) push(xi.length + 1, keeper);
   chosenBowlers.forEach((p) => push(xi.length + 1, p));
 
@@ -164,8 +176,7 @@ export function suggestLineup(
         (skill(a, 'batting') + skill(a, 'bowling'))
     );
   while (xi.length < 11 && rest.length) {
-    const p = rest.shift()!;
-    push(xi.length + 1, p);
+    push(xi.length + 1, rest.shift()!);
   }
 
   xi.sort((a, b) => a.order - b.order);
@@ -196,4 +207,31 @@ export function suggestLineup(
         }
       : undefined,
   };
+}
+
+/** Alias used by NextMatchLineupCard */
+export const suggestLineup = suggestStartingXI;
+
+export function saveLineupContext(suggestion: SuggestedLineup): void {
+  try {
+    localStorage.setItem(LINEUP_CONTEXT_KEY, JSON.stringify(suggestion));
+    localStorage.setItem('bt_match_effort', suggestion.effort);
+    localStorage.setItem('bt_lineup_strategy', suggestion.strategy);
+  } catch {}
+}
+
+export function loadLineupContext(): SuggestedLineup | null {
+  try {
+    const raw = localStorage.getItem(LINEUP_CONTEXT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as SuggestedLineup;
+  } catch {
+    return null;
+  }
+}
+
+export function clearLineupContext(): void {
+  try {
+    localStorage.removeItem(LINEUP_CONTEXT_KEY);
+  } catch {}
 }
