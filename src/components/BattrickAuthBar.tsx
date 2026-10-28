@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
 import { ShieldAlert, ShieldCheck, Lock, X, LogOut } from 'lucide-react';
 
@@ -20,7 +21,6 @@ export default function BattrickAuthBar() {
   const [formPassword, setFormPassword] = useState<string>('');
   const [formRemember, setFormRemember] = useState<boolean>(rememberUsername);
 
-  // Reset the form whenever the prompt is (re)opened
   useEffect(() => {
     if (isPromptOpen) {
       setFormUsername(username);
@@ -73,87 +73,100 @@ export default function BattrickAuthBar() {
           <button
             type="button"
             onClick={openPrompt}
-            className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-2.5 py-1 rounded-lg shrink-0 self-start sm:self-auto cursor-pointer"
+            className="flex items-center gap-1 font-bold hover:underline shrink-0 self-start sm:self-auto cursor-pointer"
           >
-            Connect Battrick
+            <Lock className="w-3.5 h-3.5" />
+            Connect
           </button>
         )}
       </div>
 
-      {isPromptOpen && (
-        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                  <Lock className="w-4 h-4" />
+      {isPromptOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[99999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Connect Battrick account"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) closePrompt();
+            }}
+          >
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 max-h-[min(90vh,640px)] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-display font-bold text-base text-slate-900">Connect Your Battrick Account</h3>
                 </div>
-                <h3 className="font-display font-bold text-base text-slate-900">Connect Your Battrick Account</h3>
+                <button
+                  type="button"
+                  onClick={closePrompt}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={closePrompt}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+
+              <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+                <label className="flex flex-col gap-1 text-xs font-semibold text-slate-700">
+                  Username
+                  <input
+                    type="text"
+                    value={formUsername}
+                    onChange={(e) => setFormUsername(e.target.value)}
+                    placeholder="Your Battrick username"
+                    autoComplete="username"
+                    className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-normal"
+                    required
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs font-semibold text-slate-700">
+                  Password
+                  <input
+                    type="password"
+                    value={formPassword}
+                    onChange={(e) => setFormPassword(e.target.value)}
+                    placeholder="Your Battrick password"
+                    autoComplete="current-password"
+                    className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-normal"
+                    required
+                  />
+                </label>
+
+                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={formRemember}
+                    onChange={(e) => setFormRemember(e.target.checked)}
+                    className="rounded border-slate-300"
+                  />
+                  Stay signed in (for transfer bot) on this device
+                </label>
+
+                {error && (
+                  <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{error}</div>
+                )}
+
+                <div className="text-[10px] text-slate-500 leading-relaxed">
+                  Tick Stay signed in so the transfer bot can refresh and bid after you close the tab. Password stays in this browser only until you Disconnect.
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isAuthenticating || !formUsername.trim() || !formPassword}
+                  className="mt-1 w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold disabled:opacity-50"
+                >
+                  {isAuthenticating ? 'Connecting…' : 'Connect'}
+                </button>
+              </form>
             </div>
-
-            <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-              <label className="flex flex-col gap-1 text-xs font-semibold text-slate-700">
-                Username
-                <input
-                  type="text"
-                  value={formUsername}
-                  onChange={(e) => setFormUsername(e.target.value)}
-                  placeholder="Your Battrick username"
-                  autoComplete="username"
-                  className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-normal"
-                  required
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-xs font-semibold text-slate-700">
-                Password
-                <input
-                  type="password"
-                  value={formPassword}
-                  onChange={(e) => setFormPassword(e.target.value)}
-                  placeholder="Your Battrick password"
-                  autoComplete="current-password"
-                  className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-normal"
-                  required
-                />
-              </label>
-
-              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={formRemember}
-                  onChange={(e) => setFormRemember(e.target.checked)}
-                  className="rounded border-slate-300"
-                />
-                Stay signed in (for transfer bot) on this device
-              </label>
-
-              {error && (
-                <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{error}</div>
-              )}
-
-              <div className="text-[10px] text-slate-500 leading-relaxed">
-                Tick Stay signed in so the transfer bot can refresh and bid after you close the tab. Password stays in this browser only until you Disconnect.
-              </div>
-
-              <button
-                type="submit"
-                disabled={isAuthenticating || !formUsername.trim() || !formPassword}
-                className="mt-1 w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold disabled:opacity-50"
-              >
-                {isAuthenticating ? 'Connecting…' : 'Connect'}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </>
   );
 }
