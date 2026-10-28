@@ -4,6 +4,7 @@ export {
   parseDeadlineGmtMs,
   parseDeadlineSydneyMs,
   getDeadlineCountdown,
+  hoursUntilDeadline,
 } from './auctionDeadline';
 
 export type WatchStatus = 'listed' | 'sold' | 'watching' | 'dropped';
