@@ -16,8 +16,8 @@ import {
   stampLocalChanges,
   type WatchState,
   type Tombstones,
-} from './watchState';
-import { doc } from 'firebase/firestore';
+} from './watchlistMerge';
+import { clearBotLeaseState, setBotLeaseFromCloud, watchDocRef } from './watchBotLease';
 
 export type WatchStatus = 'listed' | 'sold' | 'watching' | 'dropped';
 export type BidHint = 'under' | 'at' | 'over' | 'unknown';
@@ -138,10 +138,6 @@ function friendlyCloudError(e: any): string {
     : msg.slice(0, 200);
 }
 
-function watchDocRef(uid: string) {
-  return doc(db, 'users', uid, 'settings', 'transferWatch');
-}
-
 function parseCloud(data: any): WatchState {
   const items: WatchEntry[] = Array.isArray(data?.items)
     ? data.items.filter((w: any) => w?.playerId).map((w: any) => ({ ...w, playerId: String(w.playerId) }))
@@ -248,6 +244,7 @@ export function startWatchlistLiveSync(uid: string): () => void {
     (snap) => {
       if (stopped || snap.metadata.hasPendingWrites) return;
       if (snap.exists()) {
+        setBotLeaseFromCloud((snap.data() as any)?.botLease);
         ingestCloud(parseCloud(snap.data()));
       } else if (loadWatchlist().length > 0) {
         schedulePush(0);
