@@ -3,7 +3,6 @@ export {
   DEADLINE_TZ,
   parseDeadlineGmtMs,
   parseDeadlineSydneyMs,
-  formatDeadlineSydney,
   getDeadlineCountdown,
 } from './auctionDeadline';
 
@@ -243,7 +242,8 @@ export function shouldAutoScanTransfers(maxHours = 12): boolean {
   return hoursSinceLastScan() >= maxHours;
 }
 
-export function getWatchlistMonitorSummary() {
+/** Optional cash arg used by Manager desk monitor for affordability lines. */
+export function getWatchlistMonitorSummary(_cash?: number) {
   const list = loadWatchlist();
   const active = list.filter((w) => w.status !== 'sold');
   const bots = active.filter((w) => w.botEnabled);
@@ -252,6 +252,15 @@ export function getWatchlistMonitorSummary() {
     const max = w.maxBid || 0;
     return max > 0 && cur > max;
   });
+  const topLines: string[] = [];
+  for (const w of overMax.slice(0, 3)) {
+    topLines.push(
+      `${w.name}: bid £${(w.lastCurrentBid || 0).toLocaleString()} over max £${(w.maxBid || 0).toLocaleString()}`
+    );
+  }
+  for (const w of bots.filter((x) => x.botStatus === 'leading').slice(0, 2)) {
+    topLines.push(`${w.name}: leading`);
+  }
   return {
     total: list.length,
     active: active.length,
@@ -259,7 +268,7 @@ export function getWatchlistMonitorSummary() {
     overMax: overMax.length,
     staleHours: hoursSinceLastScan(),
     unreadAlerts: unreadAlertCount(),
-    topLines: [] as string[],
+    topLines,
   };
 }
 
