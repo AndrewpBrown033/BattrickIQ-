@@ -24,7 +24,7 @@ import {
 const POLL_MS = 60_000;
 
 export default function TransferWatchPage() {
-  const { requireAuth, username, password } = useBattrickAuth();
+  const { requireAuth, ensureSession, username, password } = useBattrickAuth();
   const [list, setList] = useState<WatchEntry[]>(() => loadWatchlist());
   const [busyId, setBusyId] = useState<string | null>(null);
   const [globalMsg, setGlobalMsg] = useState<string | null>(null);
@@ -64,10 +64,32 @@ export default function TransferWatchPage() {
   };
 
   const callBattrick = async (path: string, payload: Record<string, unknown>) => {
-    if (!password || !username) {
+    let user = username;
+    let pass = password;
+    if (!user || !pass) {
+      try {
+        user = user || localStorage.getItem('bt_battrick_username') || localStorage.getItem('bt_direct_user') || '';
+        pass = pass || sessionStorage.getItem('bt_direct_pass') || localStorage.getItem('bt_direct_pass_persist') || '';
+      } catch {}
+    }
+    if (!user || !pass) {
+      const ok = await ensureSession();
+      if (!ok) {
+        requireAuth();
+        throw new Error('Battrick session expired — sign in again (bot paused until you do)');
+      }
+      user = username || user;
+      pass = password || pass;
+      try {
+        user = user || localStorage.getItem('bt_battrick_username') || '';
+        pass = pass || localStorage.getItem('bt_direct_pass_persist') || sessionStorage.getItem('bt_direct_pass') || '';
+      } catch {}
+    }
+    if (!user || !pass) {
       requireAuth();
       throw new Error('Battrick session expired — sign in again (bot paused until you do)');
     }
+
     const attempt = async (token: string) => {
       const ctl = new AbortController();
       const timer = window.setTimeout(() => ctl.abort(), 40_000);
@@ -75,7 +97,7 @@ export default function TransferWatchPage() {
         const res = await fetch(path, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...payload, username, password, sessionToken: token }),
+          body: JSON.stringify({ ...payload, username: user, password: pass, sessionToken: token }),
           signal: ctl.signal,
         });
         let data: any = {};
@@ -92,12 +114,14 @@ export default function TransferWatchPage() {
         window.clearTimeout(timer);
       }
     };
+
     let { res, data } = await attempt(localStorage.getItem('bt_sync_session') || '');
     if (data.sessionToken) localStorage.setItem('bt_sync_session', data.sessionToken);
     if (res.status === 401 || data?.isAuthFailure) {
       try {
         localStorage.removeItem('bt_sync_session');
       } catch {}
+      await ensureSession();
       ({ res, data } = await attempt(''));
       if (data.sessionToken) localStorage.setItem('bt_sync_session', data.sessionToken);
       if (res.status === 401 || data?.isAuthFailure) {
@@ -158,7 +182,6 @@ export default function TransferWatchPage() {
         lastBotAction: plan.message,
       });
 
-      // Refresh-only when bot is not armed: update prices / lead status, never bid
       if (!entry.botEnabled || !entry.maxBid) {
         reload();
         return;
