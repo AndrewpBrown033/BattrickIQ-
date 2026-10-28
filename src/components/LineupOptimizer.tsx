@@ -161,7 +161,7 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
       text += p.order + '. ' + p.name + ' - ' + p.role + ' (Bat: ' + SKILL_LEVELS[p.batting] + ' | Bowl: ' + bowl + ')\n';
     });
     text += '\nBowling order:\n';
-    rankBowlingOrder(lineup).forEach((p, i) => {
+    rankBowlingOrder(lineup).slice(0, 5).forEach((p, i) => {
       text += i + 1 + '. ' + p.name + ' (' + p.bowlingType + ' ' + SKILL_LEVELS[p.bowling] + ')\n';
     });
     text += '\nMatch Effort: ' + matchEffort + '\n';
@@ -326,7 +326,7 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
         <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex gap-3 text-xs text-slate-600">
           <Info className="w-5 h-5 text-indigo-600 shrink-0" />
           <span>
-            <strong className="text-indigo-800">Bowling order</strong> ranks everyone in the XI who can
+            <strong className="text-indigo-800">Bowling order</strong> shows the top 5 in the XI who can
             bowl by bowling skill (plus consistency). Use it as a suggested attack order for the match.
           </span>
         </div>
