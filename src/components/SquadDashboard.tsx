@@ -144,7 +144,9 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
       else setSquad([]);
       const f = localStorage.getItem('bt_finances');
       if (f) setFinances(JSON.parse(f));
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   useEffect(() => {
@@ -236,7 +238,9 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
       }
       let listings = parseTransferList(html, { excludePlayerIds: ownIds });
       listings = filterListingsByAge(listings, { minAge, maxAge });
-      try { localStorage.setItem('bt_transfer_listings', JSON.stringify(listings)); } catch {}
+      try {
+        localStorage.setItem('bt_transfer_listings', JSON.stringify(listings));
+      } catch {}
       try {
         const wl = refreshWatchlistFromListings(listings as any);
         setWatchlist(Array.isArray(wl) ? wl : loadWatchlist());
@@ -286,7 +290,9 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
   useEffect(() => {
     if (!autoScanOnce || subTab !== 'estimator') return;
     setAutoScanOnce(false);
-    const timer = window.setTimeout(() => { void runTransferScan(); }, 400);
+    const timer = window.setTimeout(() => {
+      void runTransferScan();
+    }, 400);
     return () => clearTimeout(timer);
   }, [autoScanOnce, subTab]);
 
@@ -370,10 +376,15 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                     key={r.skill}
                     type="button"
                     onClick={() => toggleSkill(r.skill)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${\n                      on ? 'bg-teal-50 border-teal-300 text-teal-900' : 'bg-white border-slate-200 text-slate-600'
-                    }`}
+                    className={
+                      'px-2.5 py-1 rounded-lg text-[11px] font-bold border ' +
+                      (on
+                        ? 'bg-teal-50 border-teal-300 text-teal-900'
+                        : 'bg-white border-slate-200 text-slate-600')
+                    }
                   >
-                    {r.skill}{r.recommended ? ' ★' : ''}
+                    {r.skill}
+                    {r.recommended ? ' ★' : ''}
                   </button>
                 );
               })}
