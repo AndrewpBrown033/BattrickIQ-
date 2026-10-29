@@ -412,19 +412,27 @@ export function computeBidHint(
 }
 
 export function addRecommendationToWatchlist(rec: any, reason?: string): WatchEntry[] {
-  if (!rec?.playerId && !rec?.id) return loadWatchlist();
+  // The Estimator passes a BuyRecommendation ({ listing, cost, reasons, fitsNeed }); other callers may pass
+  // a bare listing / watch-like object. Read player fields from `rec.listing` when it is there.
+  const l = rec?.listing || rec;
+  const pid = l?.playerId ?? l?.id;
+  if (pid == null || String(pid).trim() === '') {
+    throw new Error('Could not add to watch: this listing has no player id.');
+  }
+  const id = String(pid);
   return addToWatchlist({
-    playerId: String(rec.playerId || rec.id),
-    name: rec.name || `Player #${rec.playerId || rec.id}`,
-    reason: reason || rec.reason || 'From transfer scan',
-    playerUrl: rec.playerUrl || rec.url,
-    lastAskingPrice: rec.askingPrice || rec.price,
-    lastCurrentBid: rec.currentBid,
-    lastDeadline: rec.deadline,
-    age: rec.age,
-    wage: rec.wage,
-    role: rec.role,
-    skills: rec.skills,
+    playerId: id,
+    name: l.name || `Player #${id}`,
+    reason: reason || (Array.isArray(rec?.reasons) && rec.reasons.length ? rec.reasons.join(' · ') : rec?.reason) || 'From transfer scan',
+    fitsNeed: rec?.fitsNeed || l.fitsNeed,
+    playerUrl: l.playerUrl || l.url,
+    lastAskingPrice: l.askingPrice ?? l.price,
+    lastCurrentBid: l.currentBid,
+    lastDeadline: l.deadline,
+    age: l.age,
+    wage: l.wage,
+    role: l.role,
+    skills: l.skills,
   });
 }
 

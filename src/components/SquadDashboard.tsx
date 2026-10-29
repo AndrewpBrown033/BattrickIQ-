@@ -37,6 +37,8 @@ import {
   SEARCH_SKILLS, recommendSkillsFromGaps, type SearchSkill,
 } from './squad/squadHelpers';
 import SquadRosterTab from './squad/SquadRosterTab';
+import PlayerSkillCard from './squad/PlayerSkillCard';
+import { teamAlignment, type TeamAlignment } from '../utils/playerSkillCard';
 import PlayerStatsDownloadButton from './PlayerStatsDownloadButton';
 
 interface SquadDashboardProps {
@@ -104,6 +106,28 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
       return new Map<string, any>();
     }
   }, [buyRecs, lastNeeds, wageWeeks, finances?.cash]);
+  // Jarvis team alignment per listed player: computed in code against the synced squad, rating targets and cash.
+  const alignments = useMemo(() => {
+    const out = new Map<string, TeamAlignment>();
+    try {
+      const squadFit = squad.map((p) => ({
+        id: String(p.id || ''), name: p.name, age: p.age || 0, wage: p.wage, btRating: p.btRating,
+        role: p.role, skills: p.skills || {}, bowlingType: p.bowlingType,
+      }));
+      for (const r of buyRecs) {
+        const l = r.listing;
+        const a = teamAlignment(
+          { name: l.name, age: l.age || 0, wage: l.wage, btRating: l.btRating, role: l.role, skills: l.skills || {}, bowlingType: l.bowlingType },
+          squadFit,
+          { cash: finances?.cash, ratingTargets: ratingTargets as any, factorFinance }
+        );
+        if (a) out.set(l.playerId, a);
+      }
+    } catch (e) {
+      console.warn('[estimator] team alignment failed', e);
+    }
+    return out;
+  }, [buyRecs, squad, ratingTargets, finances?.cash, factorFinance]);
   const [selectedSkills, setSelectedSkills] = useState<SearchSkill[]>([]);
   const [skillMins, setSkillMins] = useState<Partial<Record<SearchSkill, number>>>({});
 
@@ -790,6 +814,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                       </div>
                     )}
                     <div className="text-[11px] text-slate-500">{(r.reasons || []).join(' · ')}</div>
+                    {!compact && <PlayerSkillCard skills={l.skills as any} bowlingType={l.bowlingType} alignment={alignments.get(l.playerId) || null} />}
                     {l.deadline && <div className="text-[10px] text-slate-400">Deadline {l.deadline} (server time)</div>}
                     {l.playerUrl && (
                       <a href={l.playerUrl} target="_blank" rel="noreferrer" className="text-[10px] text-teal-700 underline">Open on Battrick</a>

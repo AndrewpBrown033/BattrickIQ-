@@ -21,6 +21,9 @@ import {
 } from '../parser';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
 import { saveOpponentSquadToFirestore, syncOpponentSquadsFromFirestore } from '../utils/opponentSquadSync';
+import { resolveFixtureOpponent, looksLikeMySquad, stripMine, sameTeamName } from '../utils/opponentResolve';
+import { getOwnTeamId, getOwnTeamName } from '../utils/teamIdentity';
+import { callJarvisOpenRouter, LINEUP_ONLY_SYSTEM_PROMPT } from '../utils/jarvisChatClient';
 import { 
   ArrowLeft, 
   Bot, 
@@ -70,7 +73,7 @@ export default function GameDetailView({ fixture, onBack, setActiveTab }: GameDe
   const [pitch, setPitch] = useState<PitchType>('Flat');
   const [weather, setWeather] = useState<WeatherType>('Sunny');
   const [myPlayers, setMyPlayers] = useState<BattrickPlayer[]>([]);
-  const [opponentPlayers, setOpponentPlayers] = useState<OpponentPlayer[]>([]);
+  const [opponentPlayers, setOpponentPlayersRaw] = useState<OpponentPlayer[]>([]);
   const [storedMatch, setStoredMatch] = useState<ParsedBattrickMatch | null>(null);
   
   const [isSyncingOpponent, setIsSyncingOpponent] = useState(false);
@@ -88,7 +91,36 @@ export default function GameDetailView({ fixture, onBack, setActiveTab }: GameDe
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   // Determine opponent name and venue
-  const opponentName = fixture.opponent || (fixture.venue === 'Home' ? fixture.awayTeam : fixture.homeTeam) || 'Opponent Club';
+  // The fixtures parser can record OUR club as the opponent on away games, so work out the real
+  // opponent from both sides of the fixture and our own club identity.
+  const resolvedOpponent = resolveFixtureOpponent(fixture, { teamId: getOwnTeamId(), teamName: getOwnTeamName() });
+  const opponentName = resolvedOpponent.opponent.name || 'Opponent Club';
+  const opponentTeamId = resolvedOpponent.opponent.teamId;
+
+  const readMySquad = (): BattrickPlayer[] => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('bt_squad') || '[]');
+      return Array.isArray(raw) ? raw : [];
+    } catch {
+      return [];
+    }
+  };
+
+  // Never show our own players as "their" players: drop a roster that is our squad, strip stray individuals.
+  const cleanOpponentRoster = (players: OpponentPlayer[]): OpponentPlayer[] => {
+    const mine = readMySquad();
+    if (looksLikeMySquad(players, mine)) return [];
+    return stripMine(players, mine);
+  };
+  const setOpponentPlayers: typeof setOpponentPlayersRaw = (v) =>
+    setOpponentPlayersRaw(prev => cleanOpponentRoster(typeof v === 'function' ? (v as (p: OpponentPlayer[]) => OpponentPlayer[])(prev) : v));
+  /** Set the roster from one source; returns false (and sets nothing) if the source was empty or was our own squad. */
+  const applyOpponentRoster = (players: OpponentPlayer[]): boolean => {
+    const cleaned = cleanOpponentRoster(players);
+    if (cleaned.length === 0) return false;
+    setOpponentPlayersRaw(cleaned);
+    return true;
+  };
   const matchFormat = (fixture.type as MatchFormat) || 'One Day';
   const isPlayed = Boolean(fixture.result && fixture.result !== 'Upcoming');
 
@@ -130,7 +162,7 @@ export default function GameDetailView({ fixture, onBack, setActiveTab }: GameDe
     syncOpponentSquadsFromFirestore().then((count) => {
       if (count > 0) loadOpponentData();
     });
-  }, [fixture.matchId, fixture.opponent]);
+  }, [fixture.matchId, fixture.opponent, opponentName, opponentTeamId]);
 
   // Scroll to bottom of Jarvis chat when new messages arrive
   useEffect(() => {
@@ -166,17 +198,19 @@ export default function GameDetailView({ fixture, onBack, setActiveTab }: GameDe
           battingAverage: p.averageRuns,
           bowlingAverage: p.economy ? p.economy * 4 : undefined
         }));
-        setOpponentPlayers(converted);
-        return;
+        if (applyOpponentRoster(converted)) return;
       }
 
       // Check scout target team cache
       const scoutTargetStr = localStorage.getItem('bt_scout_target_team');
       if (scoutTargetStr) {
         const parsed = JSON.parse(scoutTargetStr);
-        if (parsed.opponentPlayers && Array.isArray(parsed.opponentPlayers) && parsed.opponentPlayers.length > 0) {
-          setOpponentPlayers(parsed.opponentPlayers);
-          return;
+        // Only trust the cached scout target when it is for THIS opponent (it may be another team, or our own club).
+        const sameTeam =
+          (opponentTeamId && String(parsed.teamId || '') === opponentTeamId) ||
+          sameTeamName(parsed.teamName, opponentName);
+        if (sameTeam && Array.isArray(parsed.opponentPlayers) && parsed.opponentPlayers.length > 0) {
+          if (applyOpponentRoster(parsed.opponentPlayers)) return;
         }
       }
 
@@ -207,16 +241,14 @@ export default function GameDetailView({ fixture, onBack, setActiveTab }: GameDe
                 experience: p.skills.experience ?? 0,
               };
             });
-            setOpponentPlayers(flat);
-            return;
+            if (applyOpponentRoster(flat)) return;
           }
         }
       } catch {}
 
       // Fallback: Generate realistic opponent benchmark roster
-      const targetId = fixture.opponentTeamId || (fixture.venue === 'Home' ? fixture.awayTeamId : fixture.homeTeamId);
-      const benchmark = generateRealisticOpponentRoster(opponentName, false, matchFormat, targetId);
-      setOpponentPlayers(benchmark);
+      const benchmark = generateRealisticOpponentRoster(opponentName, false, matchFormat, opponentTeamId);
+      setOpponentPlayersRaw(benchmark);
 
     } catch (err) {
       console.error('Error loading opponent data:', err);
@@ -238,7 +270,7 @@ I have analyzed your fixture against **${opponentName}** (${matchFormat} format 
 - **Match Pitch Condition:** ${pitch}
 - **Weather Conditions:** ${weather}
 
-Ask me anything about your lineup against their bowlers, top order targets, 5th bowler vulnerabilities, or tactical match orders (GFI / PAN / TIE).`,
+I only cover the lineup for this game: your XI, batting order and bowling plan against their players.`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ]);
@@ -272,7 +304,7 @@ Ask me anything about your lineup against their bowlers, top order targets, 5th 
   const handleUpdateOpponentRole = (playerId: string, newRole: OpponentPlayer['role']) => {
     setOpponentPlayers(prev => {
       const updated = prev.map(p => p.id === playerId ? { ...p, role: newRole, roleManuallySet: true } : p);
-      const targetId = fixture.opponentTeamId || (fixture.venue === 'Home' ? fixture.awayTeamId : fixture.homeTeamId);
+      const targetId = opponentTeamId;
       try {
         localStorage.setItem('bt_scout_target_team', JSON.stringify({
           teamName: opponentName,
@@ -290,13 +322,13 @@ Ask me anything about your lineup against their bowlers, top order targets, 5th 
 
   // Live Opponent Sync via Battrick Direct API
   const handleFetchOpponentSquadLive = async () => {
-    if (!fixture.opponentTeamId && !fixture.homeTeamId && !fixture.awayTeamId) {
+    if (!opponentTeamId) {
       setSyncStatusMsg('No Opponent Team ID available for direct sync. Try pasting squad HTML below.');
       setShowManualPaste(true);
       return;
     }
 
-    const targetId = fixture.opponentTeamId || (fixture.venue === 'Home' ? fixture.awayTeamId : fixture.homeTeamId);
+    const targetId = opponentTeamId;
 
     setIsSyncingOpponent(true);
     setSyncStatusMsg(`Connecting to Battrick to fetch ${opponentName} squad (Team ID: ${targetId})...`);
@@ -327,6 +359,9 @@ Ask me anything about your lineup against their bowlers, top order targets, 5th 
       const parsedPlayers = parseOpponentSquad(data.html, opponentName, targetId);
       if (parsedPlayers.length === 0) {
         throw new Error('Could not parse any player records from squad HTML.');
+      }
+      if (looksLikeMySquad(parsedPlayers as any, readMySquad())) {
+        throw new Error(`That roster is your own squad, not ${opponentName}. The opponent team ID for this fixture looks wrong.`);
       }
 
       // Convert BattrickPlayer[] to OpponentPlayer[]
@@ -378,6 +413,10 @@ Ask me anything about your lineup against their bowlers, top order targets, 5th 
         alert('Could not find player records in the pasted HTML. Please paste the full squad.asp source code.');
         return;
       }
+      if (looksLikeMySquad(parsedPlayers as any, readMySquad())) {
+        alert(`That pasted squad is your own club, not ${opponentName}. Paste the opponent's squad.asp instead.`);
+        return;
+      }
       const converted: OpponentPlayer[] = parsedPlayers.map((p, idx) => ({
         id: p.id || `op_man_${idx}`,
         name: p.name,
@@ -397,7 +436,7 @@ Ask me anything about your lineup against their bowlers, top order targets, 5th 
 
       setOpponentPlayers(prev => {
         const merged = preserveManualOpponentRoles(prev, converted);
-        const targetId = fixture.opponentTeamId || (fixture.venue === 'Home' ? fixture.awayTeamId : fixture.homeTeamId);
+        const targetId = opponentTeamId;
         saveOpponentSquadToFirestore(opponentName, merged, targetId);
         return merged;
       });
@@ -485,81 +524,42 @@ Ask me anything about your lineup against their bowlers, top order targets, 5th 
     setIsJarvisThinking(true);
     setActiveSubTab('jarvis');
 
-    // Build comprehensive match context
-    const mySquadSummary = myPlayers.slice(0, 11).map((p, i) => 
-      `${i+1}. ${p.name} (${p.role}) - BTR: ${p.btRating?.toLocaleString() || 'N/A'}, Bat: ${getSkillLabel('batting', p.skills?.batting || 0)}, Bowl: ${getSkillLabel('bowling', p.skills?.bowling || 0)} (${p.bowlingType || 'N/A'}), Keep: ${p.skills?.keeping || 0}, Form: ${p.form}/10, Fitness/PFL: ${p.fitness ? p.fitness + '/10' : (p.fitnessLabel || 'Invigorated')}`
+    // Lineup-only briefing: the whole squad (Jarvis picks the XI), the opponent, pitch and weather.
+    const squadList = myPlayers.map((p, i) =>
+      `${i+1}. ${p.name} (${p.role}) - Bat: ${getSkillLabel('batting', p.skills?.batting || 0)}, Bowl: ${getSkillLabel('bowling', p.skills?.bowling || 0)} (${p.bowlingType || 'N/A'}), Keep: ${p.skills?.keeping || 0}, Form: ${p.form ?? 'N/A'}/10, Fitness: ${p.fitness ? p.fitness + '/10' : (p.fitnessLabel || 'N/A')}`
     ).join('\n');
 
-    const opponentSummary = opponentPlayers.slice(0, 11).map((p, i) =>
-      `${i+1}. ${p.name} (${p.role || 'Player'}) - BTR: ${p.btRating?.toLocaleString() || 'N/A'}, Bat: ${p.estimatedSkillLabel || getSkillLabel('batting', p.batting || 0)}, Bowl: ${getSkillLabel('bowling', p.bowling || 0)} (${p.bowlingType || 'N/A'})`
+    const opponentIsReal = opponentPlayers.length > 0 && !opponentPlayers.some(p => /^(pred_|bj_|bench)/.test(String(p.id)));
+    const opponentStatus =
+      opponentPlayers.length === 0 ? 'unavailable'
+      : opponentIsReal ? 'real (scouted)'
+      : 'estimated (predicted from past matches or a generic benchmark)';
+    const opponentList = opponentPlayers.slice(0, 11).map((p, i) =>
+      `${i+1}. ${p.name} (${p.role || 'Player'}) - Bat: ${p.estimatedSkillLabel || getSkillLabel('batting', p.batting || 0)}, Bowl: ${getSkillLabel('bowling', p.bowling || 0)} (${p.bowlingType || 'N/A'})`
     ).join('\n');
 
     const fullContext = `
-[MATCH METADATA]
-Fixture: ${fixture.homeTeam || 'My Team'} vs ${fixture.awayTeam || opponentName}
-Format: ${matchFormat}
-Venue: ${fixture.venue} Match
-Pitch Condition: ${pitch}
+[FIXTURE]
+${fixture.homeTeam || 'My Team'} vs ${fixture.awayTeam || opponentName} - ${matchFormat}, ${fixture.venue} match
+Pitch: ${pitch}
 Weather: ${weather}
-Selected Match Effort: ${matchEffort.toUpperCase()}
 
-[SQUAD FITNESS & PFL ANALYSIS]
-- Average XI Fitness: ${squadFitnessStats.avgFitness}/10
-- Tired/Low Fitness XI Players (PFL <= 6): ${squadFitnessStats.lowFitnessPlayers.map(p => `${p.name} (${p.fitness || 6}/10)`).join(', ') || 'None (All fit)'}
-- Recommended Effort Strategy: ${effortRecommendation.label}
-- Strategy Rationale: ${effortRecommendation.reason}
+[MY FULL SQUAD - choose the XI from these]
+${squadList || 'No squad loaded'}
 
-[MY ACTIVE SQUAD / LINEUP (Top 11)]:
-${mySquadSummary || 'No squad loaded yet (using default squad)'}
-
-[OPPONENT SQUAD (${opponentName}) - Scouted / Predicted Players]:
-${opponentSummary || 'No opponent players available'}
-
-[SCOUTING INTELLIGENCE & VULNERABILITIES]:
-- Win Probability: ${scoutDossier.winProbability}%
-- 5th Bowler Vulnerability: ${scoutDossier.vulnerabilities.find(v => v.category === 'fifth_bowler')?.description || 'Moderate'}
-- Tail Vulnerability: ${scoutDossier.vulnerabilities.find(v => v.category === 'batting_tail')?.description || 'Standard'}
-- Key Opponent Batters: ${scoutDossier.keyThreats.batters.map(b => b.name).join(', ') || 'N/A'}
-- Key Opponent Bowlers: ${scoutDossier.keyThreats.bowlers.map(b => b.name).join(', ') || 'N/A'}
+[OPPONENT: ${opponentName} - squad is ${opponentStatus}]
+${opponentList || 'No opponent players available'}
+${opponentPlayers.length ? `Key batters: ${scoutDossier.keyThreats.batters.map(b => b.name).join(', ') || 'N/A'}\nKey bowlers: ${scoutDossier.keyThreats.bowlers.map(b => b.name).join(', ') || 'N/A'}` : ''}
 `;
 
-    // Coach Jarvis is OpenRouter-only — use the same saved key and model that Model Settings
-    // (in the main AI Coach tab) writes to localStorage, so this screen's Jarvis chat actually
-    // authenticates instead of always hitting the server's missing-key error.
-    const activeOpenRouterKey = localStorage.getItem('bt_openrouter_api_key') || '';
-    const activeModel = localStorage.getItem('bt_llm_model') || 'anthropic/claude-3.5-sonnet';
-
-    if (!activeOpenRouterKey) {
-      setIsJarvisThinking(false);
-      const keyMissingMsg: ChatMessage = {
-        id: `err_${Date.now()}`,
-        role: 'assistant',
-        content: `⚠️ **OpenRouter API Key Required**: Please configure your OpenRouter API key in **Model Settings** (on the main AI Coach tab) to enable Coach Jarvis. You can obtain a free API key at [openrouter.ai/keys](https://openrouter.ai/keys).`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-      setMessages(prev => [...prev, keyMissingMsg]);
-      return;
-    }
-
     try {
-      const response = await fetch('/api/coach-chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: query,
-          context: fullContext,
-          model: activeModel,
-          openRouterApiKey: activeOpenRouterKey
-        })
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || `HTTP Error ${response.status}`);
-      }
-
-      const reply = data.reply || 'No tactical response was generated.';
+      const reply = (await callJarvisOpenRouter({
+        message: query,
+        context: fullContext,
+        systemPrompt: LINEUP_ONLY_SYSTEM_PROMPT,
+        direct: true,
+        maxTokens: 700
+      })) || 'No tactical response was generated.';
 
       const assistantMsg: ChatMessage = {
         id: `asst_${Date.now()}`,
@@ -572,10 +572,13 @@ ${opponentSummary || 'No opponent players available'}
 
     } catch (err: any) {
       console.error('Jarvis response error:', err);
+      const missingKey = /api key required/i.test(String(err?.message));
       const errorMsg: ChatMessage = {
         id: `err_${Date.now()}`,
         role: 'assistant',
-        content: `⚠️ **Unable to connect to Coach Jarvis server endpoint.**\n\n*Error details:* ${err.message}\n\n*Quick Tip:* Please check your OpenRouter API key in Model Settings (main AI Coach tab) or try asking again.`,
+        content: missingKey
+          ? `⚠️ **OpenRouter API Key Required**: add your key in **Jarvis Settings** (More → Jarvis Settings) to enable Coach Jarvis. You can get one at [openrouter.ai/keys](https://openrouter.ai/keys).`
+          : `⚠️ **Coach Jarvis could not respond.**\n\n*Error details:* ${err.message}\n\n*Quick Tip:* Check your OpenRouter key and model in Jarvis Settings, then try again.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages(prev => [...prev, errorMsg]);
@@ -1030,15 +1033,15 @@ ${opponentSummary || 'No opponent players available'}
               <div className="flex items-center gap-2 pt-1 overflow-x-auto">
                 <button
                   type="button"
-                  onClick={() => handleSendJarvisPrompt(`Is Take It Easy (TIE) recommended against ${opponentName} to let key bowlers recover Primary Fitness (PFL)?`)}
+                  onClick={() => handleSendJarvisPrompt(`Which of my players should I rest or swap out for this game because of fitness or form, and who replaces them?`)}
                   className="text-xs font-mono font-semibold px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-400/40 flex items-center gap-1.5 transition cursor-pointer shrink-0 shadow-2xs"
                 >
                   <Bot className="w-3.5 h-3.5 text-indigo-200" />
-                  <span>Ask Jarvis about TIE Fitness Recovery</span>
+                  <span>Ask Jarvis who to rest or swap</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSendJarvisPrompt(`Analyze squad fitness levels across my XI and recommend rotation or match effort strategy.`)}
+                  onClick={() => handleSendJarvisPrompt(`Which players in my XI have low fitness or form, and who should replace them?`)}
                   className="text-xs font-mono font-semibold px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1.5 transition cursor-pointer shrink-0"
                 >
                   <Users className="w-3.5 h-3.5 text-slate-400" />
@@ -1511,10 +1514,10 @@ ${opponentSummary || 'No opponent players available'}
             </button>
 
             <button
-              onClick={() => handleSendJarvisPrompt(`Provide optimal match orders (GFI/PAN/TIE), toss choice, and XI selection for this game.`)}
+              onClick={() => handleSendJarvisPrompt(`Give me the best XI, batting order and bowling plan for this game.`)}
               className="text-xs font-mono font-semibold px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold transition shrink-0 cursor-pointer shadow-2xs"
             >
-              🏆 Full Match Orders
+              🏆 Best XI & Orders
             </button>
           </div>
 
