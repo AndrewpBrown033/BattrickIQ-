@@ -153,14 +153,6 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
     return () => window.removeEventListener('storage', load);
   }, []);
 
-  const setRatingTarget = (key: TeamRatingKey, level: number) => {
-    setRatingTargets((prev) => {
-      const next = { ...prev, [key]: level };
-      try { localStorage.setItem('bt_rating_targets', JSON.stringify(next)); } catch {}
-      return next;
-    });
-  };
-
   const filtered = useMemo(() => {
     let list = [...squad];
     if (roleFilter !== 'All') list = list.filter((p) => (p.role || '').toLowerCase().includes(roleFilter.toLowerCase()));
@@ -246,7 +238,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
       listings = filterListingsByAge(listings, { minAge, maxAge });
       try { localStorage.setItem('bt_transfer_listings', JSON.stringify(listings)); } catch {}
       try {
-        const wl = refreshWatchlistFromListings(listings);
+        const wl = refreshWatchlistFromListings(listings as any);
         setWatchlist(Array.isArray(wl) ? wl : loadWatchlist());
       } catch {}
       if (!listings.length) {
@@ -325,7 +317,8 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
 
       {subTab === 'roster' && (
         <SquadRosterTab
-          squad={filtered}
+          squad={squad}
+          filtered={filtered}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           roleFilter={roleFilter}
@@ -335,6 +328,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
           viewMode={viewMode}
           setViewMode={setViewMode}
           onSelectPlayer={onSelectPlayer}
+          setActiveTab={setActiveTab}
         />
       )}
 
@@ -376,8 +370,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                     key={r.skill}
                     type="button"
                     onClick={() => toggleSkill(r.skill)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
-                      on ? 'bg-teal-50 border-teal-300 text-teal-900' : 'bg-white border-slate-200 text-slate-600'
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${\n                      on ? 'bg-teal-50 border-teal-300 text-teal-900' : 'bg-white border-slate-200 text-slate-600'
                     }`}
                   >
                     {r.skill}{r.recommended ? ' ★' : ''}
