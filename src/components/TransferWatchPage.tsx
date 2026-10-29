@@ -25,6 +25,7 @@ import {
   updateWatchAfterBotTick,
 } from '../utils/bidBot';
 import { evaluateScoutBuyFit } from '../utils/scoutBuyFit';
+import WatchFitPanel from './WatchFitPanel';
 import { SKILL_LEVELS } from '../types';
 import type { BattrickPlayer } from '../types';
 
@@ -276,6 +277,22 @@ export default function TransferWatchPage() {
     const panel = parseTransferPanelFromHtml(html);
     if (!panel.playerId) panel.playerId = playerId;
     return panel;
+  };
+
+  // Read his Battrick page and store skills / age / wage on the entry. Read-only: this never bids and never
+  // touches the bot, so the Jarvis check is safe to press on an armed player.
+  const refreshDetails = async (entry: WatchEntry): Promise<WatchEntry | null> => {
+    const panel = await fetchPanel(entry.playerId);
+    updateWatchAfterBotTick(entry.playerId, {
+      name: panel.name || entry.name,
+      age: panel.age ?? entry.age,
+      wage: panel.wage ?? entry.wage,
+      role: panel.role || entry.role,
+      bowlingType: panel.bowlingType || entry.bowlingType,
+      skills: panel.skills || entry.skills,
+    });
+    reload();
+    return loadWatchlist().find((w) => w.playerId === entry.playerId) || null;
   };
 
   const placeBid = async (playerId: string, bidValue: number) => {
@@ -652,6 +669,7 @@ export default function TransferWatchPage() {
                         <span className="font-medium leading-snug">{w.buyFit.summary}</span>
                       </div>
                     )}
+                    <WatchFitPanel entry={w} refreshDetails={refreshDetails} />
                   </div>
                 </div>
                 <div className="text-right text-[11px] text-slate-600 shrink-0">
