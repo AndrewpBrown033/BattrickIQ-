@@ -626,6 +626,12 @@ export default function TransferWatchPage() {
                       </a>
                     </div>
                     <div className="text-[10px] text-slate-500 font-mono">ID {w.playerId}</div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-600">
+                      {w.age ? <span>Age {w.age}</span> : null}
+                      <span className="font-semibold text-slate-800" title="Weekly wage, read from his Battrick page">
+                        {w.wage && w.wage > 0 ? `Wage £${w.wage.toLocaleString()}/wk` : 'Wage not read yet'}
+                      </span>
+                    </div>
                     {w.skills && (
                       <div className="mt-1.5 flex flex-wrap gap-1">
                         {(
