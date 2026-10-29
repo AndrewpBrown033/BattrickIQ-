@@ -106,6 +106,23 @@ export default function GameDetailView({ fixture, onBack, setActiveTab }: GameDe
     }
   };
 
+  /**
+   * Parse an opponent squad.asp page. If the normal (main-column) parse finds nobody, retry on the whole
+   * page with our own players removed. Returns a short description of what the HTML contained so a failure
+   * can be diagnosed from the error message.
+   */
+  const parseOpponentHtml = (html: string, targetId?: string) => {
+    let players = parseOpponentSquad(html, opponentName, targetId);
+    if (players.length === 0) {
+      players = stripMine(parseOpponentSquad(html, opponentName, targetId, { skipIsolation: true }), readMySquad());
+    }
+    const links = (html.match(/playerdetails\.asp\?playerID=\d+/gi) || []).length;
+    const pageTeam = extractOwnTeamIdFromHtml(html) || '?';
+    const loginPage = /log in to battrick|id=["']login["']/i.test(html);
+    const diag = `${html.length} chars, ${links} player links, page team #${pageTeam}${loginPage ? ', looks like the login page' : ''}`;
+    return { players, diag, loginPage };
+  };
+
   // Never show our own players as "their" players: drop a roster that is our squad, strip stray individuals.
   const cleanOpponentRoster = (players: OpponentPlayer[]): OpponentPlayer[] => {
     const mine = readMySquad();
@@ -368,9 +385,12 @@ I only cover the lineup for this game: your XI, batting order and bowling plan a
       }
 
       // Parse opponent squad
-      const parsedPlayers = parseOpponentSquad(data.html, opponentName, targetId);
+      const { players: parsedPlayers, diag, loginPage } = parseOpponentHtml(data.html, targetId);
+      if (loginPage) {
+        throw new Error('Battrick returned its login page. Re-authenticate via the Auth bar and try again.');
+      }
       if (parsedPlayers.length === 0) {
-        throw new Error('Could not parse any player records from squad HTML.');
+        throw new Error(`Could not parse any player records from squad HTML (${diag}).`);
       }
       if (looksLikeMySquad(parsedPlayers as any, readMySquad())) {
         throw new Error(`That roster is your own squad, not ${opponentName}. The opponent team ID for this fixture looks wrong.`);
@@ -420,9 +440,9 @@ I only cover the lineup for this game: your XI, batting order and bowling plan a
   const handleParseManualHtml = () => {
     if (!manualHtml.trim()) return;
     try {
-      const parsedPlayers = parseOpponentSquad(manualHtml, opponentName);
+      const { players: parsedPlayers, diag } = parseOpponentHtml(manualHtml);
       if (parsedPlayers.length === 0) {
-        alert('Could not find player records in the pasted HTML. Please paste the full squad.asp source code.');
+        alert(`Could not find player records in the pasted HTML (${diag}). Please paste the full squad.asp source code (view-source).`);
         return;
       }
       if (looksLikeMySquad(parsedPlayers as any, readMySquad())) {

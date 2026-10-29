@@ -5489,14 +5489,16 @@ export function extractOpponentTeamNameFromSquadHtml(content: string, expectedTe
   return null;
 }
 
-export function parseOpponentSquad(content: string, overrideTeamName?: string, overrideTeamId?: string): BattrickPlayer[] {
+export function parseOpponentSquad(content: string, overrideTeamName?: string, overrideTeamId?: string, opts?: { skipIsolation?: boolean }): BattrickPlayer[] {
   const players: BattrickPlayer[] = [];
 
   // Always parse the main column only. The top menu lists the logged-in
   // user's players (Zesh Ardley, …) even on someone else's squad.asp, and
   // falling through to the playerdetails.asp regex on the full document
   // was mixing those into the scouted roster.
-  const scopedContent = isolateBattrickMainColumn(content);
+  // `skipIsolation` is a last resort for pages whose layout the column isolation mis-cuts; the caller must
+  // then remove the logged-in user's own players that the top menu lists.
+  const scopedContent = opts?.skipIsolation ? content : isolateBattrickMainColumn(content);
 
   const parser = new DOMParser();
   let doc: Document | null = null;
