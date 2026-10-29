@@ -22,7 +22,7 @@ import {
 import { useBattrickAuth } from '../lib/battrickAuthContext';
 import { saveOpponentSquadToFirestore, syncOpponentSquadsFromFirestore } from '../utils/opponentSquadSync';
 import { resolveFixtureOpponent, looksLikeMySquad, stripMine, sameTeamName } from '../utils/opponentResolve';
-import { getOwnTeamId, getOwnTeamName } from '../utils/teamIdentity';
+import { getOwnTeamId, getOwnTeamName, extractOwnTeamIdFromHtml } from '../utils/teamIdentity';
 import { callJarvisOpenRouter, LINEUP_ONLY_SYSTEM_PROMPT } from '../utils/jarvisChatClient';
 import { 
   ArrowLeft, 
@@ -334,25 +334,37 @@ I only cover the lineup for this game: your XI, batting order and bowling plan a
     setSyncStatusMsg(`Connecting to Battrick to fetch ${opponentName} squad (Team ID: ${targetId})...`);
 
     try {
+      // A bare squad.asp always returns OUR OWN roster; the opponent's squad needs ?teamID= in the page URL
+      // (same request the Scout screen makes). Sending only `teamId` in the body is ignored by the server.
       const response = await fetch('/api/sync-battrick-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          pageName: 'squad',
+          pageName: 'squad.asp',
+          pageUrl: `https://www.battrick.org/nl/squad.asp?teamID=${encodeURIComponent(targetId)}`,
           teamId: targetId,
           username: battrickUser,
-          password: battrickPass
+          password: battrickPass,
+          sessionToken: localStorage.getItem('bt_sync_session') || ''
         })
       });
 
-      if (!response.ok) {
-        const errJson = await response.json().catch(() => ({}));
-        throw new Error(errJson.error || `Server returned HTTP ${response.status}`);
+      const data = await response.json().catch(() => ({} as any));
+      if (data.sessionToken) localStorage.setItem('bt_sync_session', data.sessionToken);
+      if (!response.ok || data.isAuthFailure) {
+        throw new Error(data.error || `Server returned HTTP ${response.status}`);
       }
-
-      const data = await response.json();
+      if (data.requestedTeamId && data.returnedTeamId && String(data.requestedTeamId) !== String(data.returnedTeamId)) {
+        throw new Error(
+          data.error || `Battrick returned team #${data.returnedTeamId} instead of #${data.requestedTeamId}. Re-authenticate and try again.`
+        );
+      }
       if (!data.html) {
         throw new Error('No HTML content returned from Battrick.');
+      }
+      const pageTeamId = extractOwnTeamIdFromHtml(data.html);
+      if (pageTeamId && String(pageTeamId) !== String(targetId)) {
+        throw new Error(`Battrick served team #${pageTeamId}, not the opponent #${targetId}. Re-authenticate and try again.`);
       }
 
       // Parse opponent squad
