@@ -172,6 +172,36 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
     return list;
   }, [squad, roleFilter, searchQuery, sortBy]);
 
+  const trainingPlayers = useMemo(() => {
+    return squad
+      .map((p) => {
+        const total = totalNets(p);
+        if (total <= 0) return null;
+        const nets = p.nets || { batting: 0, bowling: 0, keeping: 0, fielding: 0, stamina: 0 };
+        const entries = [
+          { key: 'batting', nets: nets.batting || 0, level: p.skills?.batting || 0 },
+          { key: 'bowling', nets: nets.bowling || 0, level: p.skills?.bowling || 0 },
+          { key: 'keeping', nets: nets.keeping || 0, level: p.skills?.keeping || 0 },
+          { key: 'fielding', nets: nets.fielding || 0, level: p.skills?.fielding || 0 },
+          { key: 'stamina', nets: nets.stamina || 0, level: p.skills?.stamina || 0 },
+        ].filter((e) => e.nets > 0);
+        const focus = entries.sort((a, b) => b.nets - a.nets)[0];
+        if (!focus) return null;
+        const weeks = estimateWeeksToNextLevel(focus.level, p.age || 25, focus.nets);
+        return { player: p, total, focus: { ...focus, label: focus.key }, weeks };
+      })
+      .filter(Boolean) as { player: BattrickPlayer; total: number; focus: any; weeks: number }[];
+  }, [squad]);
+
+  const tradeCandidates = useMemo(() => {
+    return squad
+      .map((p) => ({ player: p, trade: getTradeAction(p), score: getPlayerWeightedScore(p) }))
+      .sort((a, b) => {
+        const order = { SELL: 0, WATCH: 1, KEEP: 2 };
+        return order[a.trade.action] - order[b.trade.action] || a.score - b.score;
+      });
+  }, [squad]);
+
   const currentRatings = useMemo(() => estimateTeamRatings(squad), [squad]);
   const ratingGaps = useMemo(() => buildRatingGaps(currentRatings, ratingTargets), [currentRatings, ratingTargets]);
   const skillRecs = useMemo(() => recommendSkillsFromGaps(ratingGaps), [ratingGaps]);
@@ -430,13 +460,72 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
       )}
 
       {subTab === 'training' && (
-        <div className="bg-white border border-slate-200 rounded-xl p-4 text-sm text-slate-600">
-          Training view — open roster players for nets detail.
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
+          <div className="flex items-center gap-2">
+            <Dumbbell className="w-5 h-5 text-violet-600" />
+            <div>
+              <h3 className="font-bold text-sm text-slate-900">Training progression</h3>
+              <p className="text-[11px] text-slate-500">Players with nets — estimated weeks to next skill level</p>
+            </div>
+          </div>
+          {trainingPlayers.length === 0 ? (
+            <div className="text-center py-10 text-slate-400 border border-dashed rounded-xl text-xs">
+              No net data yet. Sync squad pages that include training nets after a training week.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {trainingPlayers.map(({ player: p, total, focus, weeks }) => (
+                <button key={p.id} type="button" onClick={() => onSelectPlayer?.(p.id)}
+                  className="w-full text-left p-3 rounded-xl border border-slate-200 hover:bg-violet-50/40 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-slate-800 truncate">{p.name}</div>
+                    <div className="text-[11px] text-slate-500">
+                      Focus <strong>{focus.label}</strong> · {focus.nets} nets · level {focus.level} ({getSkillLabel(focus.key as any, focus.level)})
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-[10px] font-bold text-violet-600 flex items-center gap-1 justify-end">
+                      <Clock className="w-3 h-3" /> ~{weeks}w
+                    </div>
+                    <div className="text-[10px] text-slate-400">{total} total nets</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
+
       {subTab === 'trading' && (
-        <div className="bg-white border border-slate-200 rounded-xl p-4 text-sm text-slate-600">
-          Trading view — KEEP / SELL / WATCH from roster.
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
+          <div className="flex items-center gap-2">
+            <ArrowLeftRight className="w-5 h-5 text-amber-600" />
+            <div>
+              <h3 className="font-bold text-sm text-slate-900">Squad trade recommendations</h3>
+              <p className="text-[11px] text-slate-500">KEEP / SELL / WATCH based on age, wage and primary skill</p>
+            </div>
+          </div>
+          {tradeCandidates.length === 0 ? (
+            <div className="text-center py-10 text-slate-400 border border-dashed rounded-xl text-xs">
+              No players yet — sync your squad first.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {tradeCandidates.slice(0, 30).map(({ player: p, trade }) => (
+                <button key={p.id} type="button" onClick={() => onSelectPlayer?.(p.id)}
+                  className="w-full text-left p-3 rounded-xl border border-slate-200 hover:bg-amber-50/40 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-slate-800 truncate">{p.name}</div>
+                    <div className="text-[11px] text-slate-500">{trade.reason}</div>
+                  </div>
+                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                    trade.action === 'SELL' ? 'bg-rose-100 text-rose-800' :
+                    trade.action === 'KEEP' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                  }`}>{trade.action}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
