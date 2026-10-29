@@ -272,27 +272,33 @@ export default function GameDetailView({ fixture, onBack, setActiveTab }: GameDe
     }
   };
 
-  // Initialize Jarvis Welcome message
+  // Jarvis welcome message. Kept in sync with the roster (it used to freeze at "0 players" because it was only
+  // written once, before the roster had loaded) and brought back after Clear History.
   useEffect(() => {
-    if (messages.length === 0) {
-      setMessages([
-        {
-          id: 'welcome_msg',
-          role: 'assistant',
-          content: `### 🏏 Welcome Manager! I am **Coach Jarvis**.
-I have analyzed your fixture against **${opponentName}** (${matchFormat} format at ${fixture.venue}).
+    const rosterLine =
+      opponentPlayers.length > 0
+        ? `${opponentPlayers.length} players loaded`
+        : 'no opponent players loaded yet (use Sync Opponent Players Live)';
+    const welcome: ChatMessage = {
+      id: 'welcome_msg',
+      role: 'assistant',
+      content: `### 🏏 Welcome Manager! I am **Coach Jarvis**.
+Your fixture against **${opponentName}** (${matchFormat} format, ${fixture.venue} game).
 
 **Opponent Intelligence Status:**
-- **Opponent Roster Loaded:** ${opponentPlayers.length} players analyzed
+- **Opponent Roster:** ${rosterLine}
 - **Match Pitch Condition:** ${pitch}
 - **Weather Conditions:** ${weather}
 
 I only cover the lineup for this game: your XI, batting order and bowling plan against their players.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }
-      ]);
-    }
-  }, [opponentName, pitch, weather, opponentPlayers.length]);
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    setMessages(prev =>
+      prev.length === 0 ? [welcome]
+      : prev[0].id === 'welcome_msg' ? [{ ...welcome, timestamp: prev[0].timestamp }, ...prev.slice(1)]
+      : prev
+    );
+  }, [opponentName, pitch, weather, opponentPlayers.length, messages.length === 0]);
 
   // Keep any manually-tagged opponent roles when a resync replaces the roster
   // with freshly parsed/predicted data (matched by id, falling back to name).
@@ -620,6 +626,9 @@ ${opponentPlayers.length ? `Key batters: ${scoutDossier.keyThreats.batters.map(b
   };
 
   // Render markdown text in Jarvis chat
+  const renderInline = (text: string) =>
+    text.split('**').map((part, i) => (i % 2 === 1 ? <strong key={i} className="font-bold">{part}</strong> : part));
+
   const renderMarkdown = (text: string) => {
     const lines = text.split('\n');
     return lines.map((line, idx) => {
@@ -627,10 +636,10 @@ ${opponentPlayers.length ? `Key batters: ${scoutDossier.keyThreats.batters.map(b
       if (!trimmed) return <div key={idx} className="h-2" />;
 
       if (trimmed.startsWith('### ')) {
-        return <h4 key={idx} className="font-bold text-slate-900 text-sm mt-3 mb-1.5 flex items-center gap-1.5">{line.replace('### ', '')}</h4>;
+        return <h4 key={idx} className="font-bold text-slate-900 text-sm mt-3 mb-1.5 flex items-center gap-1.5">{renderInline(line.replace('### ', ''))}</h4>;
       }
       if (trimmed.startsWith('## ')) {
-        return <h3 key={idx} className="font-serif font-bold text-indigo-950 text-base mt-4 mb-2">{line.replace('## ', '')}</h3>;
+        return <h3 key={idx} className="font-serif font-bold text-indigo-950 text-base mt-4 mb-2">{renderInline(line.replace('## ', ''))}</h3>;
       }
 
       if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
@@ -1495,7 +1504,7 @@ ${opponentPlayers.length ? `Key batters: ${scoutDossier.keyThreats.batters.map(b
                   </span>
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Contextualized for {fixture.homeTeam || 'My Team'} vs {opponentName} ({matchFormat})
+                  Contextualized for {resolvedOpponent.alternate?.name || getOwnTeamName() || 'My Team'} vs {opponentName} ({matchFormat})
                 </p>
               </div>
             </div>
