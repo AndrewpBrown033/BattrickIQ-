@@ -30,7 +30,7 @@ import {
 import {
   Dumbbell, ArrowLeftRight, Target, Clock, Users, RefreshCw, AlertTriangle } from 'lucide-react';
 import EstimatorAgeWageBar from './squad/EstimatorAgeWageBar';
-import { filterListingsByAge, type WageHorizon } from '../utils/transferCosting';
+import { filterListingsByAge, passesAgeFilter, type WageHorizon } from '../utils/transferCosting';
 import {
   type SubTab, type EffortMode, totalNets, getTradeAction, estimateWeeksToNextLevel,
   RATING_KEYS, defaultRatings,
@@ -72,7 +72,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
     } catch {}
     return defaultRatings();
   });
-  const [buyRecs, setBuyRecs] = useState<BuyRecommendation[]>([]);
+  const [allBuyRecs, setBuyRecs] = useState<BuyRecommendation[]>([]);
   const [lastNeeds, setLastNeeds] = useState<SquadGapNeed[]>([]);
   const [shortlistSort, setShortlistSort] = useState<'fit' | 'invest'>('invest');
   const [factorFinance, setFactorFinance] = useState(true);
@@ -87,6 +87,13 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
   const [minAge, setMinAge] = useState(17);
   const [maxAge, setMaxAge] = useState(32);
   const [wageWeeks, setWageWeeks] = useState<WageHorizon>(6);
+
+  // Narrowing the age boxes re-filters the scanned shortlist instantly. Widening needs a new scan, because the
+  // scan itself asks Battrick for (and keeps) only the band that was set when it ran.
+  const buyRecs = useMemo(
+    () => allBuyRecs.filter((r) => passesAgeFilter(r.listing.age, { minAge, maxAge })),
+    [allBuyRecs, minAge, maxAge]
+  );
 
   // Must come after wageWeeks. Guarded so one odd listing can't white-screen the Estimator.
   const investments = useMemo(() => {
