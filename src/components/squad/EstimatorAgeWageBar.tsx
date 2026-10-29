@@ -11,6 +11,12 @@ export type EstimatorAgeWageBarProps = {
   factorFinance: boolean;
 };
 
+function parseAge(raw: string, fallback: number): number {
+  const n = parseInt(String(raw).replace(/[^0-9]/g, ''), 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(1, Math.min(50, n));
+}
+
 /** Age range + wage horizon controls for Estimator → Skills to look for. */
 export default function EstimatorAgeWageBar({
   minAge,
@@ -28,23 +34,35 @@ export default function EstimatorAgeWageBar({
         <label className="text-[10px] font-semibold text-slate-600 flex flex-col gap-0.5">
           Min age
           <input
-            type="number"
-            min={15}
-            max={45}
-            value={minAge}
-            onChange={(e) => onMinAge(Math.max(15, Math.min(45, Number(e.target.value) || 15)))}
-            className="border border-slate-200 rounded-lg px-2 py-1 text-xs w-16"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={String(minAge)}
+            onChange={(e) => {
+              const digits = e.target.value.replace(/[^0-9]/g, '');
+              if (digits === '') return;
+              onMinAge(parseAge(digits, minAge));
+            }}
+            onBlur={(e) => onMinAge(parseAge(e.target.value, 15))}
+            className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs w-20"
+            placeholder="e.g. 17"
           />
         </label>
         <label className="text-[10px] font-semibold text-slate-600 flex flex-col gap-0.5">
           Max age
           <input
-            type="number"
-            min={15}
-            max={45}
-            value={maxAge}
-            onChange={(e) => onMaxAge(Math.max(15, Math.min(45, Number(e.target.value) || 45)))}
-            className="border border-slate-200 rounded-lg px-2 py-1 text-xs w-16"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={String(maxAge)}
+            onChange={(e) => {
+              const digits = e.target.value.replace(/[^0-9]/g, '');
+              if (digits === '') return;
+              onMaxAge(parseAge(digits, maxAge));
+            }}
+            onBlur={(e) => onMaxAge(parseAge(e.target.value, 45))}
+            className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs w-20"
+            placeholder="e.g. 25"
           />
         </label>
         <button
@@ -69,7 +87,7 @@ export default function EstimatorAgeWageBar({
         </button>
       </div>
       <p className="text-[10px] text-slate-500">
-        Shortlist only keeps players in this age band (unknown age is kept).
+        Type any age (1–50). Shortlist only keeps players in this band (unknown age is kept).
       </p>
 
       <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 pt-1 border-t border-slate-100">
