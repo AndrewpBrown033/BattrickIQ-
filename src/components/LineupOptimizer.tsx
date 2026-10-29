@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { SKILL_LEVELS, LineupPlayer, BattrickPlayer } from '../types';
 import { Users, Shield, Copy, Check, Info, ChevronDown, ChevronUp, RefreshCw, UserCheck, Sparkles } from 'lucide-react';
 import BowlingOrderPanel, { rankBowlingOrder } from './BowlingOrderPanel';
+import LineupJarvisPanel from './LineupJarvisPanel';
 
 const PRESET_STRATEGIES = [
   { name: 'Balanced Attack', desc: 'Stable batting order and balanced spin/seam split.' },
@@ -287,6 +288,8 @@ export default function LineupOptimizer({ setActiveTab }: LineupOptimizerProps) 
       </div>
 
       <div className="lg:col-span-5 flex flex-col gap-4">
+        <LineupJarvisPanel lineup={lineup} squad={importedPlayers} />
+
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <h4 className="font-display font-bold text-xs text-slate-700 uppercase tracking-wider flex items-center gap-1.5 mb-2.5">
             <Shield className="w-4 h-4 text-indigo-600" />
