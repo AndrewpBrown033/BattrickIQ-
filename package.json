@@ -20,7 +20,8 @@
     "lint": "tsc --noEmit",
     "test:watch-merge": "tsx scripts/test-watchlist-merge.ts",
     "test:watch-sync": "node scripts/test-watch-sync-sim.mjs",
-    "test:watch-fit": "tsx scripts/test-watch-fit.ts"
+    "test:watch-fit": "tsx scripts/test-watch-fit.ts",
+    "test:opponent": "tsx scripts/test-opponent-resolve.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",
