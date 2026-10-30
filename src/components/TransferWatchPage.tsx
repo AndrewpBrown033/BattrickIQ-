@@ -26,7 +26,7 @@ import {
 } from '../utils/bidBot';
 import { evaluateScoutBuyFit } from '../utils/scoutBuyFit';
 import WatchFitPanel from './WatchFitPanel';
-import { SKILL_LEVELS } from '../types';
+import { SKILL_LEVELS, getSkillLabel } from '../types';
 import type { BattrickPlayer } from '../types';
 
 const POLL_MS = 60_000;
@@ -652,7 +652,7 @@ export default function TransferWatchPage() {
                               className="px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[10px] font-mono text-slate-700"
                               title={skillShort(Number(val))}
                             >
-                              {label} {val}
+                              {label} {getSkillLabel(label === 'Sta' ? 'stamina' : label, Math.round(Number(val)))}
                             </span>
                           ) : null
                         )}
