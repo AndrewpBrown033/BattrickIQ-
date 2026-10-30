@@ -8,7 +8,7 @@ import {
 } from '../utils/jarvisSettingsStore';
 
 export const OPENROUTER_MODELS = [
-  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', desc: 'Top strategic reasoning & cricket tactics', free: false },
+  { id: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6', desc: 'Top strategic reasoning & cricket tactics', free: false },
   { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B Instruct', desc: 'Fast, open-weights tactical LLM', free: false },
   { id: 'openai/gpt-4o', name: 'GPT-4o', desc: 'High capability multimodal reasoning', free: false },
   { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3', desc: 'Efficient, deep mathematical analysis', free: false },

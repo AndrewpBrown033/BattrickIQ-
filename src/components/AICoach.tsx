@@ -6,6 +6,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import AICoachHistory from './AICoachHistory';
 import { buildManagerBriefing, JARVIS_SYSTEM_PROMPT } from '../utils/jarvisContext';
 import { loadJarvisSettingsFromCloud } from '../utils/jarvisSettingsStore';
+import { resolveJarvisModel } from '../utils/jarvisModel';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -32,7 +33,7 @@ export default function AICoach({ setActiveTab }: { setActiveTab?: (tab: string)
   messagesRef.current = messages;
 
   const [selectedModel, setSelectedModel] = useState<string>(() => {
-    return localStorage.getItem('bt_llm_model') || 'anthropic/claude-3.5-sonnet';
+    return resolveJarvisModel(localStorage.getItem('bt_llm_model'));
   });
   const [openRouterKey, setOpenRouterKey] = useState<string>(() => {
     return localStorage.getItem('bt_openrouter_api_key') || '';
@@ -49,7 +50,7 @@ export default function AICoach({ setActiveTab }: { setActiveTab?: (tab: string)
 
   useEffect(() => {
     const sync = () => {
-      setSelectedModel(localStorage.getItem('bt_llm_model') || 'anthropic/claude-3.5-sonnet');
+      setSelectedModel(resolveJarvisModel(localStorage.getItem('bt_llm_model')));
       setOpenRouterKey(localStorage.getItem('bt_openrouter_api_key') || '');
     };
     window.addEventListener('storage', sync);
@@ -198,7 +199,7 @@ export default function AICoach({ setActiveTab }: { setActiveTab?: (tab: string)
       let useClientFallback = false;
 
       const activeOpenRouterKey = openRouterKey || localStorage.getItem('bt_openrouter_api_key') || '';
-      const model = selectedModel || localStorage.getItem('bt_llm_model') || 'anthropic/claude-3.5-sonnet';
+      const model = resolveJarvisModel(selectedModel || localStorage.getItem('bt_llm_model'));
 
       if (!activeOpenRouterKey) {
         setLoading(false);

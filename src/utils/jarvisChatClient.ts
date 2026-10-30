@@ -3,6 +3,7 @@
  * selection for that one game: XI, batting order, bowling plan. Sent with `direct: true` so the server's
  * broader built-in coach prompt is not in the way.
  */
+import { resolveJarvisModel } from './jarvisModel';
 export const LINEUP_ONLY_SYSTEM_PROMPT = `You are Coach Jarvis, a cricket selection coach for Battrick. Your ONLY job is the team lineup for the ONE fixture described in the briefing.
 
 IN SCOPE: who plays (the XI and the wicketkeeper), the batting order, the bowling plan (who bowls, in what order / phase, which bowlers to pair), who to rest or swap because of fitness or form, and how the opponent's named players, the pitch and the weather should change those choices.
@@ -46,10 +47,9 @@ export async function callJarvisOpenRouter(opts: {
   const activeOpenRouterKey =
     opts.openRouterApiKey ||
     (typeof localStorage !== 'undefined' ? localStorage.getItem('bt_openrouter_api_key') || '' : '');
-  const activeModel =
-    opts.model ||
-    (typeof localStorage !== 'undefined' ? localStorage.getItem('bt_llm_model') || '' : '') ||
-    'anthropic/claude-3.5-sonnet';
+  const activeModel = resolveJarvisModel(
+    opts.model || (typeof localStorage !== 'undefined' ? localStorage.getItem('bt_llm_model') || '' : '')
+  );
 
   if (!activeOpenRouterKey) {
     throw new Error(
@@ -85,7 +85,7 @@ export async function callJarvisOpenRouter(opts: {
   }
 
   if (useClientFallback || !reply) {
-    const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const orRes = await fetchOpenRouter('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${activeOpenRouterKey}`,
@@ -112,7 +112,7 @@ export async function callJarvisOpenRouter(opts: {
     });
     if (!orRes.ok) {
       const errData = await orRes.json().catch(() => ({}));
-      throw new Error(errData.error?.message || `OpenRouter HTTP ${orRes.status}`);
+      throw new Error(describeOpenRouterError(orRes.status, errData.error?.message, activeModel));
     }
     const orData = await orRes.json();
     reply = orData.choices?.[0]?.message?.content || '';
@@ -120,4 +120,24 @@ export async function callJarvisOpenRouter(opts: {
   }
 
   return reply;
+}
+
+async function fetchOpenRouter(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch {
+    throw new Error('Could not reach OpenRouter. A VPN, ad-blocker or network problem may be blocking openrouter.ai.');
+  }
+}
+
+/** Turn an OpenRouter failure into something the manager can act on. */
+export function describeOpenRouterError(status: number, message: string | undefined, model: string): string {
+  const raw = (message || `OpenRouter HTTP ${status}`).trim();
+  if (status === 401 || status === 403) return `OpenRouter rejected your API key (${raw}). Check it in Jarvis Settings.`;
+  if (status === 402) return `OpenRouter says the account is out of credits (${raw}). Add credits or pick a free model in Jarvis Settings.`;
+  if (status === 429) return `OpenRouter is rate-limiting this request (${raw}). Wait a moment and try again, or pick another model.`;
+  if (status === 404 || /no endpoints|not a valid model|model.*(not found|unavailable|deprecated|retired)/i.test(raw)) {
+    return `The model "${model}" isn't available on OpenRouter (${raw}). Pick another model in Jarvis Settings.`;
+  }
+  return raw;
 }

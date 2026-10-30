@@ -10,6 +10,7 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { getCustomUser } from '../lib/customAuth';
+import { resolveJarvisModel } from './jarvisModel';
 
 export type JarvisCloudSettings = {
   openRouterApiKey: string;
@@ -39,9 +40,7 @@ function canUseCloud(): { uid: string; email: string | null } | null {
 export function readJarvisLocal(): JarvisCloudSettings {
   return {
     openRouterApiKey: (typeof localStorage !== 'undefined' && localStorage.getItem(LOCAL_KEY)) || '',
-    llmModel:
-      (typeof localStorage !== 'undefined' && localStorage.getItem(LOCAL_MODEL)) ||
-      'anthropic/claude-3.5-sonnet',
+    llmModel: resolveJarvisModel(typeof localStorage !== 'undefined' ? localStorage.getItem(LOCAL_MODEL) : ''),
     freeOnly:
       typeof localStorage !== 'undefined' && localStorage.getItem(LOCAL_FREE) === 'true',
   };
@@ -80,7 +79,7 @@ function fromUserDoc(data: Record<string, unknown>, local: JarvisCloudSettings):
   }
   return {
     openRouterApiKey: key || local.openRouterApiKey,
-    llmModel: model || local.llmModel || 'anthropic/claude-3.5-sonnet',
+    llmModel: resolveJarvisModel(model || local.llmModel),
     freeOnly: data.jarvisFreeOnly === true || data.freeOnly === true,
   };
 }
@@ -103,7 +102,7 @@ export async function loadJarvisSettingsFromCloud(): Promise<JarvisCloudSettings
         const data = snap.data() || {};
         const cloud: JarvisCloudSettings = {
           openRouterApiKey: String(data.openRouterApiKey || '').trim(),
-          llmModel: String(data.llmModel || local.llmModel || 'anthropic/claude-3.5-sonnet'),
+          llmModel: resolveJarvisModel(String(data.llmModel || local.llmModel || '')),
           freeOnly: data.freeOnly === true,
         };
         const merged: JarvisCloudSettings = {
@@ -159,7 +158,7 @@ export async function saveJarvisSettingsToCloud(
 
   const payload = {
     openRouterApiKey: (current.openRouterApiKey || '').trim(),
-    llmModel: current.llmModel || 'anthropic/claude-3.5-sonnet',
+    llmModel: resolveJarvisModel(current.llmModel),
     freeOnly: !!current.freeOnly,
     updatedAt: new Date().toISOString(),
     email: session.email,
