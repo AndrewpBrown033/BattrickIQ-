@@ -1,11 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Cpu, ShieldCheck, Eye, EyeOff, Check, ExternalLink, Bot, Cloud, Loader2 } from 'lucide-react';
+import { Cpu, ShieldCheck, Eye, EyeOff, Check, ExternalLink, Bot, Cloud, Loader2, RefreshCw, Search, AlertTriangle } from 'lucide-react';
 import EmailReportPanel from './EmailReportPanel';
 import {
   loadJarvisSettingsFromCloud,
   saveJarvisSettingsToCloud,
   readJarvisLocal,
 } from '../utils/jarvisSettingsStore';
+import {
+  fetchOpenRouterModels,
+  loadModelCache,
+  saveModelCache,
+  isStale,
+  searchModels,
+  buildModelList,
+  type OpenRouterModel,
+} from '../utils/openrouterModels';
 
 export const OPENROUTER_MODELS = [
   { id: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6', desc: 'Top strategic reasoning & cricket tactics', free: false },
@@ -33,6 +42,41 @@ export default function JarvisSettings() {
   const [cloudStatus, setCloudStatus] = useState<'idle' | 'loading' | 'saved' | 'error'>('idle');
   const [cloudMsg, setCloudMsg] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Live model list from OpenRouter (cached on this device; refreshed on demand and when a day old).
+  const cache0 = loadModelCache();
+  const [liveModels, setLiveModels] = useState<OpenRouterModel[] | null>(cache0?.models ?? null);
+  const [modelsAt, setModelsAt] = useState<number | null>(cache0?.at ?? null);
+  const [modelsBusy, setModelsBusy] = useState(false);
+  const [modelsMsg, setModelsMsg] = useState<string | null>(null);
+  const [modelQuery, setModelQuery] = useState('');
+  const [showAllModels, setShowAllModels] = useState(false);
+
+  const refreshModels = async (silent = false) => {
+    setModelsBusy(true);
+    if (!silent) setModelsMsg(null);
+    try {
+      const models = await fetchOpenRouterModels();
+      const before = new Set((liveModels || []).map((m) => m.id));
+      saveModelCache(models);
+      setLiveModels(models);
+      setModelsAt(Date.now());
+      const added = before.size ? models.filter((m) => !before.has(m.id)).length : 0;
+      setModelsMsg(
+        `Loaded ${models.length} models from OpenRouter` + (before.size ? ` · ${added} new since last refresh` : '')
+      );
+    } catch (e: any) {
+      // Keep whatever list we already have; just say why the refresh didn't work.
+      setModelsMsg(`Couldn't refresh the model list (${e?.message || e}). Showing ${liveModels ? 'the last saved list' : 'the built-in list'}.`);
+    } finally {
+      setModelsBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isStale(loadModelCache())) void refreshModels(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,7 +129,15 @@ export default function JarvisSettings() {
     }, 400);
   };
 
-  const visibleModels = showFreeOnly ? OPENROUTER_MODELS.filter((m) => m.free) : OPENROUTER_MODELS;
+  const allModels = buildModelList(OPENROUTER_MODELS, liveModels);
+  const freeFiltered = showFreeOnly ? allModels.filter((m) => m.free) : allModels;
+  const matched = searchModels(freeFiltered, modelQuery);
+  const LIMIT = 40;
+  const searching = modelQuery.trim() !== '';
+  const visibleModels = searching || showAllModels ? matched : matched.slice(0, LIMIT);
+  // The model you saved may have been removed from OpenRouter since (this is how Jarvis broke before).
+  const selectedMissing =
+    !!liveModels && !!selectedModel && !liveModels.some((m) => m.id === selectedModel);
 
   useEffect(() => {
     if (showFreeOnly && !visibleModels.some((m) => m.id === selectedModel) && visibleModels[0]) {
@@ -205,6 +257,16 @@ export default function JarvisSettings() {
           <label className="text-[11px] font-mono font-bold uppercase text-slate-500">Model</label>
           <button
             type="button"
+            disabled={modelsBusy}
+            onClick={() => void refreshModels()}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-800 text-[11px] font-bold disabled:opacity-60"
+            title="Fetch the current model list from openrouter.ai"
+          >
+            <RefreshCw className={`w-3 h-3 ${modelsBusy ? 'animate-spin' : ''}`} />
+            {modelsBusy ? 'Refreshing…' : 'Refresh models'}
+          </button>
+          <button
+            type="button"
             onClick={() => {
               const next = !showFreeOnly;
               setShowFreeOnly(next);
@@ -218,6 +280,30 @@ export default function JarvisSettings() {
           >
             Free models only
           </button>
+        </div>
+        <div className="text-[11px] text-slate-500">
+          {modelsMsg ||
+            (modelsAt
+              ? `${liveModels?.length ?? 0} models from OpenRouter · refreshed ${new Date(modelsAt).toLocaleString()}`
+              : 'Built-in list — press Refresh models to load everything OpenRouter offers.')}
+        </div>
+        {selectedMissing && (
+          <div className="flex items-start gap-2 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>
+              Your selected model <span className="font-mono font-bold">{selectedModel}</span> isn't on OpenRouter's current
+              list, so Jarvis may fail. Pick another below.
+            </span>
+          </div>
+        )}
+        <div className="relative">
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            value={modelQuery}
+            onChange={(e) => setModelQuery(e.target.value)}
+            placeholder={`Search ${freeFiltered.length} models (e.g. claude, gemini, llama)`}
+            className="w-full text-sm pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
         </div>
         <div className="space-y-2 max-h-[50dvh] overflow-y-auto pr-1">
           {visibleModels.map((m) => {
@@ -245,7 +331,16 @@ export default function JarvisSettings() {
                       </span>
                     )}
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">{m.desc}</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    {m.desc || 'No description from OpenRouter.'}
+                  </div>
+                  {(m.contextLength || m.promptPerM !== undefined) && (
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      {m.contextLength ? `${Math.round(m.contextLength / 1000)}k context` : ''}
+                      {m.contextLength && m.promptPerM !== undefined ? ' · ' : ''}
+                      {m.promptPerM !== undefined ? (m.free ? 'free' : `$${m.promptPerM.toFixed(2)} / 1M input tokens`) : ''}
+                    </div>
+                  )}
                   <div className="text-[10px] font-mono text-slate-400 mt-1 truncate">{m.id}</div>
                 </div>
                 {active && <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />}
@@ -253,7 +348,18 @@ export default function JarvisSettings() {
             );
           })}
           {visibleModels.length === 0 && (
-            <div className="text-[12px] text-slate-400 italic p-2">No free models in the current list.</div>
+            <div className="text-[12px] text-slate-400 italic p-2">
+              {searching ? 'No models match that search.' : 'No free models in the current list.'}
+            </div>
+          )}
+          {!searching && !showAllModels && matched.length > LIMIT && (
+            <button
+              type="button"
+              onClick={() => setShowAllModels(true)}
+              className="w-full text-[11px] font-bold text-indigo-700 py-2"
+            >
+              Show all {matched.length} models
+            </button>
           )}
         </div>
       </section>
