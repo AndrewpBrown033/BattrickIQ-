@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { BattrickPlayer, ClubFinances, BattrickGame, StadiumConfig, PavilionInfo, getSkillLabel } from '../types';
 import { getWeeklyChanges } from '../utils/history';
+import { computeCashflow, gbp } from '../utils/clubCashflow';
+import { getOwnTeamId, getOwnTeamName } from '../utils/teamIdentity';
 import { 
   Bot, CheckCircle2, Circle, Sparkles, ArrowRight, 
   Calendar, RefreshCw, Users, Trophy, Landmark, Calculator,
@@ -126,9 +128,11 @@ export default function AIAssistantTasks({
     return sum + (p.nets.batting || 0) + (p.nets.bowling || 0) + (p.nets.keeping || 0) + (p.nets.fielding || 0) + (p.nets.stamina || 0);
   }, 0);
 
-  const weeklyIncome = finances ? (finances.sponsorsIncome + finances.gateReceipts + finances.interestReceived) : 0;
-  const weeklyExpense = finances ? (finances.playerWages + finances.staffWages) : 0;
-  const weeklySurplus = weeklyIncome - weeklyExpense;
+  // Weekly bills + gate only on home games, over the games still to play (utils/clubCashflow.ts).
+  const cashflow = finances ? computeCashflow(finances, fixtures, { teamId: getOwnTeamId(), teamName: getOwnTeamName() }) : null;
+  const weeklyIncome = cashflow ? cashflow.weekly.income : 0;
+  const weeklyExpense = cashflow ? cashflow.weekly.costs : 0;
+  const weeklySurplus = cashflow ? Math.round(cashflow.avgWeeklyNet) : 0;
   const inFinancialDeficit = finances ? (finances.cash < 0 || weeklySurplus < -5000) : false;
   const members = finances?.members || 500;
   const recommendedCapacity = Math.round(members * 17.5);
@@ -264,7 +268,7 @@ export default function AIAssistantTasks({
       categoryLabel: 'Financial Safety',
       badgeColor: 'bg-rose-500 text-white',
       priority: 'high',
-      description: `Your club weekly expenses (£${weeklyExpense.toLocaleString()}) exceed income (£${weeklyIncome.toLocaleString()}). Audit high-wage bench players or adjust PR/Financial Advisor staff to stabilize cash reserves.`,
+      description: `Averaged over your remaining games${cashflow?.remaining.fixturesKnown ? ` (${cashflow.remaining.home} home of ${cashflow.remaining.games})` : ''}, you lose about ${gbp(Math.abs(weeklySurplus))} a week: weekly bills ${gbp(weeklyExpense)} vs weekly income ${gbp(weeklyIncome)} plus home gates. Audit high-wage bench players or adjust PR/Financial Advisor staff to stabilize cash reserves.`,
       impactReason: 'Negative cash balances trigger bank interest penalties and risk forced fire sales.',
       actionLabel: 'Audit Club Wages',
       actionTab: 'wage',

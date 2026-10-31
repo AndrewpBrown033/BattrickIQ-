@@ -4,6 +4,8 @@ import { loadWatchlist, type WatchEntry } from '../utils/transferWatchlist';
 import { nextExpectedBid } from '../utils/bidBot';
 import { callJarvisOpenRouter } from '../utils/jarvisChatClient';
 import { defaultRatings } from './squad/squadHelpers';
+import { computeCashflow } from '../utils/clubCashflow';
+import { getOwnTeamId, getOwnTeamName } from '../utils/teamIdentity';
 import { levelToLabel, type TeamRatingKey } from '../utils/transferList';
 import {
   buildWatchFit,
@@ -131,7 +133,13 @@ export default function WatchFitPanel({
         fallbackAge: e.age,
         price,
         squad,
-        finances: readJson<any>('bt_finances', null),
+        finances: (() => {
+          const f = readJson<any>('bt_finances', null);
+          if (!f) return null;
+          const fixtures = readJson<any[]>('bt_fixtures', []) || [];
+          const cf = computeCashflow(f, fixtures, { teamId: getOwnTeamId(), teamName: getOwnTeamName() });
+          return { ...f, weeklyNet: cf.avgWeeklyNet };
+        })(),
         targets: loadTargets(),
       });
 

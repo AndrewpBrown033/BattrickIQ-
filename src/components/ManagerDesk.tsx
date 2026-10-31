@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import type { BattrickPlayer, ClubFinances, BattrickGame, PavilionInfo, StadiumConfig } from '../types';
 import { isGameInNext7Days, parseGameDateToTimestamp } from '../utils/history';
+import { computeCashflow } from '../utils/clubCashflow';
+import { getOwnTeamId, getOwnTeamName } from '../utils/teamIdentity';
 import { navigateTo, type SquadSubTab } from '../lib/navigation';
 import NextMatchLineupCard from './NextMatchLineupCard';
 import ClubHeroHeader from './ClubHeroHeader';
@@ -101,14 +103,13 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
         wages: 0,
         label: 'No finance data',
         tone: 'warn' as const,
+        cf: null as ReturnType<typeof computeCashflow> | null,
       };
     }
-    const income =
-      (finances.sponsorsIncome || 0) +
-      (finances.gateReceipts || 0) +
-      (finances.interestReceived || 0);
+    // Weekly bills + gate only on home games, over the games still to play (utils/clubCashflow.ts).
+    const cf = computeCashflow(finances, fixtures, { teamId: getOwnTeamId(), teamName: getOwnTeamName() });
     const wages = (finances.playerWages || 0) + (finances.staffWages || 0);
-    const surplus = income - wages;
+    const surplus = Math.round(cf.avgWeeklyNet);
     const cash = finances.cash || 0;
     let label = 'Stable';
     let tone: 'critical' | 'warn' | 'good' | 'info' = 'info';
@@ -128,8 +129,8 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
       label = 'Healthy';
       tone = 'good';
     }
-    return { cash, surplus, wages, label, tone };
-  }, [finances]);
+    return { cash, surplus, wages, label, tone, cf };
+  }, [finances, fixtures]);
 
   const games = useMemo(() => {
     const upcoming = fixtures.filter((f) => !f.result || f.result === 'Upcoming');
@@ -334,8 +335,10 @@ export default function ManagerDesk({ setActiveTab }: ManagerDeskProps) {
             {finances && (
               <span className="opacity-80">
                 {' '}
-                · £{money.surplus.toLocaleString()}/wk · wages £
+                · {money.surplus < 0 ? '-' : ''}£{Math.abs(money.surplus).toLocaleString()}/wk avg · wages £
                 {money.wages.toLocaleString()}
+                {money.cf?.remaining.fixturesKnown &&
+                  ` · ${money.cf.remaining.home} home of ${money.cf.remaining.games} left`}
               </span>
             )}
           </div>

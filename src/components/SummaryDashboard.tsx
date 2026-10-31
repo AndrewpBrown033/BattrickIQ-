@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { BattrickPlayer, ClubFinances, BattrickGame, StadiumConfig, PavilionInfo } from '../types';
 import { getCurrentBattrickDate, getBattrickDateForString, isGameInNext7Days, parseGameDateToTimestamp, getNext7DaysDateRange } from '../utils/history';
 import AIAssistantTasks from './AIAssistantTasks';
+import { computeCashflow } from '../utils/clubCashflow';
+import { getOwnTeamId, getOwnTeamName } from '../utils/teamIdentity';
 import { getCustomUser, onCustomAuthStateChanged, CustomUser } from '../lib/customAuth';
 import { 
   Award, Calculator, Users, FolderOpen, BookOpen, RefreshCw, Landmark, Bot, 
@@ -298,9 +300,11 @@ export default function SummaryDashboard({ setActiveTab, onSelectScoutTeam }: Su
   const calculateFinances = () => {
     if (!finances) return { surplus: 0, health: 'Unknown', rating: 0, desc: 'No finance data found. Please sync your finances.' };
     
-    const weeklyIncome = finances.sponsorsIncome + finances.gateReceipts + finances.interestReceived;
-    const weeklyExpense = finances.playerWages + finances.staffWages;
-    const surplus = weeklyIncome - weeklyExpense;
+    // Weekly bills + gate only on home games, over the games still to play (utils/clubCashflow.ts).
+    const cf = computeCashflow(finances, fixtures, { teamId: getOwnTeamId(), teamName: getOwnTeamName() });
+    const weeklyIncome = cf.weekly.income;
+    const weeklyExpense = cf.weekly.costs;
+    const surplus = Math.round(cf.avgWeeklyNet);
     
     let health = 'Stable';
     let rating = 70;
@@ -324,7 +328,7 @@ export default function SummaryDashboard({ setActiveTab, onSelectScoutTeam }: Su
       desc = 'Weekly receipts cover all operating costs with a positive balance.';
     }
 
-    return { weeklyIncome, weeklyExpense, surplus, health, rating, desc };
+    return { weeklyIncome, weeklyExpense, surplus, health, rating, desc, cf };
   };
 
   const finDetails = calculateFinances();
@@ -523,7 +527,10 @@ Please analyze my club details and explain:
 
   const displayHealth = overallHealth > 0 ? overallHealth : 81;
   const displayCash = finances?.cash !== undefined ? `£${finances.cash.toLocaleString()}` : '£0';
-  const displaySurplus = finances ? `${finDetails.surplus >= 0 ? '+' : ''}£${finDetails.surplus.toLocaleString()} / wk` : '£0 / wk';
+  const displaySurplus = finances
+    ? `${finDetails.surplus >= 0 ? '+' : '-'}£${Math.abs(finDetails.surplus).toLocaleString()} / wk` +
+      ((finDetails as any).cf?.remaining.fixturesKnown ? ` · ${(finDetails as any).cf.remaining.home} home of ${(finDetails as any).cf.remaining.games} left` : '')
+    : '£0 / wk';
   const displaySquadCount = squad.length > 0 ? squad.length : 0;
   const displayAvgBtr = squad.length > 0 && squadDetails.avgBtr > 0 ? `avg BTR ${squadDetails.avgBtr.toLocaleString()}` : '0 players';
   const effectiveCapacity = stadium?.capacity || pavilion?.capacity || (pavilion ? 14000 : 0);

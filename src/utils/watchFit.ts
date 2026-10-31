@@ -95,6 +95,12 @@ export interface WatchFinances {
   interestReceived?: number;
   playerWages?: number;
   staffWages?: number;
+  /**
+   * Average weekly net over the remaining games from utils/clubCashflow (weekly bills + gate on home games).
+   * When given it replaces the single-week figures above, which look negative for a club whose home games
+   * are still to come.
+   */
+  weeklyNet?: number;
 }
 
 export const RATING_LABELS: Record<TeamRatingKey, string> = {
@@ -161,6 +167,7 @@ const worst = (...ls: (Level | undefined)[]): Level =>
 
 /** Weekly income - weekly wages, using the same fields as the Jarvis manager briefing. */
 export function weeklySurplus(f: WatchFinances): number {
+  if (typeof f.weeklyNet === 'number' && Number.isFinite(f.weeklyNet)) return f.weeklyNet;
   const income = (f.sponsorsIncome || 0) + (f.gateReceipts || 0) + (f.interestReceived || 0);
   const wages = (f.playerWages || 0) + (f.staffWages || 0);
   return income - wages;
@@ -355,7 +362,7 @@ export function buildWatchFitBriefing(
   if (r.money) {
     const m = r.money;
     L.push(
-      `\n[WEEKLY INCOME IMPACT - computed]\n- Weekly surplus now: ${gbp(m.surplusBefore)} (income minus player+staff wages)\n- His wage: ${m.wage !== undefined ? `${gbp(m.wage)}/wk (as read from his Battrick page)` : 'UNKNOWN'}\n- Weekly surplus after signing: ${m.surplusAfter !== undefined ? gbp(m.surplusAfter) : 'unknown'}${m.surplusAfterIfReplaces !== undefined ? `\n- If ${m.replacesName} (${gbp(m.replacesWage!)}/wk) is let go: ${gbp(m.surplusAfterIfReplaces)}` : ''}\n- Cash now ${gbp(m.cashBefore)}${m.price !== undefined ? `; after paying ${gbp(m.price)}: ${gbp(m.cashAfter!)}` : ''}`
+      `\n[WEEKLY INCOME IMPACT - computed]\n- Weekly surplus now: ${gbp(m.surplusBefore)} (average per week over the remaining games: weekly bills plus gate on home games)\n- His wage: ${m.wage !== undefined ? `${gbp(m.wage)}/wk (as read from his Battrick page)` : 'UNKNOWN'}\n- Weekly surplus after signing: ${m.surplusAfter !== undefined ? gbp(m.surplusAfter) : 'unknown'}${m.surplusAfterIfReplaces !== undefined ? `\n- If ${m.replacesName} (${gbp(m.replacesWage!)}/wk) is let go: ${gbp(m.surplusAfterIfReplaces)}` : ''}\n- Cash now ${gbp(m.cashBefore)}${m.price !== undefined ? `; after paying ${gbp(m.price)}: ${gbp(m.cashAfter!)}` : ''}`
     );
   } else {
     L.push('\n[WEEKLY INCOME IMPACT]\nFinances not synced.');

@@ -4,6 +4,8 @@
  */
 import type { BattrickPlayer, BattrickGame, ClubFinances } from '../types';
 import { isGameInNext7Days, parseGameDateToTimestamp } from './history';
+import { computeCashflow, describeCashflow } from './clubCashflow';
+import { getOwnTeamId, getOwnTeamName } from './teamIdentity';
 
 function loadJson<T>(key: string, fallback: T): T {
   try {
@@ -27,11 +29,15 @@ export function buildManagerBriefing(): string {
   parts.push('[MANAGER BRIEFING — BattrickIQ]');
 
   if (finances) {
-    const cash = finances.cash ?? 0;
-    const weekly = (finances as any).weeklyOutgoings ?? (finances as any).weeklyCosts ?? 0;
-    const income = (finances as any).weeklyIncome ?? 0;
+    // These used to read finances.weeklyIncome / weeklyOutgoings, which don't exist, so Jarvis was briefed
+    // with zeros. Use the real weekly bills + home-game gates over the games still to play.
+    const cf = computeCashflow(finances, Array.isArray(fixtures) ? fixtures : [], {
+      teamId: getOwnTeamId(),
+      teamName: getOwnTeamName(),
+    });
     parts.push(
-      `\n[MONEY]\n- Cash: £${Number(cash).toLocaleString()}\n- Weekly income: £${Number(income).toLocaleString()}\n- Weekly outgoings: £${Number(weekly).toLocaleString()}\n- Net weekly: £${Number(income - weekly).toLocaleString()}`
+      `\n[MONEY]\n- Cash: £${Number(finances.cash ?? 0).toLocaleString()}\n- ${describeCashflow(cf)}\n- Gate money arrives only on home games, so a week with no home game is negative on its own - judge the club on the projection over the remaining games, not on a single week.` +
+        (cf.notes.length ? `\n- Data notes: ${cf.notes.join(' ')}` : '')
     );
   } else {
     parts.push('\n[MONEY] Unknown — sync finances before cash-sensitive advice.');
