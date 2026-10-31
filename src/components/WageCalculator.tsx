@@ -2,6 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { getBattrickWeekIndex } from '../utils/history';
 import { BattrickPlayer, ClubFinances, BattrickGame, StadiumConfig, DiaryEntry, ParsedBattrickMatch } from '../types';
 import { buildFinancialProjections } from '../parser';
+import { RefreshCw } from 'lucide-react';
+import { useBattrickAuth } from '../lib/battrickAuthContext';
+import { syncDrawAndIncome, lastFixturesSyncAt } from '../utils/fixturesSync';
 import { getStoredMatchesList, syncMatchesFromFirestore } from '../utils/matchArchive';
 import { 
   DollarSign, Shield, TrendingUp, Info, Calendar, Landmark, 
@@ -29,6 +32,32 @@ export default function WageCalculator() {
   const [importedPlayers, setImportedPlayers] = useState<BattrickPlayer[]>([]);
   const [finances, setFinances] = useState<ClubFinances | null>(null);
   const [fixtures, setFixtures] = useState<BattrickGame[]>([]);
+
+  // Refresh the real Draw (fixtures.asp) and its income (diary.asp) straight from Battrick.
+  const { requireAuth, username: btUser, password: btPass } = useBattrickAuth();
+  const [drawSyncing, setDrawSyncing] = useState(false);
+  const [drawSyncMsg, setDrawSyncMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [drawSyncedAt, setDrawSyncedAt] = useState<number>(() => lastFixturesSyncAt());
+
+  const refreshDrawAndIncome = async () => {
+    if (drawSyncing) return;
+    if (!requireAuth('refresh your fixtures')) return;
+    setDrawSyncing(true);
+    setDrawSyncMsg(null);
+    try {
+      const r = await syncDrawAndIncome({ username: btUser, password: btPass });
+      setDrawSyncedAt(r.syncedAt);
+      setDrawSyncMsg({
+        ok: !r.diaryError,
+        text: `Draw synced: ${r.upcoming} upcoming, ${r.played} played.` +
+          (r.diaryError ? ` Income (diary) not refreshed: ${r.diaryError}` : ` Income synced (${r.diaryEntries} diary entries).`),
+      });
+    } catch (e: any) {
+      setDrawSyncMsg({ ok: false, text: e?.message || 'Sync failed' });
+    } finally {
+      setDrawSyncing(false);
+    }
+  };
 
   // fixtures holds BOTH already-played and upcoming matches concatenated (previous matches
   // listed first, matching the real page's order) - a forward-looking ledger must only ever
@@ -1827,8 +1856,29 @@ export default function WageCalculator() {
                   16-Week Match Ledger & Cash Projection (Fixtures Integrated)
                 </h4>
                 <p className="text-[11px] text-slate-500 mt-0.5">Adjust venues, match types, or opponents per week to refine your forecast!</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  {drawSyncedAt
+                    ? `Draw last synced ${new Date(drawSyncedAt).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+                    : 'Draw not synced from Battrick yet'}
+                  {' · refreshing replaces any weeks you edited below'}
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={refreshDrawAndIncome}
+                disabled={drawSyncing}
+                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold disabled:opacity-60"
+                title="Pull the real fixtures and match income from Battrick"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${drawSyncing ? 'animate-spin' : ''}`} />
+                {drawSyncing ? 'Syncing…' : 'Refresh Draw & Income'}
+              </button>
             </div>
+            {drawSyncMsg && (
+              <div className={`mb-3 text-[11px] rounded-lg border px-3 py-2 ${drawSyncMsg.ok ? 'bg-emerald-50 border-emerald-100 text-emerald-900' : 'bg-rose-50 border-rose-100 text-rose-900'}`}>
+                {drawSyncMsg.text}
+              </div>
+            )}
 
             <div className="overflow-x-auto border border-slate-100 rounded-lg">
               <table className="w-full text-left text-xs">

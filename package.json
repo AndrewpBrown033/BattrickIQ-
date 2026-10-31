@@ -25,7 +25,8 @@
     "test:cashflow": "tsx scripts/test-club-cashflow.ts",
     "test:skillcard": "tsx scripts/test-player-skill-card.ts",
     "test:lineupjarvis": "tsx scripts/test-lineup-jarvis.ts",
-    "test:jarvismodel": "tsx scripts/test-jarvis-model.ts"
+    "test:jarvismodel": "tsx scripts/test-jarvis-model.ts",
+    "test:fixtures": "tsx scripts/test-fixtures-merge.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",

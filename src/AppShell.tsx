@@ -8,6 +8,7 @@ import FixturesDashboard from './components/FixturesDashboard';
 import LineupOptimizer from './components/LineupOptimizer';
 import LineupMatchBanner from './components/LineupMatchBanner';
 import FixtureTeamIdEnrich from './components/FixtureTeamIdEnrich';
+import FixturesAutoSync from './components/FixturesAutoSync';
 import OpponentScout from './components/OpponentScout';
 import { LeagueStandings } from './components/LeagueStandings';
 import WageCalculator from './components/WageCalculator';
@@ -241,6 +242,7 @@ export default function AppShell() {
             </div>
           </div>
           <BattrickAuthBar />
+          <FixturesAutoSync />
         </div>
       </header>
 
