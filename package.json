@@ -26,7 +26,8 @@
     "test:skillcard": "tsx scripts/test-player-skill-card.ts",
     "test:lineupjarvis": "tsx scripts/test-lineup-jarvis.ts",
     "test:jarvismodel": "tsx scripts/test-jarvis-model.ts",
-    "test:fixtures": "tsx scripts/test-fixtures-merge.ts"
+    "test:fixtures": "tsx scripts/test-fixtures-merge.ts",
+    "test:jarvisclient": "tsx scripts/test-jarvis-client.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",

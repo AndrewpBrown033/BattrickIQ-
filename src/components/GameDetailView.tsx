@@ -562,21 +562,22 @@ I only cover the lineup for this game: your XI, batting order and bowling plan a
     setIsJarvisThinking(true);
     setActiveSubTab('jarvis');
 
+    try {
     // Lineup-only briefing: the whole squad (Jarvis picks the XI), the opponent, pitch and weather.
-    const squadList = myPlayers.map((p, i) =>
-      `${i+1}. ${p.name} (${p.role}) - Bat: ${getSkillLabel('batting', p.skills?.batting || 0)}, Bowl: ${getSkillLabel('bowling', p.skills?.bowling || 0)} (${p.bowlingType || 'N/A'}), Keep: ${p.skills?.keeping || 0}, Form: ${p.form ?? 'N/A'}/10, Fitness: ${p.fitness ? p.fitness + '/10' : (p.fitnessLabel || 'N/A')}`
-    ).join('\n');
+      const squadList = myPlayers.map((p, i) =>
+        `${i+1}. ${p.name} (${p.role}) - Bat: ${getSkillLabel('batting', p.skills?.batting || 0)}, Bowl: ${getSkillLabel('bowling', p.skills?.bowling || 0)} (${p.bowlingType || 'N/A'}), Keep: ${p.skills?.keeping || 0}, Form: ${p.form ?? 'N/A'}/10, Fitness: ${p.fitness ? p.fitness + '/10' : (p.fitnessLabel || 'N/A')}`
+      ).join('\n');
 
-    const opponentIsReal = opponentPlayers.length > 0 && !opponentPlayers.some(p => /^(pred_|bj_|bench)/.test(String(p.id)));
-    const opponentStatus =
-      opponentPlayers.length === 0 ? 'unavailable'
-      : opponentIsReal ? 'real (scouted)'
-      : 'estimated (predicted from past matches or a generic benchmark)';
-    const opponentList = opponentPlayers.slice(0, 11).map((p, i) =>
-      `${i+1}. ${p.name} (${p.role || 'Player'}) - Bat: ${p.estimatedSkillLabel || getSkillLabel('batting', p.batting || 0)}, Bowl: ${getSkillLabel('bowling', p.bowling || 0)} (${p.bowlingType || 'N/A'})`
-    ).join('\n');
+      const opponentIsReal = opponentPlayers.length > 0 && !opponentPlayers.some(p => /^(pred_|bj_|bench)/.test(String(p.id)));
+      const opponentStatus =
+        opponentPlayers.length === 0 ? 'unavailable'
+        : opponentIsReal ? 'real (scouted)'
+        : 'estimated (predicted from past matches or a generic benchmark)';
+      const opponentList = opponentPlayers.slice(0, 11).map((p, i) =>
+        `${i+1}. ${p.name} (${p.role || 'Player'}) - Bat: ${p.estimatedSkillLabel || getSkillLabel('batting', p.batting || 0)}, Bowl: ${getSkillLabel('bowling', p.bowling || 0)} (${p.bowlingType || 'N/A'})`
+      ).join('\n');
 
-    const fullContext = `
+      const fullContext = `
 [FIXTURE]
 ${fixture.homeTeam || 'My Team'} vs ${fixture.awayTeam || opponentName} - ${matchFormat}, ${fixture.venue} match
 Pitch: ${pitch}
@@ -590,7 +591,6 @@ ${opponentList || 'No opponent players available'}
 ${opponentPlayers.length ? `Key batters: ${scoutDossier.keyThreats.batters.map(b => b.name).join(', ') || 'N/A'}\nKey bowlers: ${scoutDossier.keyThreats.bowlers.map(b => b.name).join(', ') || 'N/A'}` : ''}
 `;
 
-    try {
       const reply = (await callJarvisOpenRouter({
         message: query,
         context: fullContext,

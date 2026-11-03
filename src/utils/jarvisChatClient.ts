@@ -1,7 +1,7 @@
 /**
  * System prompt for the per-fixture Jarvis chat (Drill Into Game). The answer must stay on the team
- * selection for that one game: XI, batting order, bowling plan. Sent with `direct: true` so the server's
- * broader built-in coach prompt is not in the way.
+ * selection for that one game: XI, batting order, bowling plan. It is also sent inside the briefing, because the
+ * server route uses its own broader coach prompt.
  */
 import { resolveJarvisModel } from './jarvisModel';
 export const LINEUP_ONLY_SYSTEM_PROMPT = `You are Coach Jarvis, a cricket selection coach for Battrick. Your ONLY job is the team lineup for the ONE fixture described in the briefing.
@@ -29,11 +29,16 @@ FORMAT
 For a narrow question (for example only the batting order) answer only that part.`;
 
 /**
- * Shared Jarvis OpenRouter call with server fallback.
- * Used by GameDetailView (fixtures) — same pattern as main AICoach tab.
+ * Shared Jarvis OpenRouter call.
  *
- * `direct: true` skips the server route and calls OpenRouter with the given `systemPrompt`, so the
- * caller fully controls what the model is told to do. `maxTokens` caps the reply length.
+ * The site routes /api/** to a server that talks to OpenRouter, which keeps working when the browser cannot
+ * reach openrouter.ai itself (VPN, content blockers, restrictive networks). So the server route is ALWAYS tried
+ * first. That server uses its own general coaching prompt, so a caller's `systemPrompt` is sent both as a field
+ * and as a leading instruction block in the briefing, which keeps replies on-task (e.g. lineup only).
+ * The browser calls OpenRouter directly only if the server route is missing or itself failing (HTML / network /
+ * 5xx). A definite answer from the server (bad key, no credits, unknown model) is reported as-is.
+ *
+ * `direct` is kept for compatibility but no longer skips the server route. `maxTokens` caps the reply length.
  */
 export async function callJarvisOpenRouter(opts: {
   message: string;
@@ -57,34 +62,47 @@ export async function callJarvisOpenRouter(opts: {
     );
   }
 
+  const serverContext = opts.systemPrompt
+    ? `[INSTRUCTIONS - follow these exactly; they override any general coaching role]\n${opts.systemPrompt}\n\n${opts.context}`
+    : opts.context;
+
   let reply = '';
-  let useClientFallback = !!opts.direct;
+  let useClientFallback = false;
+  let serverVerdict: Error | null = null; // a definite answer from the server (bad key, no credits, unknown model)
 
   try {
-    if (opts.direct) throw new Error('direct');
     const response = await fetch('/api/coach-chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: opts.message,
-        context: opts.context,
+        context: serverContext,
         model: activeModel,
         openRouterApiKey: activeOpenRouterKey,
+        systemPrompt: opts.systemPrompt,
+        maxTokens: opts.maxTokens,
       }),
     });
     const contentType = response.headers.get('content-type') || '';
-    if (response.status === 404 || contentType.includes('text/html')) {
-      useClientFallback = true;
+    if (!contentType.includes('json')) {
+      useClientFallback = true; // no API server behind this host (HTML / 404 page)
     } else {
-      const data = await response.json().catch(() => ({}));
-      if (data.success && data.reply) reply = data.reply;
-      else useClientFallback = true;
+      const data: any = await response.json().catch(() => ({}));
+      if (data.success && data.reply) {
+        reply = data.reply;
+      } else if (response.status >= 500 || !data.error) {
+        useClientFallback = true; // the server itself had a problem: try OpenRouter directly
+      } else {
+        serverVerdict = new Error(describeOpenRouterError(response.status, String(data.error), activeModel));
+      }
     }
   } catch {
-    useClientFallback = true;
+    useClientFallback = true; // network failure reaching our own server: try OpenRouter directly
   }
 
-  if (useClientFallback || !reply) {
+  if (serverVerdict) throw serverVerdict;
+
+  if (useClientFallback && !reply) {
     const orRes = await fetchOpenRouter('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
