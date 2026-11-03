@@ -106,6 +106,72 @@ export function aggressionLabel(raw?: string | null): string {
   return i < 0 ? 'unknown' : AGGRESSION_LEVELS[i];
 }
 
+// ---------------------------------------------------------------- individual match orders
+
+/**
+ * The per-player match order dropdown in the game has FIVE levels (confirmed from the in-game dropdown). Older wiki
+ * text only mentions attacking / normal / defensive, so do not shorten these to N / A / D.
+ */
+export const ORDER_LEVELS = ['Very Defensive', 'Defensive', 'Normal', 'Attacking', 'Very Attacking'] as const;
+export type OrderLevel = (typeof ORDER_LEVELS)[number];
+
+// ---------------------------------------------------------------- captain & keeper
+
+export interface LeaderSkills {
+  name: string;
+  skills?: {
+    leadership?: number;
+    experience?: number;
+    keeping?: number;
+    fielding?: number;
+    concentration?: number;
+    consistency?: number;
+  };
+}
+
+const n0 = (v?: number) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+/**
+ * Captain: Battrickipedia says "generally the player with the highest leadership with plenty of experience".
+ * Ranked by leadership, then experience (ties then by name so the order is stable).
+ */
+export function rankCaptainCandidates<T extends LeaderSkills>(players: T[]): T[] {
+  return [...players].sort(
+    (a, b) =>
+      n0(b.skills?.leadership) - n0(a.skills?.leadership) ||
+      n0(b.skills?.experience) - n0(a.skills?.experience) ||
+      a.name.localeCompare(b.name)
+  );
+}
+
+/** Keeper: "generally the highest wicketkeeping skill with plenty of fielding, concentration and consistency". */
+export function rankKeeperCandidates<T extends LeaderSkills>(players: T[]): T[] {
+  const support = (p: T) => n0(p.skills?.fielding) + n0(p.skills?.concentration) + n0(p.skills?.consistency);
+  return [...players]
+    .filter((p) => n0(p.skills?.keeping) > 0)
+    .sort((a, b) => n0(b.skills?.keeping) - n0(a.skills?.keeping) || support(b) - support(a) || a.name.localeCompare(b.name));
+}
+
+/**
+ * Briefing block with the data-driven captain / keeper shortlist. When the XI is known the shortlist is drawn from
+ * the XI (a captain must be playing); otherwise from the whole squad.
+ */
+export function captainKeeperBlock(squad: LeaderSkills[], xiNames?: string[]): string {
+  const xi = new Set((xiNames || []).map((x) => x.trim().toLowerCase()));
+  const inXI = squad.filter((p) => xi.has(p.name.trim().toLowerCase()));
+  const pool = inXI.length >= 2 ? inXI : squad;
+  const where = inXI.length >= 2 ? 'from the picked XI' : 'from the whole squad (no XI picked yet)';
+  const caps = rankCaptainCandidates(pool).slice(0, 3);
+  const keepers = rankKeeperCandidates(pool).slice(0, 3);
+  const capLine = caps.length
+    ? caps.map((p) => `${p.name} (leadership ${n0(p.skills?.leadership)}, experience ${n0(p.skills?.experience)})`).join('; ')
+    : 'none';
+  const keepLine = keepers.length
+    ? keepers.map((p) => `${p.name} (keeping ${n0(p.skills?.keeping)}; fielding ${n0(p.skills?.fielding)}, concentration ${n0(p.skills?.concentration)}, consistency ${n0(p.skills?.consistency)})`).join('; ')
+    : 'none with a keeping skill';
+  return `Captain shortlist ${where}, best first (leadership, then experience): ${capLine}\nKeeper shortlist ${where}, best first (keeping, then fielding + concentration + consistency): ${keepLine}`;
+}
+
 // ---------------------------------------------------------------- bowling-order presets
 
 export interface BowlingPreset {
@@ -228,8 +294,9 @@ export function describeStyles(p: { battingStyle?: string; bowlingType?: string;
 /** System-prompt section: mechanics Jarvis must respect. Kept short; the per-match numbers come in the briefing. */
 export const BATTRICK_MECHANICS_PROMPT = `BATTRICK MECHANICS (facts from Battrickipedia; never contradict them)
 - Bowler types: Fast, Fast Medium, Medium, Spin (wrist or finger). Pitch and weather help or hurt each type; the briefing gives the numbers for this game. Prefer a balanced attack: at least one type the pitch favours, and do not stack bowlers the pitch hurts unless there is no alternative.
-- Aggression has two layers. (1) Natural level on each player: defensive, cautious, steady, attacking, destructive. (2) Your individual match order per player: A (attacking), N (normal) or D (defensive), which tempers the natural level. Players mostly follow the order but may deviate, more so when experienced. A defensive-natured player on D can still bat aggressively.
+- Aggression has two layers. (1) Natural level on each player: defensive, cautious, steady, attacking, destructive. (2) Your individual match order per player, a five-level dropdown: Very Defensive, Defensive, Normal, Attacking, Very Attacking. It tempers the natural level. Always write these full names, never N / A / D. Players mostly follow the order but may deviate, more so when experienced. A defensive-natured player on D can still bat aggressively.
 - Batters: more aggressive = faster runs but more likely to get out. Bowlers: more aggressive = more wickets but more runs conceded; defensive bowlers keep it tight with run-saving fields and take fewer wickets; attacking bowlers get catching fields.
 - Batting order is fixed before the match; best batters usually bat higher, bowlers lower. The keeper cannot be one of the 5 bowlers.
 - A bowling-order preset fixes when B1..B5 bowl. "Over windows" presets give each bowler a range of overs he works inside; "exact overs" presets list every over. B1 and B2 are the bowlers you name first and second, so name your best new-ball and death bowlers in the slots the preset gives opening and death overs.
-- Community rule of thumb (not a game rule, say so if you use it): match a player's order to his nature (attacking natures on A, defensive on D/N), and do not put all five bowlers on A or all five on D.`;
+- Captain: generally the player with the highest leadership who also has plenty of experience, and he must be in the XI. The captain makes the bowling changes and can override a bowler's order depending on how he is performing, so leadership and experience matter. Keeper: the highest wicketkeeping skill, with good fielding, concentration and consistency. Pick both from the CAPTAIN / KEEPER shortlist in the briefing unless there is a clear reason not to, and say what that reason is.
+- Community rule of thumb (not a game rule, say so if you use it): match a player's order to his nature (attacking natures on Attacking, defensive natures on Defensive or Normal), and do not put all five bowlers on Very Attacking or all five on Very Defensive.`;

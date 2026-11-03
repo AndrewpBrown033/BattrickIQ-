@@ -15,6 +15,7 @@ const QUICK = [
   { label: 'Review this XI', q: 'Review the XI I have picked. Is it the best side from my squad for this game? Name any swaps.' },
   { label: 'Pick my best XI', q: 'Pick the best XI and batting order for this game from my full squad.' },
   { label: 'Bowling plan', q: 'Give me the bowling plan for this game: who opens, who bowls the middle and death overs, and the 5th bowler.' },
+  { label: 'Captain & keeper', q: 'Who should captain this game, and who should keep wicket? Use leadership, experience and keeping.' },
   { label: 'Who to rest', q: 'Which players should I rest or swap because of fitness or form, and who replaces them?' },
 ];
 

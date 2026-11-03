@@ -5,7 +5,7 @@
  */
 import { getSkillLabel } from '../types';
 import { looksLikeMySquad, resolveFixtureOpponent, stripMine, type OwnIdentity } from './opponentResolve';
-import { buildConditionsBlock, describeStyles } from './battrickKnowledge';
+import { buildConditionsBlock, captainKeeperBlock, describeStyles } from './battrickKnowledge';
 
 export interface BriefPlayer {
   id?: string | number;
@@ -17,7 +17,7 @@ export interface BriefPlayer {
   form?: number;
   fitness?: number;
   fitnessLabel?: string;
-  skills?: { batting?: number; bowling?: number; keeping?: number; fielding?: number };
+  skills?: { batting?: number; bowling?: number; keeping?: number; fielding?: number; leadership?: number; experience?: number; concentration?: number; consistency?: number };
 }
 
 export interface BriefXIPlayer {
@@ -120,6 +120,9 @@ ${conditions}
 
 [XI CURRENTLY PICKED - batting order]
 ${xiLines}
+
+[CAPTAIN / KEEPER SHORTLIST]
+${captainKeeperBlock(squad, xi.map((p) => p.name))}
 
 [MY FULL SQUAD - choose the XI from these]
 ${squadLines}

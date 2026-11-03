@@ -21,10 +21,12 @@ ${BATTRICK_MECHANICS_PROMPT}
 
 FORMAT
 ## XI & batting order
-1. Name - role - A/N/D (5-8 words why)
-(11 lines in batting order; mark the wicketkeeper; A/N/D is that batter's match order, use N unless there is a reason)
+1. Name - role - order (5-8 words why)
+(11 lines in batting order; mark the wicketkeeper; "order" is that batter's match order, one of: Very Defensive, Defensive, Normal, Attacking, Very Attacking - write the full name, use Normal unless there is a reason)
+## Captain & keeper
+- Captain: Name (leadership X, experience Y) - one line why. Keeper: Name - one line why.
 ## Bowling plan
-- One Day: name ONE preset EXACTLY as written in the briefing's list, then B1..B5 as "B1 Name (type, A/N/D) - why this slot". BT20: B1..B5 for the fixed order. First Class: priority order and spell advice.
+- One Day: name ONE preset EXACTLY as written in the briefing's list, then B1..B5 as "B1 Name (type, order) - why this slot" using the full order names. BT20: B1..B5 for the fixed order. First Class: priority order and spell advice.
 - Say who is the 5th or part-time option and why.
 ## Why
 - up to 3 bullets tying choices to the pitch / weather numbers, named opponent threats or fitness

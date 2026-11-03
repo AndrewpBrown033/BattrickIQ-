@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {
   classifyBowlingType, normalizePitch, pitchEffectLine, weatherEffectLine, aggressionLevel, aggressionLabel,
+  ORDER_LEVELS, rankCaptainCandidates, rankKeeperCandidates, captainKeeperBlock, BATTRICK_MECHANICS_PROMPT,
   OD_BOWLING_PRESETS, BT20_DEFAULT_ORDER, parseOvers, presetProfile, buildConditionsBlock, describeStyles, PITCH_EFFECTS,
 } from '../src/utils/battrickKnowledge';
 
@@ -89,5 +90,30 @@ test('conditions block: format-specific rules and pitch/weather lines', () => {
 test('describeStyles', () => {
   assert.equal(describeStyles({ battingStyle: 'steady', bowlingType: 'RFM', bowlingAggression: 'attacking' }), 'Bats: steady | Bowls: Fast Medium, bowling style attacking');
   assert.equal(describeStyles({ battingStyle: 'cautious', bowlingType: 'None' }), 'Bats: cautious');
+});
+test('match orders use the five in-game names, never N / A / D', () => {
+  assert.deepEqual([...ORDER_LEVELS], ['Very Defensive', 'Defensive', 'Normal', 'Attacking', 'Very Attacking']);
+  assert.match(BATTRICK_MECHANICS_PROMPT, /Very Defensive, Defensive, Normal, Attacking, Very Attacking/);
+  assert.doesNotMatch(BATTRICK_MECHANICS_PROMPT, /A \(attacking\)|N \(normal\)|\bA\/N\/D\b/);
+});
+const P = (name: string, leadership: number, experience: number, keeping = 0, fielding = 0, concentration = 0, consistency = 0) =>
+  ({ name, skills: { leadership, experience, keeping, fielding, concentration, consistency } });
+test('captain: highest leadership first, then experience, then name', () => {
+  const r = rankCaptainCandidates([P('Cal', 10, 5), P('Abe', 14, 3), P('Bob', 14, 9), P('Dan', 14, 9)]);
+  assert.deepEqual(r.map((p) => p.name), ['Bob', 'Dan', 'Abe', 'Cal']);
+});
+test('keeper: needs a keeping skill; ties broken by fielding + concentration + consistency', () => {
+  const r = rankKeeperCandidates([P('Ann', 5, 5, 0, 15), P('Ben', 5, 5, 12, 5, 5, 5), P('Cy', 5, 5, 12, 9, 9, 9), P('Di', 5, 5, 8)]);
+  assert.deepEqual(r.map((p) => p.name), ['Cy', 'Ben', 'Di']);
+});
+test('shortlist comes from the XI when one is picked, otherwise the whole squad', () => {
+  const squad = [P('Star', 18, 15, 0), P('Mid', 12, 10, 14, 8, 8, 8), P('Low', 6, 4, 0), P('Keep', 9, 9, 16, 9, 9, 9)];
+  const withXI = captainKeeperBlock(squad, ['Mid', 'Low', 'Keep']);
+  assert.match(withXI, /from the picked XI/);
+  assert.ok(!withXI.includes('Star'));
+  assert.match(withXI, /Captain shortlist from the picked XI, best first[^:]*: Mid \(leadership 12/);
+  const noXI = captainKeeperBlock(squad, []);
+  assert.match(noXI, /whole squad/);
+  assert.match(noXI, /: Star \(leadership 18, experience 15\)/);
 });
 console.log(`\n${n} scenarios passed`);

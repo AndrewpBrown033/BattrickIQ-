@@ -24,7 +24,7 @@ import { saveOpponentSquadToFirestore, syncOpponentSquadsFromFirestore } from '.
 import { resolveFixtureOpponent, looksLikeMySquad, stripMine, sameTeamName } from '../utils/opponentResolve';
 import { getOwnTeamId, getOwnTeamName, extractOwnTeamIdFromHtml } from '../utils/teamIdentity';
 import { callJarvisOpenRouter, LINEUP_ONLY_SYSTEM_PROMPT } from '../utils/jarvisChatClient';
-import { buildConditionsBlock, describeStyles } from '../utils/battrickKnowledge';
+import { buildConditionsBlock, captainKeeperBlock, describeStyles } from '../utils/battrickKnowledge';
 import { 
   ArrowLeft, 
   Bot, 
@@ -586,6 +586,9 @@ Weather: ${weather}
 
 [CONDITIONS & FORMAT RULES]
 ${buildConditionsBlock({ format: matchFormat, pitch, weather })}
+
+[CAPTAIN / KEEPER SHORTLIST]
+${captainKeeperBlock(myPlayers)}
 
 [MY FULL SQUAD - choose the XI from these]
 ${squadList || 'No squad loaded'}
@@ -1563,6 +1566,13 @@ ${opponentPlayers.length ? `Key batters: ${scoutDossier.keyThreats.batters.map(b
               className="text-xs font-mono font-semibold px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold transition shrink-0 cursor-pointer shadow-2xs"
             >
               🏆 Best XI & Orders
+            </button>
+
+            <button
+              onClick={() => handleSendJarvisPrompt('Who should captain this game, and who should keep wicket? Use leadership, experience and keeping.')}
+              className="text-xs font-mono font-semibold px-3 py-1 rounded-full bg-white border border-slate-200 hover:border-indigo-400 text-slate-700 hover:text-indigo-700 transition shrink-0 cursor-pointer shadow-2xs"
+            >
+              🧢 Captain & Keeper
             </button>
           </div>
 
