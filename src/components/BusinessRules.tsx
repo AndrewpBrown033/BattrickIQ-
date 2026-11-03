@@ -55,17 +55,18 @@ export default function BusinessRules() {
             </div>
 
             <div className="border-t border-slate-100 pt-3">
-              <span className="font-bold text-slate-800">The Diminishing Nets Law (Max 3 per Player):</span>
+              <span className="font-bold text-slate-800">The Diminishing Nets Rule:</span>
               <p className="mt-1">
-                While you can assign multiple nets to a single skill (e.g., Batting), training efficiency experiences sharp diminishing returns. Additionally, Battrick imposes a strict hard limit of <strong className="text-indigo-700">3 nets in total</strong> per player.
+                A player can be given more than one net, but each extra net of the <strong>same skill</strong> is worth half the one before it. Battrick&apos;s rules say a third session gives even less and a fourth only a negligible benefit. Across the whole club you have <strong className="text-indigo-700">10 coaching sessions a week</strong>.
               </p>
-              <div className="grid grid-cols-3 gap-2 mt-2 font-mono text-[10px] text-center">
-                <div className="bg-indigo-50/50 border border-indigo-100 p-1.5 rounded"><span className="block font-bold text-indigo-900">1 Net</span>100% Speed</div>
-                <div className="bg-indigo-50/50 border border-indigo-100 p-1.5 rounded"><span className="block font-bold text-indigo-900">2 Nets</span>150% (75%/net)</div>
-                <div className="bg-indigo-50/50 border border-indigo-100 p-1.5 rounded"><span className="block font-bold text-indigo-900">3 Nets</span>175% (58%/net)</div>
+              <div className="grid grid-cols-4 gap-2 mt-2 font-mono text-[10px] text-center">
+                <div className="bg-indigo-50/50 border border-indigo-100 p-1.5 rounded"><span className="block font-bold text-indigo-900">1 Net</span>100%</div>
+                <div className="bg-indigo-50/50 border border-indigo-100 p-1.5 rounded"><span className="block font-bold text-indigo-900">2 Nets</span>150% (+50%)</div>
+                <div className="bg-indigo-50/50 border border-indigo-100 p-1.5 rounded"><span className="block font-bold text-indigo-900">3 Nets</span>175% (+25%)</div>
+                <div className="bg-indigo-50/50 border border-indigo-100 p-1.5 rounded"><span className="block font-bold text-indigo-900">4 Nets</span>187.5% (+12.5%)</div>
               </div>
-              <p className="text-[10px] text-amber-600 mt-1.5 font-medium">
-                ⚠️ Battrick limits each player to a maximum of 3 nets in total across all skills! Setting more is not supported by the game engine.
+              <p className="text-[10px] text-slate-500 mt-1.5 font-medium">
+                Concentration &amp; Consistency are different: Sports Psychologists attend only the <strong>first net of each type</strong>, so extra nets of one skill do not speed them up. Combining different net types (for example batting + fielding + keeping) does. Stamina is published as 6 / 4 / 3 weeks with 1 / 2 / 3 nets. These are community figures; Battrick changed training speeds around Season 57, so treat them as estimates.
               </p>
             </div>
           </div>

@@ -1,3 +1,5 @@
+import { netMultiplier as skillNetMultiplier, staminaMultiplier } from './utils/trainingNets';
+import { weeksToSecondaryPop } from './utils/secondarySkills';
 import { parseFinanceTransactions, deriveInterestModel } from './utils/financeHistory';
 import { gradePlayerSelection } from './utils/playerGrade';
 import { 
@@ -1808,11 +1810,9 @@ export function estimateWeeksToNextLevel(
   // Rule: Squad Training for stamina is a flat 5.5 weeks per pop for all ages.
   // When combined with individual nets, it stacks with diminishing returns.
   if (skillType === 'stamina') {
-    let effectiveInputs = Math.max(0, netsCount) + (isSquadTraining ? 1 : 0);
-    let netMultiplier = 1.0;
-    if (effectiveInputs === 1) netMultiplier = 1.0;
-    else if (effectiveInputs === 2) netMultiplier = 1.5;
-    else if (effectiveInputs >= 3) netMultiplier = 1.75;
+    const effectiveInputs = Math.max(0, netsCount) + (isSquadTraining ? 1 : 0);
+    // Stamina is published as 6 / 4 / 3 weeks for 1 / 2 / 3 nets (not the 1.75x primary-skill rule)
+    const netMultiplier = staminaMultiplier(effectiveInputs);
 
     // Squad Training alone (0 individual nets)
     if (isSquadTraining && netsCount <= 0) {
@@ -1841,11 +1841,8 @@ export function estimateWeeksToNextLevel(
   // 2. Fielding Training:
   // Squad Training for fielding is a flat 5.5 weeks per pop for all ages.
   if (skillType === 'fielding') {
-    let effectiveInputs = Math.max(0, netsCount) + (isSquadTraining ? 1 : 0);
-    let netMultiplier = 1.0;
-    if (effectiveInputs === 1) netMultiplier = 1.0;
-    else if (effectiveInputs === 2) netMultiplier = 1.5;
-    else if (effectiveInputs >= 3) netMultiplier = 1.75;
+    const effectiveInputs = Math.max(0, netsCount) + (isSquadTraining ? 1 : 0);
+    const netMultiplier = skillNetMultiplier(effectiveInputs);
 
     const baseFieldingWeeks = 5.5; // 5 to 6 weeks standard
 
@@ -1871,30 +1868,23 @@ export function estimateWeeksToNextLevel(
     return parseFloat(weeks.toFixed(1));
   }
 
-  // 3. Secondary Skills (Concentration trained by Batting nets, Consistency trained by Bowling nets):
-  // Secondary skills train at ~38% of the primary skill rate (~2.6x to 3x longer per pop)
+  // 3. Secondary Skills: use the published tables (age-based, by net TYPE; same-type extra nets do not stack).
+  // This call only knows one net count, so it is treated as the matching primary net (batting -> concentration,
+  // bowling -> consistency). Callers that know the full net breakdown should use weeksToSecondaryPop directly.
   if (skillType === 'concentration' || skillType === 'consistency') {
-    if (netsCount <= 0) return Infinity;
-    const effectiveNets = Math.max(1, netsCount);
-    let effectiveNetStrength = 1.0;
-    if (effectiveNets === 2) effectiveNetStrength = 1.5;
-    else if (effectiveNets >= 3) effectiveNetStrength = 1.75;
-
-    const ageFactor = Math.pow(1.22, Math.max(0, playerAge - 17));
-    const coachFactor = 1.0 / (0.6 + (coachLevel * 0.044));
-    const skillFactor = 4.0 + (currentSkillLevel * 0.14);
-    const totalWeeks = ((skillFactor * ageFactor * coachFactor) / effectiveNetStrength) / 0.38;
-
-    return parseFloat(totalWeeks.toFixed(1));
+    return weeksToSecondaryPop(
+      skillType,
+      currentSkillLevel,
+      playerAge,
+      skillType === 'concentration' ? { batting: netsCount } : { bowling: netsCount }
+    );
   }
 
   // 4. Primary Skills (Batting, Bowling, Keeping):
   // Age factor with 22% decay per year from 17, coach multiplier, and diminishing returns for multiple nets
   if (netsCount <= 0) return Infinity;
   const effectiveNets = Math.max(1, netsCount);
-  let effectiveNetStrength = 1.0;
-  if (effectiveNets === 2) effectiveNetStrength = 1.5;
-  else if (effectiveNets >= 3) effectiveNetStrength = 1.75;
+  const effectiveNetStrength = skillNetMultiplier(effectiveNets);
 
   const ageFactor = Math.pow(1.22, Math.max(0, playerAge - 17));
   const coachFactor = 1.0 / (0.6 + (coachLevel * 0.044));
@@ -1905,25 +1895,30 @@ export function estimateWeeksToNextLevel(
 }
 
 /**
- * Concentration / Consistency are not net-trained directly: they creep up as a by-product of
- * Batting / Bowling nets. Modelled as a fixed fraction of the PRIMARY skill's pop speed
- * (the primary skill's own level, age and nets set the pace). One shared definition so the
- * player-details forecast and the growth chart can never disagree.
+ * Concentration / Consistency forecast. Delegates to the published tables in utils/secondarySkills (age-based,
+ * by net TYPE, psychologists attend only the first net of each type), so the forecast list and the growth chart
+ * can never disagree. Pass `extra` with every net type the player has (batting, bowling, keeping, fielding).
  */
-export const SECONDARY_TRAINING_SYNERGY = 0.25;
-
 export function estimateSecondarySkillWeeks(
-  primaryLevel: number,
+  _primaryLevel: number,
   secondaryLevel: number,
   playerAge: number,
   primaryNets: number,
-  coachLevel: number,
-  primary: 'batting' | 'bowling'
+  _coachLevel: number,
+  primary: 'batting' | 'bowling',
+  extra?: { batting?: number; bowling?: number; keeping?: number; fielding?: number }
 ): number {
-  if (secondaryLevel >= 20 || primaryNets <= 0) return primaryNets <= 0 ? Infinity : 0;
-  const primaryWeeks = estimateWeeksToNextLevel(primaryLevel, playerAge, primaryNets, coachLevel, primary);
-  if (!(primaryWeeks > 0) || primaryWeeks === Infinity) return Infinity;
-  return parseFloat((primaryWeeks / SECONDARY_TRAINING_SYNERGY).toFixed(1));
+  return weeksToSecondaryPop(
+    primary === 'batting' ? 'concentration' : 'consistency',
+    secondaryLevel,
+    playerAge,
+    {
+      batting: extra?.batting ?? (primary === 'batting' ? primaryNets : 0),
+      bowling: extra?.bowling ?? (primary === 'bowling' ? primaryNets : 0),
+      keeping: extra?.keeping ?? 0,
+      fielding: extra?.fielding ?? 0,
+    }
+  );
 }
 
 // Helper utilities for quick Stamina & Fielding calculations

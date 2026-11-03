@@ -1,3 +1,4 @@
+import { MAX_NETS_PER_WEEK } from '../utils/trainingNets';
 import { getPlayerGrade } from '../utils/playerGrade';
 import { fitBtrModel, btrGainForLevelUp, wageDeltaForPop, SKILL_NAME_TO_KEY, type BtrSkill } from '../utils/btrModel';
 import React, { useState, useEffect } from 'react';
@@ -335,13 +336,17 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
       { key: 'fielding' as const, label: 'Fielding', level: player.skills.fielding || 0, isSquad: squadTrainingFielding },
     ];
 
+    const allNets = { batting: plannerNets.batting, bowling: plannerNets.bowling, keeping: plannerNets.keeping, fielding: plannerNets.fielding };
     activeNetsList.forEach((n) => {
       const count = plannerNets[n.key];
       const maxLevelForSkill = n.key === 'stamina' ? 11 : 20;
-      const isTrainingActive = count > 0 || (n.isSquad && count === 0);
+      const isSecondary = !!(n as any).secondary;
+      // Concentration / Consistency also train from keeping and fielding nets, so they do not need a batting /
+      // bowling net of their own; estimateSecondarySkillWeeks returns Infinity when no qualifying net exists.
+      const isTrainingActive = isSecondary ? true : count > 0 || (n.isSquad && count === 0);
       if (isTrainingActive && n.level < maxLevelForSkill) {
-        const weeks = (n as any).secondary
-          ? estimateSecondarySkillWeeks(player.skills[n.key as 'batting' | 'bowling'], n.level, player.age, count, coachLevel, n.key as 'batting' | 'bowling')
+        const weeks = isSecondary
+          ? estimateSecondarySkillWeeks(player.skills[n.key as 'batting' | 'bowling'], n.level, player.age, count, coachLevel, n.key as 'batting' | 'bowling', allNets)
           : estimateWeeksToNextLevel(n.level, player.age, count, coachLevel, n.key, n.isSquad);
         if (weeks !== Infinity && weeks > 0) {
           const target = addWeeks(currentSeason, currentWeek, weeks);
@@ -997,13 +1002,13 @@ export default function PlayerDetails({ playerId, onBack }: PlayerDetailsProps) 
                           <span className="w-5 text-center font-mono font-bold text-slate-800 text-sm">{count}</span>
                           <button
                             onClick={() => {
-                              if (totalNets < 3) {
+                              if (totalNets < MAX_NETS_PER_WEEK) {
                                 handleUpdatePlayerNets(n.key, count + 1);
                               }
                             }}
-                            disabled={totalNets >= 3 || count >= 3}
+                            disabled={totalNets >= MAX_NETS_PER_WEEK}
                             className="w-6 h-6 flex items-center justify-center bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-600 font-bold transition disabled:opacity-40"
-                            title={count >= 3 ? "Diminishing returns max out at 3 nets" : "Maximum 3 nets per player"}
+                            title={totalNets >= MAX_NETS_PER_WEEK ? "Battrick allows 10 coaching sessions a week in total" : "Extra nets of the same skill give diminishing returns"}
                           >
                             +
                           </button>
