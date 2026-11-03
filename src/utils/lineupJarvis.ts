@@ -5,12 +5,15 @@
  */
 import { getSkillLabel } from '../types';
 import { looksLikeMySquad, resolveFixtureOpponent, stripMine, type OwnIdentity } from './opponentResolve';
+import { buildConditionsBlock, describeStyles } from './battrickKnowledge';
 
 export interface BriefPlayer {
   id?: string | number;
   name: string;
   role?: string;
   bowlingType?: string;
+  battingStyle?: string;
+  bowlingAggression?: string;
   form?: number;
   fitness?: number;
   fitnessLabel?: string;
@@ -44,6 +47,8 @@ export interface OpponentBriefPlayer {
   name: string;
   role?: string;
   bowlingType?: string;
+  battingStyle?: string;
+  bowlingAggression?: string;
   batting?: number;
   bowling?: number;
 }
@@ -63,6 +68,9 @@ export function buildLineupBriefing(input: {
   own?: OwnIdentity;
   /** Scouted / cached opponent players, if any. Our own players are removed before use. */
   opponentPlayers?: OpponentBriefPlayer[];
+  /** Pitch / weather for the game when known (the Lineup page usually does not know them). */
+  pitch?: string | null;
+  weather?: string | null;
 }): { text: string; opponentName: string; opponentStatus: 'real' | 'unavailable' } {
   const { xi, squad, fixture } = input;
 
@@ -76,15 +84,18 @@ export function buildLineupBriefing(input: {
   }
   const opponentStatus = opponentPlayers.length > 0 ? 'real' : 'unavailable';
 
+  const byName = new Map(squad.map((p) => [p.name.trim().toLowerCase(), p]));
   const xiLines = xi.length
-    ? xi.map((p, i) =>
-        `${i + 1}. ${p.name} (${p.role || 'Player'}) - Bat: ${lvl('batting', p.batting)}, Bowl: ${lvl('bowling', p.bowling)} (${p.bowlingType && p.bowlingType !== 'None' ? p.bowlingType : 'N/A'}), Keep: ${p.keeping ?? 0}`
-      ).join('\n')
+    ? xi.map((p, i) => {
+        const sq = byName.get(p.name.trim().toLowerCase());
+        const styles = describeStyles({ battingStyle: sq?.battingStyle, bowlingType: p.bowlingType || sq?.bowlingType, bowlingAggression: sq?.bowlingAggression });
+        return `${i + 1}. ${p.name} (${p.role || 'Player'}) - Bat: ${lvl('batting', p.batting)}, Bowl: ${lvl('bowling', p.bowling)} (${p.bowlingType && p.bowlingType !== 'None' ? p.bowlingType : 'N/A'}), Keep: ${p.keeping ?? 0} | ${styles}`;
+      }).join('\n')
     : 'No XI selected yet';
 
   const squadLines = squad.length
     ? squad.map((p, i) =>
-        `${i + 1}. ${p.name} (${p.role || 'Player'}) - Bat: ${lvl('batting', p.skills?.batting)}, Bowl: ${lvl('bowling', p.skills?.bowling)} (${p.bowlingType || 'N/A'}), Keep: ${p.skills?.keeping ?? 0}, Form: ${p.form ?? 'N/A'}/10, Fitness: ${p.fitness ? p.fitness + '/10' : p.fitnessLabel || 'N/A'}`
+        `${i + 1}. ${p.name} (${p.role || 'Player'}) - Bat: ${lvl('batting', p.skills?.batting)}, Bowl: ${lvl('bowling', p.skills?.bowling)} (${p.bowlingType || 'N/A'}), Keep: ${p.skills?.keeping ?? 0}, Form: ${p.form ?? 'N/A'}/10, Fitness: ${p.fitness ? p.fitness + '/10' : p.fitnessLabel || 'N/A'} | ${describeStyles(p)}`
       ).join('\n')
     : 'No squad loaded';
 
@@ -95,12 +106,17 @@ export function buildLineupBriefing(input: {
   const opponentText =
     opponentStatus === 'real'
       ? opponentPlayers.slice(0, 11).map((p, i) =>
-          `${i + 1}. ${p.name} (${p.role || 'Player'}) - Bat: ${lvl('batting', p.batting)}, Bowl: ${lvl('bowling', p.bowling)} (${p.bowlingType || 'N/A'})`
+          `${i + 1}. ${p.name} (${p.role || 'Player'}) - Bat: ${lvl('batting', p.batting)}, Bowl: ${lvl('bowling', p.bowling)} (${p.bowlingType || 'N/A'}) | ${describeStyles(p)}`
         ).join('\n')
       : 'No opponent players available';
 
+  const conditions = buildConditionsBlock({ format: fixture?.type, pitch: input.pitch, weather: input.weather });
+
   const text = `[NEXT FIXTURE]
 ${fixtureText}
+
+[CONDITIONS & FORMAT RULES]
+${conditions}
 
 [XI CURRENTLY PICKED - batting order]
 ${xiLines}

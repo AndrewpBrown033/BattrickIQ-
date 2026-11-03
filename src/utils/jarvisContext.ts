@@ -6,6 +6,7 @@ import type { BattrickPlayer, BattrickGame, ClubFinances } from '../types';
 import { isGameInNext7Days, parseGameDateToTimestamp } from './history';
 import { computeCashflow, describeCashflow } from './clubCashflow';
 import { getOwnTeamId, getOwnTeamName } from './teamIdentity';
+import { BATTRICK_MECHANICS_PROMPT } from './battrickKnowledge';
 
 function loadJson<T>(key: string, fallback: T): T {
   try {
@@ -146,4 +147,4 @@ Always:
 2. Tie advice to upcoming fixtures and formats when available.
 3. Point to train / sell / buy / XI actions that close skill or rating gaps.
 4. Be concise, decisive, and manager-friendly — not a generic cricket essay.
-5. When TRANSFER WATCH players are listed, explicitly say if each is a good purchase for THIS club: salary/wage load, affordability vs cash, and fit to team rating targets / skill gaps. Use BUY / MAYBE / PASS.`;
+5. When TRANSFER WATCH players are listed, explicitly say if each is a good purchase for THIS club: salary/wage load, affordability vs cash, and fit to team rating targets / skill gaps. Use BUY / MAYBE / PASS.\n\nWhen asked about lineups, bowling plans or match orders, use these mechanics:\n${BATTRICK_MECHANICS_PROMPT}`;
