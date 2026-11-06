@@ -1,3 +1,4 @@
+import { activeSkillMaxes, filterListingsBySkillMax, maxBelowMin, SKILL_MAX_KEYS, type SkillMaxKey } from '../utils/transferSkillMax';
 import React, { useState, useEffect, useMemo } from 'react';
 import { BattrickPlayer, getSkillLabel } from '../types';
 import { getPlayerWeightedScore } from '../parser';
@@ -130,6 +131,9 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
   }, [buyRecs, squad, ratingTargets, finances?.cash, factorFinance]);
   const [selectedSkills, setSelectedSkills] = useState<SearchSkill[]>([]);
   const [skillMins, setSkillMins] = useState<Partial<Record<SearchSkill, number>>>({});
+  // Optional ceilings for batting / seam / spin (blank or 0 = no limit), applied to the scan results.
+  const [skillMaxes, setSkillMaxes] = useState<Partial<Record<SkillMaxKey, number>>>({});
+  const [maxExcludedCount, setMaxExcludedCount] = useState(0);
 
   const selectSubTab = (tab: SubTab) => {
     setSubTab(tab);
@@ -334,12 +338,20 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
       }
       let listings = parseTransferList(html, { excludePlayerIds: ownIds });
       listings = filterListingsByAge(listings, { minAge, maxAge });
+      const beforeMax = listings.length;
+      listings = filterListingsBySkillMax(listings, activeSkillMaxes(skillMaxes, selectedSkills));
+      setMaxExcludedCount(beforeMax - listings.length);
       try { localStorage.setItem('bt_transfer_listings', JSON.stringify(listings)); } catch {}
       try {
         const wl = refreshWatchlistFromListings(listings as any);
         setWatchlist(Array.isArray(wl) ? wl : loadWatchlist());
       } catch {}
       if (!listings.length) {
+        if (beforeMax > 0) {
+          throw new Error(
+            `All ${beforeMax} players on the transfer list are above your maximum skill levels. Raise the Max for Batting / Seam / Spin (or clear it) and scan again.`
+          );
+        }
         if (isTransferSearchFormOnly(html)) {
           throw new Error(
             'Transfer page is only the search form — no auction rows yet. On Battrick run a skill search (use recommended skills below), then Scan again or paste results HTML.'
@@ -457,6 +469,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
       const ownIds = new Set<string>(squad.map((p) => String(p.id)).filter(Boolean));
       let listings = parseTransferList(html, { excludePlayerIds: ownIds });
       listings = filterListingsByAge(listings, { minAge, maxAge });
+      listings = filterListingsBySkillMax(listings, activeSkillMaxes(skillMaxes, selectedSkills));
       try { localStorage.setItem('bt_transfer_listings', JSON.stringify(listings)); } catch {}
       try {
         const wl = refreshWatchlistFromListings(listings as any);
@@ -706,13 +719,37 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
                   {selectedSkills.map((sk) => {
                     const rec = skillRecs.find((r) => r.skill === sk);
+                    const minVal = skillMins[sk] ?? rec?.minSkill ?? 0;
+                    const hasMax = (SKILL_MAX_KEYS as string[]).includes(sk);
+                    const maxVal = hasMax ? skillMaxes[sk as SkillMaxKey] : undefined;
+                    const bad = hasMax && maxBelowMin(minVal, maxVal);
                     return (
-                      <label key={sk} className="text-[10px] font-semibold text-slate-600 flex flex-col gap-0.5">
-                        Min {rec?.label || sk}
-                        <input type="number" min={0} max={20} value={skillMins[sk] ?? rec?.minSkill ?? 0}
-                          onChange={(e) => setSkillMins((prev) => ({ ...prev, [sk]: Math.max(0, Math.min(20, Number(e.target.value) || 0)) }))}
-                          className="border border-slate-200 rounded-lg px-2 py-1 text-xs w-full" />
-                      </label>
+                      <div key={sk} className="text-[10px] font-semibold text-slate-600 flex flex-col gap-0.5">
+                        <div className="flex gap-1.5">
+                          <label className="flex-1 min-w-0 flex flex-col gap-0.5">
+                            Min {rec?.label || sk}
+                            <input type="number" min={0} max={20} value={minVal}
+                              onChange={(e) => setSkillMins((prev) => ({ ...prev, [sk]: Math.max(0, Math.min(20, Number(e.target.value) || 0)) }))}
+                              className="border border-slate-200 rounded-lg px-2 py-1 text-xs w-full" />
+                          </label>
+                          {hasMax && (
+                            <label className="flex-1 min-w-0 flex flex-col gap-0.5">
+                              Max
+                              <input type="number" min={0} max={20} placeholder="none" value={maxVal ?? ''}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  setSkillMaxes((prev) => ({ ...prev, [sk]: raw === '' ? undefined : Math.max(0, Math.min(20, Number(raw) || 0)) }));
+                                }}
+                                className={`border rounded-lg px-2 py-1 text-xs w-full ${bad ? 'border-rose-400 bg-rose-50' : 'border-slate-200'}`} />
+                            </label>
+                          )}
+                        </div>
+                        {hasMax && maxVal != null && maxVal > 0 && (
+                          <span className={`text-[9px] font-medium ${bad ? 'text-rose-700' : 'text-slate-500'}`}>
+                            {bad ? 'Max is below Min, so nobody will match' : `Up to ${levelToLabel(maxVal)} (${maxVal})`}
+                          </span>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -721,7 +758,11 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                 <p className="text-[10px] text-slate-600 bg-white border border-slate-100 rounded-lg px-2 py-1.5">
                   <span className="font-bold text-slate-800">Suggested Battrick search: </span>
                   {skillRecs.filter((r) => r.recommended && selectedSkills.includes(r.skill))
-                    .map((r) => `${r.label} ≥ ${levelToLabel(skillMins[r.skill] ?? r.minSkill)} (${skillMins[r.skill] ?? r.minSkill})`)
+                    .map((r) => {
+                      const mx = (SKILL_MAX_KEYS as string[]).includes(r.skill) ? skillMaxes[r.skill as SkillMaxKey] : undefined;
+                      return `${r.label} ≥ ${levelToLabel(skillMins[r.skill] ?? r.minSkill)} (${skillMins[r.skill] ?? r.minSkill})` +
+                        (mx && mx > 0 ? ` and ≤ ${levelToLabel(mx)} (${mx})` : '');
+                    })
                     .join(' · ') || 'Select a recommended skill above'}
                 </p>
               )}
@@ -747,6 +788,11 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
               <div className="text-xs text-rose-800 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2 flex gap-2">
                 <AlertTriangle className="w-4 h-4 shrink-0" />
                 {transferError}
+              </div>
+            )}
+            {!transferError && maxExcludedCount > 0 && (
+              <div className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
+                {maxExcludedCount} {maxExcludedCount === 1 ? 'player was' : 'players were'} left out because they are above your maximum skill levels.
               </div>
             )}
             {watchAck && (

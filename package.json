@@ -29,7 +29,8 @@
     "test:fixtures": "tsx scripts/test-fixtures-merge.ts",
     "test:jarvisclient": "tsx scripts/test-jarvis-client.ts",
     "test:knowledge": "tsx scripts/test-battrick-knowledge.ts",
-    "test:nets": "tsx scripts/test-training-nets.ts"
+    "test:nets": "tsx scripts/test-training-nets.ts",
+    "test:skillmax": "tsx scripts/test-skill-max.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",

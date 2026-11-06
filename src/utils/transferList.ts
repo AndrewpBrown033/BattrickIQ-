@@ -364,7 +364,7 @@ export function parseTransferList(
   return listings;
 }
 
-function isSpinBowler(bowlingType?: string): boolean {
+export function isSpinBowler(bowlingType?: string): boolean {
   const t = (bowlingType || '').toLowerCase();
   return /spin|off|leg|orthodox|chinaman|rs\b|ls\b|ro\b|lo\b/.test(t);
 }
