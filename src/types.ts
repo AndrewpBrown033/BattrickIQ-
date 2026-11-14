@@ -268,7 +268,7 @@ export interface ClubFinances {
   gateHistory?: GateReceiptRecord[];
   /** Interest earned per week as a fraction of the balance at billing time (e.g. 0.048), derived from weeklyHistory. */
   interestRate?: number;
-  /** Maximum weekly interest actually observed being paid out (the cap), if a capped week was seen. */
+  /** Maximum weekly interest in POUNDS (not a balance), only set when a genuine plateau of identical payouts was seen. */
   interestCap?: number;
   /** Interest charged per week on an overdrawn balance, as a fraction of the overdraft. */
   overdraftRate?: number;

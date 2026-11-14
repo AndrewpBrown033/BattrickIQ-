@@ -1938,7 +1938,7 @@ export function getPlayerWeightedScore(player: BattrickPlayer): number {
 
 // Battrick squad trade/planning advice formulas (from HOLD/DEVELOP/TRADE decisions)
 export function getTradeAction(player: BattrickPlayer): { action: 'HOLD' | 'DEVELOP' | 'TRADE' | 'PEAK'; reason: string } {
-  const primary = Math.max(player.skills.batting, player.skills.bowling, player.skills.keeping);
+  const primary = Math.max(player.skills?.batting ?? 0, player.skills?.bowling ?? 0, player.skills?.keeping ?? 0);
   
   if (player.age <= 19) {
     if (primary >= 5) {

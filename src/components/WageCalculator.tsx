@@ -5,6 +5,9 @@ import { buildFinancialProjections } from '../parser';
 import { RefreshCw } from 'lucide-react';
 import { useBattrickAuth } from '../lib/battrickAuthContext';
 import { syncDrawAndIncome, lastFixturesSyncAt } from '../utils/fixturesSync';
+import { deriveInterestModel } from '../utils/financeHistory';
+import { isHomeFixture } from '../utils/clubCashflow';
+import { getOwnTeamId, getOwnTeamName } from '../utils/teamIdentity';
 import { getStoredMatchesList, syncMatchesFromFirestore } from '../utils/matchArchive';
 import { 
   DollarSign, Shield, TrendingUp, Info, Calendar, Landmark, 
@@ -68,6 +71,20 @@ export default function WageCalculator() {
     [fixtures]
   );
   const [diary, setDiary] = useState<DiaryEntry[]>([]);
+
+  // The club's most recent REAL weekly billing run (finances.asp ledger). Same source the Summary,
+  // Manager Desk and Jarvis use, so every screen agrees. Falls back to the synced summary fields.
+  const latestBill = useMemo(() => {
+    const wh = finances?.weeklyHistory;
+    return wh && wh.length > 0 ? wh[wh.length - 1] : undefined;
+  }, [finances]);
+
+  // Interest model re-derived from the ledger on every load, so a stale/incorrect value that was
+  // saved by an older version of the app can never leak into the projection.
+  const interestModel = useMemo(
+    () => (finances?.weeklyHistory && finances.weeklyHistory.length > 0 ? deriveInterestModel(finances.weeklyHistory) : {}),
+    [finances]
+  );
 
   // Simulation staff overrides for the Optimizer panel
   const [simPR, setSimPR] = useState<number>(0);
@@ -608,9 +625,9 @@ export default function WageCalculator() {
   useEffect(() => {
     if (finances) {
       setCashVal(finances.cash || 0);
-      setSponsorsVal(finances.sponsorsIncome || 0);
+      setSponsorsVal((latestBill?.sponsorship && latestBill.sponsorship > 0 ? latestBill.sponsorship : finances.sponsorsIncome) || 0);
       setInterestVal(finances.interestReceived || 0);
-      setStaffWagesVal(finances.staffWages || 0);
+      setStaffWagesVal((latestBill?.staffSalaries && latestBill.staffSalaries > 0 ? latestBill.staffSalaries : finances.staffWages) || 0);
       setSimPR(finances.prOfficers || 0);
       setSimFA(finances.finAdvisors || 0);
       setSimBat(finances.battingCoaches || 0);
@@ -620,11 +637,13 @@ export default function WageCalculator() {
       setSimStam(finances.staminaCoaches || 0);
       setSimPsych(finances.psychologists || 0);
     }
-  }, [finances]);
+  }, [finances, latestBill]);
 
   // Player Wages update based on official synced finances first, fallback to squad sum
   useEffect(() => {
-    if (finances && finances.playerWages !== undefined && finances.playerWages > 0) {
+    if (latestBill && latestBill.playerSalaries > 0) {
+      setPlayerWagesVal(latestBill.playerSalaries);
+    } else if (finances && finances.playerWages !== undefined && finances.playerWages > 0) {
       setPlayerWagesVal(finances.playerWages);
     } else if (importedPlayers.length > 0) {
       const sum = importedPlayers.reduce((acc, p) => acc + p.wage, 0);
@@ -632,7 +651,7 @@ export default function WageCalculator() {
     } else {
       setPlayerWagesVal(26850);
     }
-  }, [importedPlayers, finances]);
+  }, [importedPlayers, finances, latestBill]);
 
   // Set default interactive schedules
   useEffect(() => {
@@ -646,7 +665,7 @@ export default function WageCalculator() {
     for (let w = 1; w <= 16; w++) {
       const fixtureIdx = w - 1;
       if (upcomingFixtures[fixtureIdx]) {
-        initialVenues[w] = upcomingFixtures[fixtureIdx].venue;
+        initialVenues[w] = isHomeFixture(upcomingFixtures[fixtureIdx], { teamId: getOwnTeamId(), teamName: getOwnTeamName() }).home ? 'Home' : 'Away';
         initialTypes[w] = upcomingFixtures[fixtureIdx].type || 'One Day';
         initialOpponents[w] = upcomingFixtures[fixtureIdx].opponent || 'Opponent Club';
       } else {
@@ -664,11 +683,13 @@ export default function WageCalculator() {
   const resetToSyncedFinances = () => {
     if (finances) {
       setCashVal(finances.cash || 0);
-      setSponsorsVal(finances.sponsorsIncome || 0);
+      setSponsorsVal((latestBill?.sponsorship && latestBill.sponsorship > 0 ? latestBill.sponsorship : finances.sponsorsIncome) || 0);
       setInterestVal(finances.interestReceived || 0);
-      setStaffWagesVal(finances.staffWages || 0);
+      setStaffWagesVal((latestBill?.staffSalaries && latestBill.staffSalaries > 0 ? latestBill.staffSalaries : finances.staffWages) || 0);
       
-      if (finances.playerWages !== undefined && finances.playerWages > 0) {
+      if (latestBill && latestBill.playerSalaries > 0) {
+        setPlayerWagesVal(latestBill.playerSalaries);
+      } else if (finances.playerWages !== undefined && finances.playerWages > 0) {
         setPlayerWagesVal(finances.playerWages);
       } else if (importedPlayers.length > 0) {
         const sum = importedPlayers.reduce((acc, p) => acc + p.wage, 0);
@@ -721,7 +742,7 @@ export default function WageCalculator() {
     for (let w = 1; w <= 16; w++) {
       const fixtureIdx = w - 1;
       if (upcomingFixtures[fixtureIdx]) {
-        initialVenues[w] = upcomingFixtures[fixtureIdx].venue;
+        initialVenues[w] = isHomeFixture(upcomingFixtures[fixtureIdx], { teamId: getOwnTeamId(), teamName: getOwnTeamName() }).home ? 'Home' : 'Away';
         initialTypes[w] = upcomingFixtures[fixtureIdx].type || 'One Day';
         initialOpponents[w] = upcomingFixtures[fixtureIdx].opponent || 'Opponent Club';
       } else {
@@ -831,7 +852,8 @@ export default function WageCalculator() {
   // Derived baseline for sponsors income (PR affects this)
   const currentPR = finances?.prOfficers || 0;
   const currentFA = finances?.finAdvisors || 0;
-  const baseSponsorsIncome = finances ? (finances.sponsorsIncome / (1 + 0.03 * currentPR)) : sponsorsVal;
+  const realSponsors = (latestBill?.sponsorship && latestBill.sponsorship > 0 ? latestBill.sponsorship : finances?.sponsorsIncome) || 0;
+  const baseSponsorsIncome = finances ? (realSponsors / (1 + 0.03 * currentPR)) : sponsorsVal;
   
   // Simulated Sponsors Income per week
   const simSponsorsIncome = baseSponsorsIncome * (1 + 0.03 * simPR);
@@ -848,10 +870,12 @@ export default function WageCalculator() {
       (finances.psychologists || 0)
     : Math.max(0, Math.round(staffWagesVal / 1250) - currentPR - currentFA);
 
-  const simStaffCount = currentOtherStaffCount + simPR + simFA;
-  const simStaffWages = simStaffCount * 1250;
   const currentStaffCount = currentOtherStaffCount + currentPR + currentFA;
-  const currentStaffWages = currentStaffCount * 1250;
+  // Real staff bill from the ledger when we have it (the £1,250 x headcount figure is only a fallback),
+  // then simulate just the PR/FA change on top of it.
+  const realStaffBill = latestBill && latestBill.staffSalaries > 0 ? latestBill.staffSalaries : (finances?.staffWages || 0);
+  const currentStaffWages = realStaffBill > 0 ? realStaffBill : currentStaffCount * 1250;
+  const simStaffWages = Math.max(0, currentStaffWages + ((simPR - currentPR) + (simFA - currentFA)) * 1250);
 
   // Real calendar weeks: Battrick bills wages, staff, maintenance and sponsors ONCE PER WEEK, but
   // a week can hold several fixtures (and some weeks none). Each row here is a fixture, so
@@ -869,12 +893,22 @@ export default function WageCalculator() {
   // the per-seat estimate is only a fallback.
   const realMaint = finances?.groundMaintenance && finances.groundMaintenance > 0 ? finances.groundMaintenance : weeklyMaintCost;
   // Interest: use the rate/cap derived from real billing history when available.
-  const interestFor = (cash: number, fa: number) =>
-    cash < 0 && finances?.overdraftRate && finances.overdraftRate > 0
-      ? -Math.floor(Math.abs(cash) * finances.overdraftRate) // overdraft interest is paid, not earned
-      : finances?.interestRate && finances.interestRate > 0
-      ? Math.floor(Math.max(0, Math.min(finances.interestCap ?? 10000000, cash)) * finances.interestRate)
-      : Math.floor(Math.max(0, Math.min(10000000, cash)) * (0.0005 + 0.0005 * fa));
+  // interestRate is the club's CURRENT rate (it already includes today's Financial Advisors), so the
+  // FA slider adds/removes 0.05% per advisor relative to that. interestCap is a cap on the interest
+  // PAID in pounds - it must never be applied to the bank balance.
+  const interestFor = (cash: number, fa: number) => {
+    const od = interestModel.overdraftRate;
+    const rate = interestModel.interestRate;
+    if (cash < 0 && od && od > 0) {
+      return -Math.floor(Math.abs(cash) * od); // overdraft interest is paid, not earned
+    }
+    if (rate && rate > 0) {
+      const adjRate = Math.max(0, rate + 0.0005 * (fa - currentFA));
+      const raw = Math.floor(Math.max(0, cash) * adjRate);
+      return interestModel.interestCap && interestModel.interestCap > 0 ? Math.min(raw, interestModel.interestCap) : raw;
+    }
+    return Math.floor(Math.max(0, Math.min(10000000, cash)) * (0.0005 + 0.0005 * fa));
+  };
 
   // 1. Calculate main simulated ledger week-by-week
   let runningCash = cashVal;

@@ -191,7 +191,8 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
       if (s) {
         // Real synced data only - never invent training history.
         const parsed: BattrickPlayer[] = JSON.parse(s);
-        setSquad(parsed);
+        // Ignore null / non-object entries so one bad saved record can't blank the roster.
+        setSquad(Array.isArray(parsed) ? parsed.filter((p) => p && typeof p === 'object') : []);
       } else setSquad([]);
       const f = localStorage.getItem('bt_finances');
       if (f) setFinances(JSON.parse(f));

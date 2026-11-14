@@ -130,7 +130,7 @@ export default function SquadRosterTab({
                   {(['batting', 'bowling', 'keeping', 'fielding', 'stamina'] as const).map((k) => (
                     <div key={k} className="bg-slate-50 border border-slate-100 p-1 rounded-lg">
                       <span className="text-[8px] text-slate-400 block font-bold">{k.slice(0, 3).toUpperCase()}</span>
-                      <span className="text-[10px] font-bold text-slate-800">{getSkillLabel(k, (p.skills as any)[k] || 0)}</span>
+                      <span className="text-[10px] font-bold text-slate-800">{getSkillLabel(k, (p.skills as any)?.[k] || 0)}</span>
                     </div>
                   ))}
                 </div>
