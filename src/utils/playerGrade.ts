@@ -56,7 +56,13 @@ export interface PlayerGrade {
 }
 
 export function getPlayerGrade(p: BattrickPlayer, format: MatchFormat = 'One Day'): PlayerGrade {
-  const s = p.skills;
+  // Older / partially-synced players can lack a skills object or some skills; treat missing as 0
+  // rather than throwing (a throw here blanks the whole Squad screen).
+  const s = {
+    batting: 0, bowling: 0, keeping: 0, stamina: 0, leadership: 0, experience: 0,
+    concentration: 0, consistency: 0, fielding: 0,
+    ...(p.skills || {}),
+  };
   const w = SECONDARY_WEIGHT[format];
   const batVal = s.batting + w * s.concentration;
   const bowlVal = s.bowling + w * s.consistency;

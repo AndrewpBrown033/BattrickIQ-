@@ -103,24 +103,43 @@ export function parseFinanceTransactions(doc: Document): ParsedFinanceTransactio
   return out;
 }
 
-/** Real interest model, derived purely from the club's own weekly billing history. */
+/**
+ * Real interest model, derived purely from the club's own weekly billing history.
+ *
+ *  - interestRate: weekly interest as a fraction of the balance at billing time. It changes when
+ *    Financial Advisors are hired/fired, so it is taken from the MOST RECENT uncapped week, not a
+ *    median over the whole season.
+ *  - interestCap: the maximum weekly interest in POUNDS (not a balance). Only reported when a genuine
+ *    plateau was seen - the same payout repeated in 2+ weeks while the balance clearly differed.
+ *    A week that merely paid less because the rate was lower earlier is NOT a cap.
+ *  - overdraftRate: interest charged per week on an overdrawn balance, as a fraction of the overdraft.
+ */
 export function deriveInterestModel(
   weeks: FinanceWeekRecord[]
 ): Pick<ClubFinances, 'interestRate' | 'interestCap' | 'overdraftRate'> {
-  const pos = weeks
+  const sorted = [...weeks].sort((a, b) => a.date.localeCompare(b.date));
+  const pos = sorted
     .filter((w) => w.interestReceived > 0 && (w.balanceBefore ?? 0) > 0)
-    .map((w) => ({ r: w.interestReceived / (w.balanceBefore as number), v: w.interestReceived }));
-  const neg = weeks
+    .map((w) => ({ r: w.interestReceived / (w.balanceBefore as number), v: w.interestReceived, bal: w.balanceBefore as number }));
+  const neg = sorted
     .filter((w) => w.interestPaid > 0 && (w.balanceBefore ?? 0) < 0)
     .map((w) => w.interestPaid / Math.abs(w.balanceBefore as number));
 
   const result: Pick<ClubFinances, 'interestRate' | 'interestCap' | 'overdraftRate'> = {};
-  const rate = median(pos.map((p) => p.r));
-  if (rate !== undefined) {
-    result.interestRate = rate;
-    // A week paying clearly less than rate x balance was held back by a cap.
-    const capped = pos.filter((p) => p.r < rate * 0.97);
-    if (capped.length > 0) result.interestCap = Math.max(...capped.map((p) => p.v));
+
+  if (pos.length > 0) {
+    const maxV = Math.max(...pos.map((p) => p.v));
+    const atMax = pos.filter((p) => p.v >= maxV * 0.999);
+    const balances = atMax.map((p) => p.bal);
+    const isPlateau = atMax.length >= 2 && Math.max(...balances) > Math.min(...balances) * 1.02;
+
+    const uncapped = isPlateau ? pos.filter((p) => p.v < maxV * 0.999) : pos;
+    if (isPlateau) result.interestCap = maxV;
+    if (uncapped.length > 0) {
+      result.interestRate = uncapped[uncapped.length - 1].r; // latest uncapped week = current rate
+    } else {
+      result.interestRate = median(pos.map((p) => p.r));
+    }
   }
   const od = median(neg);
   if (od !== undefined) result.overdraftRate = od;
