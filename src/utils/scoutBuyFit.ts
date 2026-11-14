@@ -54,7 +54,7 @@ export interface BuyFitVerdict {
   summary: string;
 }
 
-function primaryOf(p: BuyFitPlayer): { key: 'batting' | 'bowling' | 'keeping'; value: number } {
+export function primaryOf(p: BuyFitPlayer): { key: 'batting' | 'bowling' | 'keeping'; value: number } {
   const bat = p.skills.batting || 0;
   const bowl = p.skills.bowling || 0;
   const keep = p.skills.keeping || 0;

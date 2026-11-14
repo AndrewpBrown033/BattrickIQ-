@@ -7,6 +7,9 @@ import { isGameInNext7Days, parseGameDateToTimestamp } from './history';
 import { computeCashflow, describeCashflow } from './clubCashflow';
 import { getOwnTeamId, getOwnTeamName } from './teamIdentity';
 import { BATTRICK_MECHANICS_PROMPT } from './battrickKnowledge';
+import { buildTrainingBriefing, TRAINING_MECHANICS_PROMPT } from './trainingAdvice';
+import { estimateTeamRatings, buildRatingGaps } from './transferList';
+import { defaultRatings } from '../components/squad/squadHelpers';
 
 function loadJson<T>(key: string, fallback: T): T {
   try {
@@ -103,6 +106,22 @@ export function buildManagerBriefing(): string {
     );
   }
 
+  // Training: nets budget, who trains what and the weeks to each pop, free-net suggestion. Guarded so a
+  // training problem can never take the rest of the briefing down with it.
+  try {
+    let gaps: ReturnType<typeof buildRatingGaps> = [];
+    try {
+      if (squad.length) {
+        gaps = buildRatingGaps(estimateTeamRatings(squad as any), { ...defaultRatings(), ...(ratingTargets || {}) });
+      }
+    } catch {
+      gaps = [];
+    }
+    parts.push(buildTrainingBriefing(squad, finances, gaps));
+  } catch {
+    parts.push('\n[TRAINING] Could not be worked out from the synced data.');
+  }
+
   // Transfer Watch — salary, team plan, affordability for Jarvis purchase advice
   try {
     const rawWatch = localStorage.getItem('bt_transfer_watchlist');
@@ -147,4 +166,4 @@ Always:
 2. Tie advice to upcoming fixtures and formats when available.
 3. Point to train / sell / buy / XI actions that close skill or rating gaps.
 4. Be concise, decisive, and manager-friendly — not a generic cricket essay.
-5. When TRANSFER WATCH players are listed, explicitly say if each is a good purchase for THIS club: salary/wage load, affordability vs cash, and fit to team rating targets / skill gaps. Use BUY / MAYBE / PASS.\n\nWhen asked about lineups, bowling plans or match orders, use these mechanics:\n${BATTRICK_MECHANICS_PROMPT}`;
+5. When TRANSFER WATCH players are listed, explicitly say if each is a good purchase for THIS club: salary/wage load, affordability vs cash, and fit to team rating targets / skill gaps. Use BUY / MAYBE / PASS.\n\nWhen asked about lineups, bowling plans or match orders, use these mechanics:\n${BATTRICK_MECHANICS_PROMPT}\n\nWhen asked about training, nets or player development, use these mechanics and the [TRAINING] section of the briefing:\n${TRAINING_MECHANICS_PROMPT}`;
