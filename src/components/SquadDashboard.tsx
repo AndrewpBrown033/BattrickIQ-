@@ -31,6 +31,7 @@ import {
 import {
   Dumbbell, ArrowLeftRight, Target, Clock, Users, RefreshCw, AlertTriangle } from 'lucide-react';
 import EstimatorAgeWageBar from './squad/EstimatorAgeWageBar';
+import { sanitizeSquad } from '../utils/sanitizeSquad';
 import { filterListingsByMaxPrice, passesMaxPrice } from '../utils/transferMaxPrice';
 import { filterListingsByAge, passesAgeFilter, type WageHorizon } from '../utils/transferCosting';
 import {
@@ -202,9 +203,10 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
       const s = localStorage.getItem('bt_squad');
       if (s) {
         // Real synced data only - never invent training history.
-        const parsed: BattrickPlayer[] = JSON.parse(s);
-        // Ignore null / non-object entries so one bad saved record can't blank the roster.
-        setSquad(Array.isArray(parsed) ? parsed.filter((p) => p && typeof p === 'object') : []);
+        // Normalise on the way in (missing skills/nets, numbers saved as text, null entries) so one bad saved
+        // record can't blank the Squad page.
+        const parsed: unknown = JSON.parse(s);
+        setSquad(sanitizeSquad(Array.isArray((parsed as any)?.players) ? (parsed as any).players : parsed));
       } else setSquad([]);
       const f = localStorage.getItem('bt_finances');
       if (f) setFinances(JSON.parse(f));

@@ -34,6 +34,7 @@
     "test:skillmax": "tsx scripts/test-skill-max.ts",
     "test:training": "tsx scripts/test-training-advice.ts",
     "test:wageparse": "tsx scripts/test-wage-parse.ts",
+    "test:sanitize": "tsx scripts/test-sanitize-squad.ts",
     "test:maxprice": "tsx scripts/test-max-price.ts"
   },
   "dependencies": {

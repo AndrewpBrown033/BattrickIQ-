@@ -402,6 +402,24 @@ export function estimateTeamRatings(xi: {
   role?: string;
 }[]): Record<TeamRatingKey, { level: number; label: string }> {
   const empty = { level: 0, label: 'useless' as string };
+  // Saved players can lack skills or hold them as text; read every skill as a number so one bad record can't throw.
+  xi = (Array.isArray(xi) ? xi : [])
+    .filter((p) => p && typeof p === 'object')
+    .map((p) => {
+      const s: any = (p as any).skills || {};
+      const num = (v: unknown) => (v == null ? undefined : Number(v) || 0);
+      return {
+        ...p,
+        skills: {
+          ...s,
+          batting: num(s.batting) ?? 0,
+          bowling: num(s.bowling) ?? 0,
+          keeping: num(s.keeping) ?? 0,
+          fielding: num(s.fielding),
+          concentration: num(s.concentration),
+        },
+      };
+    });
   if (!xi.length) {
     return {
       topOrder: empty,
@@ -414,8 +432,11 @@ export function estimateTeamRatings(xi: {
     };
   }
 
-  const batEff = (p: (typeof xi)[0]) =>
-    p.skills.batting + 0.25 * (p.skills.concentration ?? Math.min(10, p.skills.batting));
+  const batEff = (p: (typeof xi)[0]) => {
+    const bat = Number(p?.skills?.batting) || 0;
+    const conc = p?.skills?.concentration != null ? Number(p.skills.concentration) || 0 : Math.min(10, bat);
+    return bat + 0.25 * conc;
+  };
   const ordered = [...xi].sort((a, b) => batEff(b) - batEff(a));
   const avg = (arr: number[]) => (arr.length ? arr.reduce((s, n) => s + n, 0) / arr.length : 0);
   const clampLvl = (n: number) => Math.max(0, Math.min(20, Math.round(n)));
