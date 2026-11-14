@@ -9,6 +9,7 @@
  * Form: POST playerdetails.asp?playerID=…  fields: bidValue
  */
 
+import { parseWageFromText } from './wageParse';
 import {
   loadWatchlist,
   saveWatchlist,
@@ -128,14 +129,15 @@ export function parseTransferPanelFromHtml(html: string): {
       html.match(/id=["']bidvalue["'][^>]*value=["'](\d+)["']/i) ||
       [])[1]
   );
-  const wagesMin = parseMoney((text.match(/at least\s*£?\s*([\d,]+)/i) || [])[1]);
+  // Weekly wage and the (separate) minimum-contract figure come from one shared, stricter reader.
+  const parsedWage = parseWageFromText(text);
+  const wagesMin = parsedWage.minContractWage;
 
   const age =
     Number((text.match(/\bAge:\s*(\d{1,2})\b/i) || text.match(/\((\d{1,2})\s*years?\s*old\)/i) || [])[1]) ||
     undefined;
-  const wage =
-    parseMoney((text.match(/\bWage:\s*£?\s*([\d,]+)/i) || text.match(/\bSalary:\s*£?\s*([\d,]+)/i) || [])[1]) ||
-    wagesMin;
+  // Never substitute the minimum contract (or any other 'at least' figure) for the wage: unknown stays unknown.
+  const wage = parsedWage.wage;
 
   const skills = {
     batting: skillLabelToLevel(matchSkillLabel(text, 'Batting')),

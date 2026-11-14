@@ -287,6 +287,7 @@ export default function TransferWatchPage() {
       name: panel.name || entry.name,
       age: panel.age ?? entry.age,
       wage: panel.wage ?? entry.wage,
+      wageMin: panel.wagesMinContract ?? entry.wageMin,
       role: panel.role || entry.role,
       bowlingType: panel.bowlingType || entry.bowlingType,
       skills: panel.skills || entry.skills,
@@ -324,6 +325,7 @@ export default function TransferWatchPage() {
         name: panel.name || entry.name,
         age: panel.age ?? entry.age,
         wage: panel.wage ?? entry.wage,
+        wageMin: panel.wagesMinContract ?? entry.wageMin,
         role: panel.role || entry.role,
         bowlingType: panel.bowlingType || entry.bowlingType,
         skills: panel.skills || entry.skills,
@@ -466,6 +468,7 @@ export default function TransferWatchPage() {
           lastBidderTeam: panel?.bidderTeam,
           age: panel?.age,
           wage: panel?.wage,
+          wageMin: panel?.wagesMinContract,
           role: panel?.role,
           bowlingType: panel?.bowlingType,
           skills: panel?.skills,
@@ -628,8 +631,21 @@ export default function TransferWatchPage() {
                     <div className="text-[10px] text-slate-500 font-mono">ID {w.playerId}</div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-600">
                       {w.age ? <span>Age {w.age}</span> : null}
-                      <span className="font-semibold text-slate-800" title="Weekly wage, read from his Battrick page">
-                        {w.wage && w.wage > 0 ? `Wage £${w.wage.toLocaleString()}/wk` : 'Wage not read yet'}
+                      <span
+                        className="font-semibold text-slate-800"
+                        title={
+                          w.wage && w.wage > 0
+                            ? 'Weekly wage, read from his Battrick page'
+                            : w.wageMin && w.wageMin > 0
+                            ? "His page only states a minimum contract wage, not his current wage. Open Check now to re-read."
+                            : 'His wage has not been read from Battrick yet'
+                        }
+                      >
+                        {w.wage && w.wage > 0
+                          ? `Wage £${w.wage.toLocaleString()}/wk`
+                          : w.wageMin && w.wageMin > 0
+                          ? `Wage not shown · min contract £${w.wageMin.toLocaleString()}/wk`
+                          : 'Wage not read yet'}
                       </span>
                     </div>
                     {w.skills && (

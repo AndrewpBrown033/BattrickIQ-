@@ -33,6 +33,7 @@
     "test:nets": "tsx scripts/test-training-nets.ts",
     "test:skillmax": "tsx scripts/test-skill-max.ts",
     "test:training": "tsx scripts/test-training-advice.ts",
+    "test:wageparse": "tsx scripts/test-wage-parse.ts",
     "test:maxprice": "tsx scripts/test-max-price.ts"
   },
   "dependencies": {

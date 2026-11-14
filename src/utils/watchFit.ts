@@ -19,8 +19,10 @@ import { estimateTeamRatings, levelToLabel, type TeamRatingKey } from './transfe
 export interface WatchedPlayerProfile {
   name?: string;
   age?: number;
-  /** Weekly wage in £ as read from his Battrick page (can be the contract minimum). Undefined if not read. */
+  /** Weekly wage in £ as stated on his Battrick page. Undefined if the page doesn't state it (a minimum contract is never used here). */
   wage?: number;
+  /** A minimum contract wage the page mentioned, kept only so we can say so. Not his wage. */
+  minContractWage?: number;
   wageSource: 'page' | 'unknown';
   btRating?: number;
   bowlingType?: string;
@@ -33,6 +35,7 @@ export interface WatchEntryLike {
   name: string;
   age?: number;
   wage?: number;
+  wageMin?: number;
   bowlingType?: string;
   skills?: {
     batting?: number;
@@ -63,6 +66,7 @@ export function profileFromWatchEntry(e: WatchEntryLike): WatchedPlayerProfile {
     age: e.age && e.age > 0 ? e.age : undefined,
     wage: e.wage && e.wage > 0 ? e.wage : undefined,
     wageSource: e.wage && e.wage > 0 ? 'page' : 'unknown',
+    minContractWage: e.wageMin && e.wageMin > 0 ? e.wageMin : undefined,
     bowlingType: bt && bt.toLowerCase() !== 'none' ? bt : undefined,
     skills: read
       ? {
@@ -203,7 +207,13 @@ export function buildWatchFit(input: {
   const haveSkills = ['batting', 'bowling', 'keeping'].some((k) => (profile.skills as any)[k] !== undefined);
 
   if (!haveSkills) dataGaps.push("His skills haven't been read from Battrick yet, so squad fit and goals can't be judged.");
-  if (profile.wageSource === 'unknown') dataGaps.push("His weekly wage isn't shown on the page, so the weekly income impact is unknown.");
+  if (profile.wageSource === 'unknown') {
+    dataGaps.push(
+      profile.minContractWage
+        ? `His page doesn't state his weekly wage, only a minimum contract of ${gbp(profile.minContractWage)}/wk, so the weekly income impact is unknown (that minimum is not used as his wage).`
+        : "His weekly wage isn't shown on the page, so the weekly income impact is unknown."
+    );
+  }
   if (age === undefined) dataGaps.push('His age was not found.');
   if (!squad.length) dataGaps.push('Your squad is not synced.');
   if (!finances) dataGaps.push('Your finances are not synced.');
