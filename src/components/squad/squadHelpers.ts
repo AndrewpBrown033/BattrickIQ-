@@ -26,12 +26,10 @@ export function getTradeAction(p: BattrickPlayer): { action: 'KEEP' | 'SELL' | '
   return { action: 'WATCH', reason: 'Review vs XI needs' };
 }
 
-export function estimateWeeksToNextLevel(level: number, age: number, netsOnSkill: number): number {
-  const base = Math.max(4, (level + 1) * 3);
-  const agePenalty = age >= 30 ? 1.4 : age >= 27 ? 1.2 : age <= 21 ? 0.85 : 1.0;
-  const netsBoost = Math.max(0.35, 1 - netsOnSkill * 0.04);
-  return Math.max(1, Math.round(base * agePenalty * netsBoost));
-}
+// One forecast for the whole app. This file used to carry its own simplified formula
+// (level x 3 weeks, flat age/net factors) that disagreed with the player page and growth chart,
+// and ignored the skill type (stamina and fielding have their own rules). It now re-exports the real one.
+export { estimateWeeksToNextLevel } from '../../parser';
 
 export const RATING_KEYS: { key: TeamRatingKey; label: string }[] = [
   { key: 'topOrder', label: 'Top Order' },

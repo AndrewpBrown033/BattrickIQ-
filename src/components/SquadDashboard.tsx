@@ -245,7 +245,8 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
         ].filter((e) => e.nets > 0);
         const focus = entries.sort((a, b) => b.nets - a.nets)[0];
         if (!focus) return null;
-        const weeks = estimateWeeksToNextLevel(focus.level, p.age || 25, focus.nets);
+        // Pass the skill so stamina (cap 11, 6/4/3 weeks) and fielding use their own rules, not the batting curve.
+        const weeks = estimateWeeksToNextLevel(focus.level, p.age || 25, focus.nets, 9, focus.key as any);
         return { player: p, total, focus: { ...focus, label: focus.key }, weeks };
       })
       .filter(Boolean) as { player: BattrickPlayer; total: number; focus: any; weeks: number }[];
@@ -571,7 +572,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-[10px] font-bold text-violet-600 flex items-center gap-1 justify-end">
-                      <Clock className="w-3 h-3" /> ~{weeks}w
+                      <Clock className="w-3 h-3" /> {weeks === 0 ? 'max level' : Number.isFinite(weeks) ? `~${weeks}w` : 'no nets'}
                     </div>
                     <div className="text-[10px] text-slate-400">{total} total nets</div>
                   </div>
