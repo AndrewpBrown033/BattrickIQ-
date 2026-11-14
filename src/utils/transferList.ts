@@ -7,6 +7,7 @@
 
 import { SKILL_LEVELS, getSkillLabel } from '../types';
 import { parseWageFromText } from './wageParse';
+import { playerIdFromHref } from './playerLink';
 
 export interface TransferListing {
   playerId: string;
@@ -145,12 +146,8 @@ function parseTransferListRegex(html: string): TransferListing[] {
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
     const href = m[1];
-    const idMatch =
-      href.match(/playerid=(\d+)/i) ||
-      href.match(/PlayerID=(\d+)/i) ||
-      href.match(/(?:playerid|id)[=_](\d+)/i);
-    if (!idMatch) continue;
-    const playerId = idMatch[1];
+    const playerId = playerIdFromHref(href);
+    if (!playerId) continue;
     if (seen.has(playerId)) continue;
     seen.add(playerId);
     const name = m[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -335,12 +332,8 @@ export function parseTransferList(
           continue;
         }
         const href = link.getAttribute('href') || '';
-        const idMatch =
-          href.match(/playerid=(\d+)/i) ||
-          href.match(/PlayerID=(\d+)/i) ||
-          href.match(/(?:playerid|id)[=_](\d+)/i);
-        if (!idMatch) continue;
-        const playerId = idMatch[1];
+        const playerId = playerIdFromHref(href);
+        if (!playerId) continue;
         if (seen.has(playerId) || exclude.has(playerId)) continue;
         const name = (link.textContent || '').replace(/\s+/g, ' ').trim();
         if (!name || name.length < 2 || name.length > 60) continue;
