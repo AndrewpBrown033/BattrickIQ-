@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { WageHorizon } from '../../utils/transferCosting';
+import { parseMaxPrice } from '../../utils/transferMaxPrice';
 
 export type EstimatorAgeWageBarProps = {
   minAge: number;
@@ -9,6 +10,9 @@ export type EstimatorAgeWageBarProps = {
   wageWeeks: WageHorizon;
   onWageWeeks: (w: WageHorizon) => void;
   factorFinance: boolean;
+  /** Optional ceiling on what a player costs now (current bid, else asking price). undefined = no limit. */
+  maxPrice?: number;
+  onMaxPrice?: (n: number | undefined) => void;
 };
 
 const AGE_MIN = 1;
@@ -54,6 +58,34 @@ function AgeInput({
   );
 }
 
+/**
+ * Max price box. Keeps what you type as text (so "2.5m" or "750k" work), and passes up a number, or
+ * undefined when the box is blank / not a valid amount (= no limit).
+ */
+function MaxPriceInput({ value, onCommit }: { value?: number; onCommit: (n: number | undefined) => void }) {
+  const [draft, setDraft] = useState(value ? value.toLocaleString('en-GB') : '');
+  useEffect(() => setDraft(value ? value.toLocaleString('en-GB') : ''), [value]);
+  return (
+    <label className="text-[10px] font-semibold text-slate-600 flex flex-col gap-0.5">
+      Max price (£)
+      <input
+        type="text"
+        inputMode="decimal"
+        value={draft}
+        onChange={(e) => {
+          const t = e.target.value.replace(/[^0-9.,kKmM£$]/g, '').slice(0, 14);
+          setDraft(t);
+          onCommit(parseMaxPrice(t));
+        }}
+        onBlur={() => setDraft(value ? value.toLocaleString('en-GB') : '')}
+        onFocus={(e) => e.target.select()}
+        className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs w-32"
+        placeholder="No limit"
+      />
+    </label>
+  );
+}
+
 /** Age range + wage horizon controls for Estimator → Skills to look for. */
 export default function EstimatorAgeWageBar({
   minAge,
@@ -63,6 +95,8 @@ export default function EstimatorAgeWageBar({
   wageWeeks,
   onWageWeeks,
   factorFinance,
+  maxPrice,
+  onMaxPrice,
 }: EstimatorAgeWageBarProps) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-2.5 space-y-2">
@@ -97,6 +131,23 @@ export default function EstimatorAgeWageBar({
       <p className="text-[10px] text-slate-500">
         Type any age (1–50). A narrower band updates the shortlist instantly; a wider band needs a new scan. Players whose age Battrick doesn't show are kept.
       </p>
+
+      {onMaxPrice && (
+        <div className="pt-1 border-t border-slate-100 space-y-1">
+          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Price filter</div>
+          <div className="flex flex-wrap items-end gap-2">
+            <MaxPriceInput value={maxPrice} onCommit={onMaxPrice} />
+            {maxPrice != null && (
+              <button type="button" className="text-[10px] font-bold text-slate-500 underline pb-1" onClick={() => onMaxPrice(undefined)}>
+                No limit
+              </button>
+            )}
+          </div>
+          <p className="text-[10px] text-slate-500">
+            Hides players costing more than this (current bid, else asking price). Players with no price shown are kept. Blank = no limit.
+          </p>
+        </div>
+      )}
 
       <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 pt-1 border-t border-slate-100">
         Wage horizon (with fee)

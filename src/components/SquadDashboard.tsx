@@ -31,6 +31,7 @@ import {
 import {
   Dumbbell, ArrowLeftRight, Target, Clock, Users, RefreshCw, AlertTriangle } from 'lucide-react';
 import EstimatorAgeWageBar from './squad/EstimatorAgeWageBar';
+import { filterListingsByMaxPrice, passesMaxPrice } from '../utils/transferMaxPrice';
 import { filterListingsByAge, passesAgeFilter, type WageHorizon } from '../utils/transferCosting';
 import {
   type SubTab, type EffortMode, totalNets, getTradeAction, estimateWeeksToNextLevel,
@@ -88,14 +89,25 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
   const [watchBusy, setWatchBusy] = useState(false);
   const [watchAck, setWatchAck] = useState<string | null>(null);
   const [minAge, setMinAge] = useState(17);
+  // Optional price ceiling for the transfer search (undefined = no limit). Remembered between visits.
+  const [maxPrice, setMaxPriceState] = useState<number | undefined>(() => {
+    try {
+      const v = Number(localStorage.getItem('bt_transfer_max_price'));
+      return Number.isFinite(v) && v > 0 ? v : undefined;
+    } catch { return undefined; }
+  });
+  const setMaxPrice = (n: number | undefined) => {
+    setMaxPriceState(n);
+    try { n ? localStorage.setItem('bt_transfer_max_price', String(n)) : localStorage.removeItem('bt_transfer_max_price'); } catch {}
+  };
   const [maxAge, setMaxAge] = useState(32);
   const [wageWeeks, setWageWeeks] = useState<WageHorizon>(6);
 
   // Narrowing the age boxes re-filters the scanned shortlist instantly. Widening needs a new scan, because the
   // scan itself asks Battrick for (and keeps) only the band that was set when it ran.
   const buyRecs = useMemo(
-    () => allBuyRecs.filter((r) => passesAgeFilter(r.listing.age, { minAge, maxAge })),
-    [allBuyRecs, minAge, maxAge]
+    () => allBuyRecs.filter((r) => passesAgeFilter(r.listing.age, { minAge, maxAge }) && passesMaxPrice(r.listing, maxPrice)),
+    [allBuyRecs, minAge, maxAge, maxPrice]
   );
 
   // Must come after wageWeeks. Guarded so one odd listing can't white-screen the Estimator.
@@ -340,6 +352,9 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
       }
       let listings = parseTransferList(html, { excludePlayerIds: ownIds });
       listings = filterListingsByAge(listings, { minAge, maxAge });
+      const beforePrice = listings.length;
+      listings = filterListingsByMaxPrice(listings, maxPrice);
+      const priceExcluded = beforePrice - listings.length;
       const beforeMax = listings.length;
       listings = filterListingsBySkillMax(listings, activeSkillMaxes(skillMaxes, selectedSkills));
       setMaxExcludedCount(beforeMax - listings.length);
@@ -352,6 +367,11 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
         if (beforeMax > 0) {
           throw new Error(
             `All ${beforeMax} players on the transfer list are above your maximum skill levels. Raise the Max for Batting / Seam / Spin (or clear it) and scan again.`
+          );
+        }
+        if (priceExcluded > 0) {
+          throw new Error(
+            `All ${priceExcluded} players on the transfer list cost more than your max price (£${(maxPrice || 0).toLocaleString()}). Raise or clear the Max price and scan again.`
           );
         }
         if (isTransferSearchFormOnly(html)) {
@@ -471,6 +491,7 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
       const ownIds = new Set<string>(squad.map((p) => String(p.id)).filter(Boolean));
       let listings = parseTransferList(html, { excludePlayerIds: ownIds });
       listings = filterListingsByAge(listings, { minAge, maxAge });
+      listings = filterListingsByMaxPrice(listings, maxPrice);
       listings = filterListingsBySkillMax(listings, activeSkillMaxes(skillMaxes, selectedSkills));
       try { localStorage.setItem('bt_transfer_listings', JSON.stringify(listings)); } catch {}
       try {
@@ -701,6 +722,8 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
                 wageWeeks={wageWeeks}
                 onWageWeeks={setWageWeeks}
                 factorFinance={factorFinance}
+                maxPrice={maxPrice}
+                onMaxPrice={setMaxPrice}
               />
               <div className="flex flex-wrap gap-2">
                 {skillRecs.map((r) => {
