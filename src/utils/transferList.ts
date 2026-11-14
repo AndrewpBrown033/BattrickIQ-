@@ -6,6 +6,7 @@
  */
 
 import { SKILL_LEVELS, getSkillLabel } from '../types';
+import { parseWageFromText } from './wageParse';
 
 export interface TransferListing {
   playerId: string;
@@ -96,8 +97,7 @@ function extractListingFromBlock(
   const deadline = deadlineMatch ? deadlineMatch[1] : undefined;
   const btrMatch = blockText.match(/\b(?:BTR|Battrick\s*Rating|BT\s*Rating)\s*[:=]?\s*([\d,]+)/i);
   const btRating = btrMatch ? parseMoney(btrMatch[1]) : undefined;
-  const wageMatch = blockText.match(/\b(?:wage|salary)\s*[:=]?\s*[£$€]?\s*([\d,]+)/i);
-  const wage = wageMatch ? parseMoney(wageMatch[1]) : undefined;
+  const wage = parseWageFromText(blockText).wage;
   const skills = {
     batting: parseSkillToken(blockText, ['batting', 'bat']),
     bowling: parseSkillToken(blockText, ['bowling', 'bowl']),

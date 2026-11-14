@@ -37,6 +37,8 @@ export interface WatchEntry {
   playerUrl?: string;
   age?: number;
   wage?: number;
+  /** Minimum contract wage the page mentions (NOT his wage). Shown only when no wage was read. */
+  wageMin?: number;
   role?: string;
   bowlingType?: string;
   skills?: {
