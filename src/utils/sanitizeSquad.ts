@@ -49,12 +49,21 @@ export function sanitizePlayer(raw: unknown, index = 0): BattrickPlayer | null {
   } as BattrickPlayer;
 }
 
-export function sanitizeSquad(raw: unknown): BattrickPlayer[] {
+const GENERIC_CLUB = new Set(['', 'my club', 'my battrick iq club']);
+
+/** True when a "player" is really the user's own club (a team link that an older parser saved as a player). */
+export function isClubNotPlayer(name: unknown, teamName?: string | null): boolean {
+  const t = String(teamName || '').trim().toLowerCase();
+  if (GENERIC_CLUB.has(t)) return false;
+  return String(name || '').trim().toLowerCase() === t;
+}
+
+export function sanitizeSquad(raw: unknown, opts: { teamName?: string | null } = {}): BattrickPlayer[] {
   if (!Array.isArray(raw)) return [];
   const out: BattrickPlayer[] = [];
   raw.forEach((r, i) => {
     const p = sanitizePlayer(r, i);
-    if (p) out.push(p);
+    if (p && !isClubNotPlayer(p.name, opts.teamName)) out.push(p);
   });
   return out;
 }
@@ -77,7 +86,14 @@ export function repairStoredSquad(storage: Pick<Storage, 'getItem' | 'setItem'> 
     // Some versions stored { players: [...] }
     const list = Array.isArray(parsed) ? parsed : Array.isArray((parsed as any)?.players) ? (parsed as any).players : null;
     if (!list) return false;
-    const cleaned = sanitizeSquad(list);
+    const teamName = (() => {
+      try {
+        return (storage as Storage).getItem('bt_team_name');
+      } catch {
+        return null;
+      }
+    })();
+    const cleaned = sanitizeSquad(list, { teamName });
     const next = JSON.stringify(cleaned);
     if (next === raw) return false;
     storage.setItem('bt_squad', next);

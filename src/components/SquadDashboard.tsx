@@ -206,7 +206,11 @@ export default function SquadDashboard({ setActiveTab, onSelectPlayer }: SquadDa
         // Normalise on the way in (missing skills/nets, numbers saved as text, null entries) so one bad saved
         // record can't blank the Squad page.
         const parsed: unknown = JSON.parse(s);
-        setSquad(sanitizeSquad(Array.isArray((parsed as any)?.players) ? (parsed as any).players : parsed));
+        setSquad(
+          sanitizeSquad(Array.isArray((parsed as any)?.players) ? (parsed as any).players : parsed, {
+            teamName: localStorage.getItem('bt_team_name'),
+          })
+        );
       } else setSquad([]);
       const f = localStorage.getItem('bt_finances');
       if (f) setFinances(JSON.parse(f));

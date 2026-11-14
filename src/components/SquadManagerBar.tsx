@@ -14,7 +14,7 @@ export default function SquadManagerBar() {
     const load = () => {
       try {
         const s = localStorage.getItem('bt_squad');
-        setSquad(s ? sanitizeSquad(JSON.parse(s)) : []);
+        setSquad(s ? sanitizeSquad(JSON.parse(s), { teamName: localStorage.getItem('bt_team_name') }) : []);
       } catch {
         setSquad([]);
       }

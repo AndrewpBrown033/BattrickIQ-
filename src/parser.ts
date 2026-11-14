@@ -1,4 +1,5 @@
 import { netMultiplier as skillNetMultiplier, staminaMultiplier } from './utils/trainingNets';
+import { playerIdFromHref, isPlayerHref } from './utils/playerLink';
 import { weeksToSecondaryPop } from './utils/secondarySkills';
 import { parseFinanceTransactions, deriveInterestModel } from './utils/financeHistory';
 import { gradePlayerSelection } from './utils/playerGrade';
@@ -125,7 +126,7 @@ export function parseFormattedNumber(text: string): number {
 function getPlayerLinksInElement(el: Element): Element[] {
   return Array.from(el.querySelectorAll('a')).filter(link => {
     const href = link.getAttribute('href') || '';
-    return /(?:playerid|id)(?:_|-|=|%3d|%3D|\s)*(\d+)/i.test(href);
+    return isPlayerHref(href);
   });
 }
 
@@ -755,6 +756,8 @@ export function parseBattrickPage(content: string, forcedType?: string): {
         localStorage.setItem('bt_team_name', teamName);
         window.dispatchEvent(new Event('bt_team_name_updated'));
       } catch (e) {}
+      // A club link can never be a player (belt and braces on top of the stricter link rule).
+      players = players.filter((p) => p.name.trim().toLowerCase() !== teamName.trim().toLowerCase());
     }
     return { type, players, teamName, count: players.length };
   }
@@ -837,16 +840,14 @@ function parseSquad(content: string): BattrickPlayer[] {
       if (linkEl.closest('#menubar, #rightmenu, .menu, .submenu, #topmenu, .menu-box')) {
         return false;
       }
-      const url = linkEl.getAttribute('href') || '';
-      return /(?:playerid|id)(?:_|-|=|%3d|%3D|\s)*(\d+)/i.test(url);
+      return isPlayerHref(linkEl.getAttribute('href') || '');
     });
     
     if (playerRows.length > 0) {
       playerRows.forEach((linkEl) => {
         const name = linkEl.textContent?.trim() || 'Unknown Player';
         const url = linkEl.getAttribute('href') || '';
-        const idMatch = url.match(/(?:playerid|id)(?:_|-|=|%3d|%3D|\s)*(\d+)/i);
-        const id = idMatch ? idMatch[1] : Math.random().toString(36).substring(2, 9);
+        const id = playerIdFromHref(url) || Math.random().toString(36).substring(2, 9);
         
         let container: Element | null = null;
         
@@ -6136,7 +6137,7 @@ export function parseBattrickPlayerDetails(content: string): BattrickPlayer | nu
     }
 
     if (!id || id === '') {
-      const idMatch = content.match(/(?:playerid|id)(?:_|-|=|%3d|%3D|\s)*(\d+)/i) || content.match(/\((\d{5,8})\)/);
+      const idMatch = content.match(/player_?id(?:_|-|=|%3d|%3D|\s)*(\d+)/i) || content.match(/\((\d{5,8})\)/);
       if (idMatch) id = idMatch[1];
       
       const nameMatch = content.match(/([A-Za-z\s]+)\s+\((\d{5,8})\)/);
