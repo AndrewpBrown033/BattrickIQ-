@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { DollarSign, Users, GraduationCap, ArrowLeftRight } from 'lucide-react';
 import type { BattrickPlayer, ClubFinances } from '../types';
+import { sanitizeSquad } from '../utils/sanitizeSquad';
 
 /**
  * Thin manager context above the player list: wages, training load, sell signals.
@@ -13,7 +14,7 @@ export default function SquadManagerBar() {
     const load = () => {
       try {
         const s = localStorage.getItem('bt_squad');
-        setSquad(s ? JSON.parse(s) : []);
+        setSquad(s ? sanitizeSquad(JSON.parse(s)) : []);
       } catch {
         setSquad([]);
       }

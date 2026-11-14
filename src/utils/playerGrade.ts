@@ -61,8 +61,8 @@ export function getPlayerGrade(p: BattrickPlayer, format: MatchFormat = 'One Day
   const s = {
     batting: 0, bowling: 0, keeping: 0, stamina: 0, leadership: 0, experience: 0,
     concentration: 0, consistency: 0, fielding: 0,
-    ...(p.skills || {}),
-  };
+    ...Object.fromEntries(Object.entries(p.skills || {}).map(([k, v]) => [k, Number(v) || 0])),
+  } as any;
   const w = SECONDARY_WEIGHT[format];
   const batVal = s.batting + w * s.concentration;
   const bowlVal = s.bowling + w * s.consistency;

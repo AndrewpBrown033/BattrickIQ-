@@ -5,8 +5,11 @@ import { BattrickAuthProvider } from './lib/battrickAuthContext';
 import './index.css';
 import './fixtureOpponentIdNormalize';
 import { resetSyntheticHistoryOnce } from './utils/history';
+import { repairStoredSquad } from './utils/sanitizeSquad';
 
 resetSyntheticHistoryOnce();
+// Clean any malformed saved players now, before the setItem wrapper below (a repair is not a manual edit).
+repairStoredSquad();
 
 // Intercept localStorage writes/removes to track local modifications and avoid race conditions with incoming Firestore snapshots
 const originalSetItem = localStorage.setItem;

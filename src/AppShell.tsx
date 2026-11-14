@@ -3,6 +3,7 @@ import { LayoutGrid, Users, Calendar, Swords, Trophy, Calculator, Building2, Bot
 import TransferWatchPage from './components/TransferWatchPage';
 import ManagerDesk from './components/ManagerDesk';
 import SquadDashboard from './components/SquadDashboard';
+import ErrorBoundary from './components/ErrorBoundary';
 import SquadManagerBar from './components/SquadManagerBar';
 import FixturesDashboard from './components/FixturesDashboard';
 import LineupOptimizer from './components/LineupOptimizer';
@@ -250,6 +251,7 @@ export default function AppShell() {
         {activeTab === 'summary' && <ManagerDesk setActiveTab={setActiveTab as any} />}
         {activeTab === 'fixtures' && <FixturesDashboard setActiveTab={setActiveTab as any} />}
         {activeTab === 'squad' && (
+          <ErrorBoundary label="The Squad page">
           <div className="flex flex-col gap-3">
             <SquadManagerBar />
             <SquadDashboard
@@ -260,6 +262,7 @@ export default function AppShell() {
               }}
             />
           </div>
+          </ErrorBoundary>
         )}
         {activeTab === 'lineup' && (
           <div>
